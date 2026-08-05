@@ -22,6 +22,12 @@
 | D-11 | T 硬規則無解時「衝突摘要」的最低內容？ | 第一版只回報 INFEASIBLE＋涉及週期／人員的基本統計與文字說明；不做最小衝突規則組合分析 |
 | D-12 | 給 agent 的文件形式？ | `AGENTS.md`（總覽與索引）＋ `docs/` 分章 Markdown |
 | D-13 | 規格書 2.3 說「延伸排班日同樣適用……及軟規則」，7.1 卻說「軟規則評分只計算目標月份內的日期」，兩者矛盾 | 需求方確認：**延伸日只作為可行性檢查區間**（確保本月發布後下個月仍排得下去），適用全部 P0、班位需求、T-H-01，但**不參與任何軟規則計分與候選差異比較**。區段／區塊以目標月最後一日為尾端界線，未結束者保存長度、下次排班承接評分。取代規格書 7.1「若區段在星期日前結束，依完整長度評分」的說法。詳見 `05-soft-rules.md` 第 7 節 |
+| D-18 | 新增 R1（國定假日休假）狀態（2026-08-05） | R1 由系統安排（非輸入事件）：每週期每人 R1 數量**剛好等於**該週期國定假日數（`requiredR1`）、可排週期內任意日期、**不計入** requiredR（16）一般休假額度、不算工作日、不補 M 班位、不算 T 出勤／專業／能力、**不重置 GEN-H-02 連續工作計數**（唯一與 R／R\* 不同的行為）。R1 的特殊行為只影響 GEN-H-02；其他規則條文中的 R／R\* 一律不含 R1（見 `05` 第 1 節）。`ScheduleCycle` 由單一 requiredR 拆為 requiredR（一般休假，預設 16）＋ requiredR1，**取代**原「requiredR 可為 16 加國定假日數」的設計。輸出與歷史必須保留 `R1` 字樣，不得正規化成 R |
+| D-19 | 跨月比例保留一般休假（2026-08-05） | 週期未在目標月底前結束時，`reservedGeneralRest = ceil(requiredR × futureDays / cycleDays)`（futureDays＝週期在月底後的天數），截至月底的累積 R＋R\* 不得超過 `requiredR − reservedGeneralRest`。只適用 R／R\*，R1 不納入；延伸日的 R／R\* 不消耗本月上限；目標月已涵蓋週期最後一天則不用比例保留、直接套恰好等式。完整定義見 `04` GEN-H-04(c) |
+
+| D-15 | API 形態？ | Blazor Server 直接注入應用服務層介面（定義於 Core、實作於 Infrastructure）；第一版不做 HTTP REST。未來接 AD／外部系統再加 Minimal API |
+| D-16 | UI／測試／CSV 技術選型？ | UI：Blazor 內建元件＋Bootstrap，不引入第三方元件庫。測試：MSTest＋Microsoft.Playwright.MSTest。CSV：Infrastructure 內自製 parser（支援引號與 UTF-8 BOM），不用 CsvHelper |
+| D-17 | 固定事件彼此必然違反 P0 時？ | 輸入驗證階段擋下（`docs/03` 第 6 節第 14 條）：X↔X 或 X↔Published 歷史依實際時間必然違反 GEN-H-03／GEN-H-02 時回 `INVALID_INPUT`，指出兩筆衝突來源，不進求解器 |
 
 ## 文字澄清（規格書寫法問題，不涉業務變更）
 

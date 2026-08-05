@@ -45,7 +45,7 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 | `Employee` | 員工編號、姓名、單位（M/T）、M 的 homeStation、T 的 specialty 與 ability |
 | `EmployeeMonthlyShift` | T 每人每月班組（早／午／夜） |
 | `FixedEvent` | R\*（人＋日期）與 X（人＋起訖時間＋說明） |
-| `ScheduleCycle` | 8 週週期 start、end、requiredR |
+| `ScheduleCycle` | 8 週週期 start、end、requiredR（一般休假，預設 16）、requiredR1（國定假日數） |
 | `ScheduleRun` / `Snapshot` | 排班請求、狀態、輸入快照（人員、事件、歷史截止點、固定設定、規則順序、seed、程式版本） |
 | `CandidateSolution` | 求解候選與其品質指標 |
 | `Assignment` | 人 × 日期的狀態（含跨站站碼）；Published／Draft／Candidate 共用結構 |
@@ -74,7 +74,7 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 | 班別 | M／T 早、午、夜的起訖時間 |
 | M 營運 | 車站群組、每日班位需求、可外派車站（LB02／LB04／LB11） |
 | T 營運 | 月輪轉順序（早→午→夜→早），及必要時的下月班組例外 |
-| 休假週期 | 每個 8 週週期的 start、end、requiredR |
+| 休假週期 | 每個 8 週週期的 start、end、requiredR（一般休假，預設 16）、requiredR1（國定假日數） |
 | 規則 | 每條規則的 enabled、priority、order、parameters |
 | 求解 | 總時限（預設 5 分鐘）、seed、差異門檻（預設 10%）；候選目標數固定 3 |
 
