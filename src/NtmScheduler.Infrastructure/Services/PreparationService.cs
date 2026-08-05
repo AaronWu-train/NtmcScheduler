@@ -58,13 +58,14 @@ public sealed class PreparationService : IPreparationService
                 ? cycles.Select(c => $"{c.Start:yyyy-MM-dd}～{c.End:yyyy-MM-dd}（R={c.RequiredR}, R1={c.RequiredR1}）").ToList()
                 : ["目標月無涵蓋的 8 週週期"]));
 
-        var history = await _db.OfficialScheduleVersions.AsNoTracking()
-            .AnyAsync(v => v.Unit == unit && v.IsCurrent, ct);
+        var history = await _db.ScheduleSnapshots.AsNoTracking()
+            .AnyAsync(v => v.Unit == unit && v.IsCurrent, ct)
+            || await _db.MonthSchedules.AsNoTracking().AnyAsync(s => s.Unit == unit, ct);
         items.Add(new PreparationItemDto(
             "history",
             "歷史涵蓋",
             history,
-            history ? Array.Empty<string>() : ["尚無 Published 歷史（初次上線請先匯入）"]));
+            history ? Array.Empty<string>() : ["尚無歷史快照或目前班表（初次上線請先匯入）"]));
 
         var rules = await _db.RuleSettings.AsNoTracking().AnyAsync(r => r.Unit == unit, ct);
         items.Add(new PreparationItemDto(

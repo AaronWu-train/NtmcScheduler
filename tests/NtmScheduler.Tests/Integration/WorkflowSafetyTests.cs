@@ -34,12 +34,10 @@ public sealed class WorkflowSafetyTests
     }
 
     [TestMethod]
-    public async Task DraftValidation_FailsClosedUntilImplemented()
+    public async Task ScheduleRevalidate_MissingSchedule_Throws()
     {
         await using var fx = await SqliteFixture.CreateAsync();
-        var validation = await new DraftService(fx.Db, fx.Audit).RevalidateAsync(1);
-
-        Assert.IsFalse(validation.P0Passed);
-        Assert.IsTrue(validation.PublishBlockers.Any(b => b.Code == "VALIDATION_NOT_IMPLEMENTED"));
+        var svc = new ScheduleService(fx.Db, fx.Audit);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => svc.RevalidateAsync(1));
     }
 }

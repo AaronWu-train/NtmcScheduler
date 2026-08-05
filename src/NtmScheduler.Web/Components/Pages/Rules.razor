@@ -1,11 +1,23 @@
 @page "/rules"
 @rendermode InteractiveServer
+@using NtmScheduler.Core.Evaluation
 @inject IRuleSettingService RulesSvc
 @inject OperatorState Operator
 
 <PageTitle>規則管理</PageTitle>
 
 <h1 class="h3 mb-3">規則管理</h1>
+
+<div class="alert alert-light border small mb-3">
+    <div class="fw-semibold mb-1">如何修改軟規則</div>
+    <ul class="mb-0">
+        <li>本頁可調整<strong>是否啟用</strong>與<strong>執行順序</strong>（P2–P4）。P0 硬規則與 P1（指定休假）鎖定。</li>
+        <li>規則的違反量計算與顯示文字：見 <code>src/NtmScheduler.Core/Evaluation/Rules/</code>（MSoftRules / TSoftRules / GeneralSoftRules）。</li>
+        <li>規則目錄（名稱、說明、預設順序）：見 <code>src/NtmScheduler.Core/Evaluation/RuleCatalog.cs</code>。</li>
+        <li>Solver 端如何建立 OR-Tools 違反量：M 看 <code>src/NtmScheduler.Solvers/M/MModelBuilder.cs</code>；T 看 <code>.../T/TModelBuilder.cs</code>。</li>
+        <li>求解仍採<strong>逐條字典序</strong>：前一條最佳化並固定後，再處理下一條（不是加權總和）。</li>
+    </ul>
+</div>
 
 <ul class="nav nav-tabs mb-3">
     <li class="nav-item">
@@ -16,12 +28,10 @@
     </li>
 </ul>
 
-<p class="small text-muted">P0 鎖定不可關閉；P1 固定最高軟規則順位；P2–P4 可啟用／停用／調整順序與參數。</p>
-
 <table class="table table-sm align-middle">
     <thead>
         <tr>
-            <th>Rule ID</th><th>優先級</th><th>啟用</th><th>順序</th><th>參數 JSON</th><th></th>
+            <th>規則</th><th>優先級</th><th>啟用</th><th>順序</th><th>參數 JSON</th><th></th>
         </tr>
     </thead>
     <tbody>
@@ -29,10 +39,12 @@
         {
             var idx = i;
             var r = _rules[idx];
+            var info = RuleCatalog.Find(r.RuleId);
             var locked = r.Priority is 0 or 1;
             <tr class="@(r.Priority == 0 ? "table-secondary" : null)">
-                <td>
-                    <code>@r.RuleId</code>
+                <td style="min-width:16rem;">
+                    <div class="fw-semibold">@(info?.DisplayName ?? r.RuleId)</div>
+                    <code class="small">@r.RuleId</code>
                     @if (r.Priority == 0)
                     {
                         <span class="badge text-bg-dark ms-1">P0 鎖定</span>
@@ -40,6 +52,11 @@
                     else if (r.Priority == 1)
                     {
                         <span class="badge text-bg-primary ms-1">P1 固定</span>
+                    }
+                    @if (info is not null)
+                    {
+                        <div class="small text-muted mt-1">@info.Description</div>
+                        <div class="small text-muted">違反量：@info.ViolationDefinition</div>
                     }
                 </td>
                 <td>P@r.Priority</td>
@@ -54,6 +71,7 @@
                     <input class="form-control form-control-sm"
                            value="@(r.ParametersJson ?? "")"
                            disabled="@(r.Priority == 0)"
+                           placeholder="@(info?.ParametersHelp ?? "通常不需填")"
                            @onchange="e => SetParams(idx, e.Value?.ToString())" />
                 </td>
                 <td class="text-nowrap">

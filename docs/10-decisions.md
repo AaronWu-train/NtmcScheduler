@@ -38,5 +38,6 @@
 | D-14c | T 延伸日班別：有明確下月班組資料以資料為準，否則依早→午→夜→早輪轉推算 |
 | D-14d | M 預設順序中「平日／週末 R 公平」拆為 GEN-S-WEEKDAY-R（前）與 GEN-S-WEEKEND-R（後）兩條 |
 | D-14e | 逐條最佳化的時限分配：各規則依序使用剩餘總時限（總時限預設 5 分鐘） |
-| D-14f | 同單位同月同時只有一份 Draft；每次修改由後端重新驗證，以後端結果為準 |
+| D-14f | 同單位同月同時只有一份目前班表（原 Draft）；每次修改由後端重新驗證，以後端結果為準（見 D-20） |
 | D-14g | T 的 Coverage 匯出使用獨立的 `t_coverage.csv` 欄位（規格書僅定義 M 的 coverage.csv） |
+| D-20 | 移除 Publish／Draft 狀態機（2026-08-05） | 流程改為「候選 → 目前班表」：選候選即成為該單位該月唯一可編輯班表（`MonthSchedule`）；修改自動存檔並以 `RuleEvaluationEngine` 驗證；可選快照／還原與歷史匯入（`ScheduleSnapshot`），無審核、無發布關卡。`AssignmentOwnerType`：`Schedule`／`Snapshot`（取代 Draft／PublishedVersion） |

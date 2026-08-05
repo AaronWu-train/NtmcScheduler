@@ -2,6 +2,8 @@
 @rendermode InteractiveServer
 @inject IPreparationService Preparation
 @inject IScheduleRunService Runs
+@inject IDemoDataService DemoData
+@inject OperatorState Operator
 
 <PageTitle>儀表板</PageTitle>
 
@@ -21,6 +23,28 @@
     </div>
     <div class="col-auto d-flex align-items-end">
         <button class="btn btn-primary" @onclick="RefreshAsync">重新整理</button>
+    </div>
+</div>
+
+<div class="card border-info mb-4">
+    <div class="card-body">
+        <h2 class="h6">載入範例資料</h2>
+        <p class="small text-muted mb-2">
+            會<strong>清空並覆寫</strong>現有人員、固定事件（R*／X）、歷史快照、目前班表、8 週週期、規則設定與 Run。
+            寫入後可直接選單位與目標月 <code>2026-08</code> 建立 Run，無需再匯入 CSV。
+            流程：產生候選 → 選為目前班表 → 編輯寬表。
+        </p>
+        <ul class="small text-muted mb-3">
+            <li>M：12 站（LB01–LB12），夜班站／C 群略多人力；含歷史 R、R*、R1、跨站與 X</li>
+            <li>T：早／午／夜各 10 人、專業與能力、月班組；含 R* 與同日／跨午夜 X</li>
+        </ul>
+        @if (!string.IsNullOrEmpty(_demoMessage))
+        {
+            <div class="alert @(_demoOk ? "alert-success" : "alert-danger") py-2 small mb-2">@_demoMessage</div>
+        }
+        <button class="btn btn-outline-info" disabled="@_seeding" @onclick="LoadDemoAsync">
+            @(_seeding ? "載入中…" : "載入範例資料")
+        </button>
     </div>
 </div>
 
@@ -95,9 +119,12 @@ else
 
 @code {
     private Unit _unit = Unit.M;
-    private string _monthInput = $"{DateTime.Today:yyyy-MM}";
+    private string _monthInput = "2026-08";
     private PreparationStatusDto? _status;
     private IReadOnlyList<RunSummaryDto> _runs = Array.Empty<RunSummaryDto>();
+    private bool _seeding;
+    private string? _demoMessage;
+    private bool _demoOk;
 
     protected override async Task OnInitializedAsync() => await RefreshAsync();
 
@@ -113,4 +140,26 @@ else
         _monthInput = e.Value?.ToString() ?? _monthInput;
     }
 
+    private async Task LoadDemoAsync()
+    {
+        _seeding = true;
+        _demoMessage = null;
+        try
+        {
+            await DemoData.SeedAsync(Operator.Name);
+            _monthInput = "2026-08";
+            _demoOk = true;
+            _demoMessage = "範例資料已載入。請確認目標月為 2026-08，準備狀態應顯示可建立 Run。";
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            _demoOk = false;
+            _demoMessage = $"載入失敗：{ex.Message}";
+        }
+        finally
+        {
+            _seeding = false;
+        }
+    }
 }

@@ -1,9 +1,9 @@
 namespace NtmScheduler.Infrastructure.Data.Entities;
 
-public sealed class DraftEdit
+public sealed class ScheduleEdit
 {
     public long Id { get; set; }
-    public long DraftId { get; set; }
+    public long ScheduleId { get; set; }
     public int Seq { get; set; }
     public string EmployeeId { get; set; } = "";
     public DateOnly Date { get; set; }
@@ -14,5 +14,5 @@ public sealed class DraftEdit
     public string Operator { get; set; } = "";
     public DateTime At { get; set; }
 
-    public DraftSchedule? Draft { get; set; }
+    public MonthSchedule? Schedule { get; set; }
 }

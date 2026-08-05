@@ -1,23 +1,34 @@
+@using NtmScheduler.Core.Evaluation
+
 <div class="card h-100">
-    <div class="card-header py-2">違規清單</div>
+    <div class="card-header py-2">規則問題清單</div>
     <div class="card-body p-0" style="max-height: 20rem; overflow: auto;">
         @if (Violations is null || Violations.Count == 0)
         {
-            <div class="p-3 text-muted small">目前無違規項目</div>
+            <div class="p-3 text-muted small">目前沒有規則問題</div>
         }
         else
         {
             @foreach (var group in Violations.GroupBy(v => v.RuleId))
             {
+                var info = RuleCatalog.Find(group.Key);
                 <div class="border-bottom px-3 py-2">
-                    <div class="fw-semibold small">@group.Key <span class="badge text-bg-secondary">@group.Count()</span></div>
+                    <div class="fw-semibold small">
+                        @(info?.DisplayName ?? group.Key)
+                        <span class="text-muted">（@group.Key）</span>
+                        <span class="badge text-bg-secondary">@group.Count()</span>
+                    </div>
+                    @if (info is not null)
+                    {
+                        <div class="text-muted small mb-1">@info.Description</div>
+                    }
                     @foreach (var item in group)
                     {
                         <div class="violation-item small py-1"
                              @onclick="() => Jump(item)">
-                            <span class="text-muted">[@item.RuleId]</span>
-                            @(item.EmployeeId ?? "-") · @(item.Date?.ToString("yyyy-MM-dd") ?? "-")
-                            — @item.Message
+                            @(item.EmployeeId is null ? "" : $"{item.EmployeeId} · ")@(item.Date?.ToString("yyyy-MM-dd") ?? "")
+                            @(item.EmployeeId is not null || item.Date is not null ? "—" : "")
+                            @item.Message
                         </div>
                     }
                 </div>

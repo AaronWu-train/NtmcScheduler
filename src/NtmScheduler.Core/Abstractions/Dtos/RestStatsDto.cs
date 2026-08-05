@@ -1,6 +1,6 @@
 namespace NtmScheduler.Core.Abstractions.Dtos;
 
-/// <summary>Per-employee rest statistics shown in coverage / draft panels.</summary>
+/// <summary>Per-employee rest statistics shown in coverage / schedule panels.</summary>
 public sealed record RestStatsDto(
     string EmployeeId,
     int MonthGeneralRest,

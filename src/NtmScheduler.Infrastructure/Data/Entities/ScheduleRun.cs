@@ -43,5 +43,5 @@ public sealed class ScheduleRun
     public bool ShortageAnalysisAvailable { get; set; }
 
     public ICollection<CandidateSolution> Candidates { get; set; } = new List<CandidateSolution>();
-    public ICollection<DraftSchedule> Drafts { get; set; } = new List<DraftSchedule>();
+    public ICollection<MonthSchedule> SourcedSchedules { get; set; } = new List<MonthSchedule>();
 }

@@ -11,7 +11,7 @@ using NtmScheduler.Infrastructure.Data.Entities;
 namespace NtmScheduler.Infrastructure.Services;
 
 /// <summary>
-/// Imports historical schedule.csv (+ optional events.csv) as a Published version (D-05).
+/// Imports historical schedule.csv (+ optional events.csv) as a current ScheduleSnapshot (D-05).
 /// </summary>
 public sealed class HistoryImportService : IHistoryImportService
 {
@@ -71,27 +71,27 @@ public sealed class HistoryImportService : IHistoryImportService
 
         await _db.SaveChangesAsync(ct);
 
-        var current = await _db.OfficialScheduleVersions
+        var current = await _db.ScheduleSnapshots
             .Where(v => v.Unit == doc.Unit && v.Month == month.ToString() && v.IsCurrent)
             .ToListAsync(ct);
         foreach (var v in current)
             v.IsCurrent = false;
 
-        var nextNo = await _db.OfficialScheduleVersions
+        var nextNo = await _db.ScheduleSnapshots
             .Where(v => v.Unit == doc.Unit && v.Month == month.ToString())
             .Select(v => (int?)v.VersionNo)
             .MaxAsync(ct) ?? 0;
 
-        var version = new OfficialScheduleVersion
+        var snap = new ScheduleSnapshot
         {
             Unit = doc.Unit,
             Month = month.ToString(),
             VersionNo = nextNo + 1,
-            PublishedAt = TaipeiTime.Now,
+            CreatedAt = TaipeiTime.Now,
             Operator = op,
             IsCurrent = true
         };
-        _db.OfficialScheduleVersions.Add(version);
+        _db.ScheduleSnapshots.Add(snap);
         await _db.SaveChangesAsync(ct);
 
         foreach (var row in doc.Rows)
@@ -102,8 +102,8 @@ public sealed class HistoryImportService : IHistoryImportService
                     continue;
                 _db.Assignments.Add(new Assignment
                 {
-                    OwnerType = AssignmentOwnerType.PublishedVersion,
-                    OwnerId = version.Id,
+                    OwnerType = AssignmentOwnerType.Snapshot,
+                    OwnerId = snap.Id,
                     EmployeeId = row.EmployeeId,
                     Date = date,
                     State = state // preserve R1
@@ -135,7 +135,7 @@ public sealed class HistoryImportService : IHistoryImportService
             }
         }
 
-        _audit.Add(op, "HistoryImport", "OfficialScheduleVersion", version.Id.ToString(),
+        _audit.Add(op, "HistoryImport", "ScheduleSnapshot", snap.Id.ToString(),
             after: new { doc.Unit, month = month.ToString(), rows = doc.Rows.Count });
         await _db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);

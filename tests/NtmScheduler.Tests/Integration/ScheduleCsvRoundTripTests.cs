@@ -52,9 +52,9 @@ public sealed class ScheduleCsvRoundTripTests
         Assert.IsTrue(result.Succeeded, string.Join("; ", result.Errors.Select(e => e.Message)));
         Assert.AreEqual(2, result.SuccessCount);
 
-        var version = fx.Db.OfficialScheduleVersions.Single(v => v.IsCurrent);
+        var version = fx.Db.ScheduleSnapshots.Single(v => v.IsCurrent);
         var exported = await fx.Export.ScheduleCsvAsync(
-            new OwnerRef(AssignmentOwnerType.PublishedVersion, version.Id));
+            new OwnerRef(AssignmentOwnerType.Snapshot, version.Id));
 
         await using var exportedStream = new MemoryStream(exported);
         var doc = ScheduleCsv.Read(exportedStream);

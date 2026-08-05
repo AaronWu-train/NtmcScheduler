@@ -28,11 +28,11 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 | 模組 | 必須負責的內容 |
 |---|---|
 | 人員與月班組 | M 所屬站；T 專業、能力（1–5）及每月班別 |
-| 事件與歷史 | R\*、X、Published 班表、延伸日與跨月狀態 |
+| 事件與歷史 | R\*、X、目前班表／歷史快照、延伸日與跨月狀態 |
 | 規則管理 | P0 鎖定；P2–P4 開關、順序及參數；Rule ID 穩定 |
 | 排班服務 | 輸入驗證、M/T 選擇、逐條最佳化、最多 3 份候選 |
-| Draft 驗證 | 人工修改後重算 P0、Coverage、軟規則指標與發布阻擋原因 |
-| 版本與稽核 | Candidate→Draft→Published、版本、修改者、時間及前後值 |
+| 目前班表驗證 | 人工修改後以 RuleEvaluationEngine 重算 P0、Coverage、軟規則指標 |
+| 快照與稽核 | Candidate→目前班表、可選快照、修改者、時間及前後值 |
 | 背景工作 | ScheduleRun 先寫入資料庫，再由 BackgroundService 依序執行；重啟可重建工作 |
 
 ## 4. 主要資料實體
@@ -48,8 +48,9 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 | `ScheduleCycle` | 8 週週期 start、end、requiredR（一般休假，預設 16）、requiredR1（國定假日數） |
 | `ScheduleRun` / `Snapshot` | 排班請求、狀態、輸入快照（人員、事件、歷史截止點、固定設定、規則順序、seed、程式版本） |
 | `CandidateSolution` | 求解候選與其品質指標 |
-| `Assignment` | 人 × 日期的狀態（含跨站站碼）；Published／Draft／Candidate 共用結構 |
-| `OfficialScheduleVersion` | 每單位每月的發布版本鏈；舊版唯讀 |
+| `Assignment` | 人 × 日期的狀態（含跨站站碼）；Schedule／Snapshot／Candidate 共用結構 |
+| `MonthSchedule` | 每單位每月一份目前可編輯班表 |
+| `ScheduleSnapshot` | 歷史匯入或手動快照；舊版唯讀 |
 | `RuleSetting` | 每條規則的 enabled、priority、order、parameters |
 | `AuditLog` | 操作者、時間、動作、前後值 |
 
@@ -82,5 +83,5 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 
 - ScheduleRun 先寫入資料庫（Queued），BackgroundService 依序取出執行，**一次一個** Solver。
 - 系統重啟後，Queued／Running 的工作依快照重新開始。
-- Draft：同單位同月同時只有一份 Draft；每次儲存格修改都送後端重新驗證，
-  以後端驗證結果為準（決策 D-14）。
+- 目前班表：同單位同月同時只有一份；每次儲存格修改都送後端重新驗證，
+  以後端驗證結果為準（決策 D-14f、D-20）。

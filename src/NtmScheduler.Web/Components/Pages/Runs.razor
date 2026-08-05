@@ -1,12 +1,16 @@
 @page "/runs"
 @rendermode InteractiveServer
 @inject IScheduleRunService RunsSvc
+@inject IScheduleService Schedules
 @inject OperatorState Operator
 @inject NavigationManager Nav
+@inject IJSRuntime Js
 
 <PageTitle>求解 Run</PageTitle>
 
 <h1 class="h3 mb-3">求解 Run</h1>
+
+<p class="text-muted small">流程：建立 Run → 產生最多 3 份候選 → 選為目前班表 → 編輯。若該月已有目前班表，稍後選候選時會再確認是否取代。</p>
 
 <div class="card mb-3">
     <div class="card-body row g-2 align-items-end">
@@ -59,7 +63,10 @@
                 <td>@(r.OptimizationStatus?.ToString() ?? "-")</td>
                 <td>@r.CandidateCount</td>
                 <td>@r.Operator</td>
-                <td><a href="@($"runs/{r.Id}")">詳情</a></td>
+                <td>
+                    <a href="@($"runs/{r.Id}")">詳情</a>
+                    <a class="ms-2" href="@($"schedules/{r.Unit}/{r.TargetMonth}")">目前班表</a>
+                </td>
             </tr>
         }
     </tbody>
@@ -76,7 +83,15 @@
 
     private async Task CreateAsync()
     {
-        var result = await RunsSvc.CreateAsync(_unit, YearMonth.Parse(_monthInput), Operator.Name);
+        var month = YearMonth.Parse(_monthInput);
+        if (await Schedules.ExistsAsync(_unit, month))
+        {
+            var ok = await Js.InvokeAsync<bool>("confirm",
+                $"已有 {_unit} {month} 的目前班表。建立新 Run 後若選候選會取代該班表，仍要繼續？");
+            if (!ok) return;
+        }
+
+        var result = await RunsSvc.CreateAsync(_unit, month, Operator.Name);
         if (!result.Succeeded)
         {
             _createErrors = result.Errors.ToList();
@@ -91,5 +106,4 @@
     {
         _monthInput = e.Value?.ToString() ?? _monthInput;
     }
-
 }

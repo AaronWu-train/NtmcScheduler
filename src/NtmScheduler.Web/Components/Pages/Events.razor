@@ -3,16 +3,41 @@
 @inject IEventService EventsSvc
 @inject OperatorState Operator
 
-<PageTitle>R*／X 事件</PageTitle>
+<PageTitle>休假與公務事件</PageTitle>
 
-<h1 class="h3 mb-3">R*／X 事件</h1>
+<h1 class="h3 mb-3">休假與公務事件</h1>
+
+<div class="alert alert-light border mb-3">
+    <div class="fw-semibold mb-2">名詞說明（請直接在此頁輸入，不必另外準備 CSV）</div>
+    <ul class="mb-0 small">
+        <li>
+            <strong>R*</strong>：指定休假。若系統滿足，效果與一般休假 <strong>R</strong> 相同
+            （會切斷連續工作計算、計入 8 週一般休假額度），但畫面與輸出會保留字樣「R*」。
+            例：王小明希望 8 月 15 日休假 → 新增一筆 R*。
+        </li>
+        <li>
+            <strong>R1</strong>：國定假日增加的休假，由系統在排班時安排，可排在同一 8 週週期內任意日期。
+            R1 <strong>不算工作</strong>，但<strong>不會切斷</strong>連續工作計算（與 R／R* 不同）。
+            請勿在此頁手動新增 R1；額度在「8 週週期」頁設定。
+        </li>
+        <li>
+            <strong>X</strong>：上課、公務或其他勤務。必須輸入實際開始與結束時間。
+            X <strong>算工作</strong>（計入連續工作與 11 小時休息），但<strong>不補</strong>正常班位、不算 T 出勤。
+            可同日結束，或跨一個午夜（不可跨超過兩個曆日）。
+            例：同日 <code>2026-08-10 09:00～17:00</code>；跨午夜 <code>2026-08-12 22:00～2026-08-13 06:00</code>。
+        </li>
+        <li>
+            <strong>R</strong>：一般休假，由系統安排，不需在此輸入。
+        </li>
+    </ul>
+</div>
 
 <div class="row g-3 mb-3">
     <div class="col-auto">
         <label class="form-label">單位</label>
         <select class="form-select" @bind="_unit" @bind:after="ReloadAsync">
-            <option value="@Unit.M">M</option>
-            <option value="@Unit.T">T</option>
+            <option value="@Unit.M">站務 M</option>
+            <option value="@Unit.T">檢測 T</option>
         </select>
     </div>
     <div class="col-auto">
@@ -23,24 +48,26 @@
 
 <div class="row g-3 mb-3">
     <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">新增 R*</div>
+        <div class="card h-100">
+            <div class="card-header">新增指定休假 R*</div>
             <div class="card-body row g-2">
+                <div class="col-12 small text-muted">例：員工 M-LB01-01，日期 2026-08-15</div>
                 <div class="col"><input class="form-control" placeholder="員工編號" @bind="_rEmp" /></div>
                 <div class="col"><input class="form-control" type="date" @bind="_rDate" /></div>
-                <div class="col-auto"><button class="btn btn-primary" @onclick="AddRAsync">新增</button></div>
+                <div class="col-auto"><button class="btn btn-primary" @onclick="AddRAsync">新增 R*</button></div>
             </div>
         </div>
     </div>
     <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">新增 X</div>
+        <div class="card h-100">
+            <div class="card-header">新增公務／上課 X</div>
             <div class="card-body row g-2">
+                <div class="col-12 small text-muted">例：同日 09:00～17:00，或跨午夜 22:00～翌日 06:00</div>
                 <div class="col-12"><input class="form-control" placeholder="員工編號" @bind="_xEmp" /></div>
                 <div class="col"><input class="form-control" type="datetime-local" @bind="_xStart" /></div>
                 <div class="col"><input class="form-control" type="datetime-local" @bind="_xEnd" /></div>
-                <div class="col-12"><input class="form-control" placeholder="說明" @bind="_xDesc" /></div>
-                <div class="col-auto"><button class="btn btn-primary" @onclick="AddXAsync">新增</button></div>
+                <div class="col-12"><input class="form-control" placeholder="說明，例如：安全訓練" @bind="_xDesc" /></div>
+                <div class="col-auto"><button class="btn btn-primary" @onclick="AddXAsync">新增 X</button></div>
             </div>
         </div>
     </div>
@@ -57,10 +84,6 @@
         </ul>
     </div>
 }
-
-<div class="mb-3">
-    <InputFile OnChange="OnImport" accept=".csv" />
-</div>
 
 <table class="table table-sm table-striped">
     <thead>
@@ -131,21 +154,9 @@
         await ReloadAsync();
     }
 
-    private async Task OnImport(InputFileChangeEventArgs e)
-    {
-        await using var stream = e.File.OpenReadStream(5_000_000);
-        using var ms = new MemoryStream();
-        await stream.CopyToAsync(ms);
-        ms.Position = 0;
-        var result = await EventsSvc.ImportCsvAsync(ms, Operator.Name);
-        _errors = result.Errors.Select(err => new ValidationError("IMPORT", err.Message, err.EmployeeId)).ToList();
-        await ReloadAsync();
-    }
-
     private async Task OnMonthChanged(ChangeEventArgs e)
     {
         _monthInput = e.Value?.ToString() ?? _monthInput;
         await ReloadAsync();
     }
-
 }

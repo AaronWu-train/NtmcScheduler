@@ -18,13 +18,17 @@ todos:
     content: M5：ScheduleRunWorker、快照、進度回報、重啟復原
     status: pending
   - id: m6-web
-    content: M6：全部 Blazor 頁面，含互動寬表編輯與發布流程
+    content: M6：全部 Blazor 頁面，含互動寬表編輯（候選→目前班表，D-20）
     status: pending
   - id: m7-final
     content: M7：E2E 測試、樣本資料產生器、README，並同步 docs/10–11 文件
     status: pending
 isProject: false
 ---
+
+> **狀態註記（D-20，2026-08-05）**：流程已改為「候選 → 目前班表」，不再有 Draft／Publish。
+> 下文若仍出現舊名稱，以本註記與 `docs/10-decisions.md` D-20、`docs/01`、`docs/08` 為準。
+> 實體為 `MonthSchedule`／`ScheduleEdit`／`ScheduleSnapshot`；服務為 `IScheduleService`（含選候選、編輯、驗證、快照）。
 
 # 排班系統實作設計
 
@@ -158,8 +162,8 @@ record ViolationItem(string RuleId, string? EmployeeId, DateOnly? Date, string M
 ```
 
 - `ScheduleContext`：period、unit、employees、cycles、histories、xEvents、
-`assignments[employeeId][date] -> DayState`、T 月班組、固定設定。由 Candidate／Draft／Published 皆可建構。
-- **9 個硬規則 checker 也是 evaluator**（Draft 驗證與發布檢查用同一套）。
+`assignments[employeeId][date] -> DayState`、T 月班組、固定設定。由 Candidate／目前班表／快照皆可建構。
+- **9 個硬規則 checker 也是 evaluator**（目前班表驗證與 P0 檢查用同一套）。
 - `SegmentExtractor`／`BlockExtractor` 回傳「已結束區段（含起訖日與長度）＋月底尾端（長度）」，
 嚴格依 [docs/05-soft-rules.md](docs/05-soft-rules.md) 第 7 節（D-13）：尾端不計短、計 `max(0, L−5)` 超額；月初承接歷史。
 - Coverage 計算器：M `CoverageCalculator`（每站每日每班 required/assigned/external/unassigned）、
@@ -182,12 +186,12 @@ T `TCoverageCalculator`（每日每班 group_size/normal_attend/attend_target/av
 `ScheduleStatus?`(FEASIBLE/INFEASIBLE/INVALID_INPUT)、`OptimizationStatus?`(OPTIMAL/TIME_LIMIT)、
 `Seed`、`ProgramVersion`、`Operator`、`CreatedAt`、`SnapshotJson`（完整 SolveRequest 序列化）、`ProgressJson`。
 - `CandidateSolution`：`Id`、`RunId`、`Index`(1–3)、`IsShortageAnalysis`(bool)、`MetricsJson`（每規則違反量＋Coverage 摘要＋差異率）。
-- `Assignment`：`Id`、`OwnerType`(Candidate/Draft/PublishedVersion)、`OwnerId`、`EmployeeId`、`Date`、
-`StateType`、`Shift?`、`Station?`；索引 (`OwnerType`,`OwnerId`,`EmployeeId`,`Date`) unique。
-- `DraftSchedule`：`Id`、`RunId`、`SourceCandidateId`、`CreatedAt`、`Operator`；
-`DraftEdit`：`Id`、`DraftId`、`Seq`、`EmployeeId`、`Date`、`BeforeState`、`AfterState`、`Operator`、`At`（供復原與稽核）。
-- `OfficialScheduleVersion`：`Id`、`Unit`、`Month`、`VersionNo`、`PublishedAt`、`Operator`、`IsCurrent`；
-服務層以交易保證同 (Unit,Month) 僅一筆 `IsCurrent`。
+- `Assignment`：`Id`、`OwnerType`(Candidate/Schedule/Snapshot)、`OwnerId`、`EmployeeId`、`Date`、
+`State`（顯示字串）；索引 (`OwnerType`,`OwnerId`,`EmployeeId`,`Date`) unique。
+- `MonthSchedule`：`Id`、`Unit`、`Month`、`SourceRunId?`、`SourceCandidateId?`、`UpdatedAt`、`Operator`；
+同 (Unit,Month) 唯一；`ScheduleEdit`：`Id`、`ScheduleId`、`Seq`、`EmployeeId`、`Date`、`BeforeState`、`AfterState`、`Operator`、`At`（供復原與稽核）。
+- `ScheduleSnapshot`：`Id`、`Unit`、`Month`、`VersionNo`、`CreatedAt`、`Operator`、`IsCurrent`；
+歷史匯入或手動快照；可還原為目前班表。
 - `RuleSetting`：`Id`、`Unit`、`RuleId`、`Priority`(0–4)、`Enabled`、`Order`、`ParametersJson`。
 - `AuditLog`：`Id`、`At`、`Operator`、`Action`、`TargetType`、`TargetId`、`BeforeJson?`、`AfterJson?`。
 
@@ -327,20 +331,18 @@ interface IScheduleRunService {
 interface ICandidateService {
     Task<IReadOnlyList<CandidateDto>> GetAsync(long runId);
     Task<CandidateCompareDto> CompareAsync(long runId);  // 規則×候選矩陣+差異率+Coverage
-    Task<long> PromoteToDraftAsync(long candidateId, string op);
 }
-interface IDraftService {
-    Task<WideTableDto> GetAsync(long draftId);
-    Task<IReadOnlyList<CellOptionDto>> GetCellOptionsAsync(long draftId, string empId, DateOnly d);
-    Task<DraftValidationDto> ApplyEditAsync(long draftId, string empId, DateOnly d, DayState s, string op);
-    Task<DraftValidationDto> UndoAsync(long draftId, string op);       // 依 DraftEdit.Seq 回退
-    Task<DraftValidationDto> RevalidateAsync(long draftId);            // 全量重算
-}
-interface IPublishService {
-    Task<IReadOnlyList<PublishBlockerDto>> CheckAsync(long draftId);   // P0+缺班+資料完整
-    Task<long> PublishAsync(long draftId, string op);                  // 交易內建立新版本
-    Task<IReadOnlyList<VersionDto>> GetVersionsAsync(Unit unit, YearMonth m);
-    Task<WideTableDto> GetVersionAsync(long versionId);                // 唯讀
+interface IScheduleService {
+    Task<WideTableDto?> GetCurrentAsync(Unit unit, YearMonth m);
+    Task<long> SelectCandidateAsync(long candidateId, string op);  // 取代為目前班表
+    Task<IReadOnlyList<CellOptionDto>> GetCellOptionsAsync(long scheduleId, string empId, DateOnly d);
+    Task<ScheduleValidationDto> ApplyEditAsync(long scheduleId, string empId, DateOnly d, DayState s, string op);
+    Task<ScheduleValidationDto> UndoAsync(long scheduleId, string op);
+    Task<ScheduleValidationDto> RevalidateAsync(long scheduleId);
+    Task<long> SnapshotAsync(long scheduleId, string op);
+    Task RestoreSnapshotAsync(long snapshotId, string op);
+    Task<IReadOnlyList<VersionDto>> GetSnapshotsAsync(Unit unit, YearMonth m);
+    Task<WideTableDto> GetSnapshotAsync(long snapshotId);  // 唯讀
 }
 interface IHistoryImportService { Task<ImportResult> ImportAsync(Stream scheduleCsv, Stream? eventsCsv, string op); }
 interface IExportService {  // 格式見 docs/06 第5節
@@ -353,34 +355,32 @@ interface IShortageAnalysisService { Task<ShortageDto?> GetAsync(long runId); }
 interface IAuditService { Task<IReadOnlyList<AuditLogDto>> QueryAsync(AuditQuery q); }
 ```
 
-關鍵 DTO：`WideTableDto`（rows: 員工＋逐日 `CellDto(state, isExtensionDay, isEditable, violationRuleIds[])`）、
+關鍵 DTO：`WideTableDto`（rows: 員工＋`RestStats`＋逐日 `CellDto(state, isExtensionDay, isEditable, violationRuleIds[])`）、
 `CellOptionDto(state, p0ViolationsIfApplied[])`、
-`DraftValidationDto(p0Passed, ruleMetrics[], coverage, publishBlockers[], violations[])`。
+`ScheduleValidationDto(p0Passed, ruleMetrics[], coverage, violations[])`。
 
-### Draft 編輯流程
+### 目前班表編輯流程
 
 ```mermaid
 sequenceDiagram
   participant UI as WideTable(Blazor)
-  participant DS as IDraftService
+  participant SS as IScheduleService
   participant EV as RuleEvaluationEngine
   participant DB as EF Core
-  UI->>DS: GetCellOptions(draftId, emp, date)
-  DS->>EV: 對每候選狀態快速檢查P0
-  DS-->>UI: 可選狀態清單(各附P0影響)
-  UI->>DS: ApplyEdit(cell, newState, operator)
-  DS->>DB: 更新Assignment + DraftEdit + AuditLog
-  DS->>EV: 重算全部規則+Coverage(48人×42日全量重算<1s, 不需增量)
-  DS-->>UI: DraftValidationDto(P0/指標/Coverage/發布阻擋)
+  UI->>SS: GetCellOptions(scheduleId, emp, date)
+  SS->>EV: 對每候選狀態快速檢查P0
+  SS-->>UI: 可選狀態清單(各附P0影響)
+  UI->>SS: ApplyEdit(cell, newState, operator)
+  SS->>DB: 更新Assignment + ScheduleEdit + AuditLog
+  SS->>EV: 重算全部規則+Coverage(48人×42日全量重算<1s, 不需增量)
+  SS-->>UI: ScheduleValidationDto(P0/指標/Coverage/違規)
 ```
 
-
-
-Draft 允許存入 P0 違規（暫存），但 `PublishBlockerDto` 立即列出；發布按鈕依此停用。
+目前班表允許存入 P0 違規（暫存），頁面立即標示未通過並列出原因；無發布關卡。
 
 ## 7. 前端頁面（Blazor Interactive Server）
 
-- `/`：**儀表板**。單位＋目標月選擇器；準備完整度卡片（人員/T 月班組/週期涵蓋/歷史涵蓋/固定設定，各附缺漏明細）；最近 Run 列表。
+- `/`：**儀表板**。單位＋目標月選擇器；準備完整度卡片；「載入範例資料」；最近 Run 列表。
 - `/employees`：M/T 兩分頁 grid（新增/編輯/刪除、CSV 匯入含逐列錯誤報告）；T 分頁含 ability 1–5 驗證。
 - `/employees/shifts`：T 月班組矩陣（人×月），顯示輪轉建議值、可覆寫（D-14c 例外資料）。
 - `/events`：R/X 清單（篩選單位/月份/人員）；新增表單即時回 `ValidationError`；CSV 匯入。
@@ -388,8 +388,8 @@ Draft 允許存入 P0 違規（暫存），但 `PublishBlockerDto` 立即列出�
 - `/rules`：兩單位分頁；P0 列鎖定圖示、P1 固定；P2–P4 列可啟用/停用/上移/下移/參數編輯（寫回 `RuleSetting`）。
 - `/runs`、`/runs/{id}`：建立 Run（若 INVALID_INPUT 直接顯示錯誤清單）；進度頁 2 秒輪詢 `GetProgress`：
 規則進度列（已完成✓/處理中/未處理）、OPTIMAL/TIME_LIMIT 徽章、候選數、INFEASIBLE 時導向缺班分析或衝突摘要。
-- `/runs/{id}/candidates`：`MetricsCompareTable`（規則×候選違反量、差異率、Coverage 摘要）；「複製為 Draft」。
-- `/drafts/{id}`：**互動寬表（核心頁）**。
+- `/runs/{id}/candidates`：`MetricsCompareTable`（規則×候選違反量、差異率、Coverage 摘要）；「選為目前班表」。
+- `/schedules/{unit}/{month}`：**互動寬表（核心頁）**。
   - `WideTable`：CSS sticky 員工欄＋日期表頭；48×42 規模直接全渲染（約 2000 格，無需虛擬化，用 `@key` 控 diff）；
   站別/群組/班組/姓名篩選；延伸日欄位灰底＋標頭標記；X 格 tooltip 顯示完整起訖與說明。
   - 點格 → `CellEditorPopover` 呼叫 `GetCellOptions`，選項附 P0 影響警示；修改即呼叫 `ApplyEdit`。
@@ -397,10 +397,10 @@ Draft 允許存入 P0 違規（暫存），但 `PublishBlockerDto` 立即列出�
   - `CoveragePanel`：M 站×日×班缺額矩陣；T 每日每班出勤/專業/平均能力；
   休假統計（docs/08）：每人本月 R+R\*、本月 R1、週期累積 R+R\*/16、累積 R1/requiredR1、
   月底後應保留的 R+R\* 數（reservedGeneralRest）。
-  - 發布列：`Check` 結果（阻擋原因清單）＋發布按鈕；Undo 按鈕。
-- `/versions`：單位×月版本鏈；目前 Published 標記；舊版開唯讀寬表；重新發布入口。
-- `/runs/{id}/shortage`：缺班分析唯讀寬表＋缺額 Coverage，明顯「不可發布」橫幅。
-- `/import`：歷史匯入（schedule.csv＋events.csv 雙檔上傳、逐列錯誤報告）。
+  - P0 狀態徽章、Undo、可選「建立快照」。
+- `/versions`：單位×月快照鏈；目前／歷史標記；舊版開唯讀寬表；還原為目前班表。
+- `/runs/{id}/shortage`：缺班分析唯讀寬表＋缺額 Coverage，明顯「不可選為目前班表」橫幅。
+- `/import`：歷史匯入與 CSV 選用工具（schedule.csv＋events.csv、範本／預覽）。
 - `/audit`：稽核查詢（時間/操作者/動作篩選）。
 - Layout：頂欄 `OperatorBox`（目前操作者，存 localStorage，寫入所有服務呼叫的 `op` 參數，D-04）。
 
@@ -423,8 +423,8 @@ Draft 允許存入 P0 違規（暫存），但 `PublishBlockerDto` 立即列出�
 R1 恰等於 requiredR1（AC-31）、月底後剩 14 天保留 4 個一般休假（AC-32）、延伸日 R 不消耗本月上限（AC-33）、
 **每份候選：模型目標值 == evaluator 重算值**（全規則交叉核對，最重要的守門測試）。
 - **整合測試**（M3/M5）：SQLite in-memory；CSV 匯入匯出 round-trip（**R1 保持 R1 不得變 R，AC-34**）；
-Worker 重啟復原（AC-23）；發布版本鏈（AC-24）。
-- **E2E**（M7，Playwright）：主流程「匯入樣本→建 Run→看候選→轉 Draft→改格造成缺班（AC-09）→修復→發布」；
+Worker 重啟復原（AC-23）；快照／還原（對應原 AC-24 語意，見 D-20）。
+- **E2E**（M7，Playwright）：主流程「載入範例→建 Run→看候選→選為目前班表→改格造成缺班（AC-09）→修復」；
 未滿足 R 顯示（AC-20）。
 - 測試命名含 AC 編號（如 `AC04_AfternoonToMorning_Forbidden`），CI 指令 `dotnet test`。
 

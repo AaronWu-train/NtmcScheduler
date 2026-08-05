@@ -42,16 +42,9 @@ public sealed record CellOptionDto(
 
 public sealed record RuleMetricDto(string RuleId, int ViolationCount, bool IsHard);
 
-public sealed record PublishBlockerDto(
-    string Code,
-    string Message,
-    string? EmployeeId = null,
-    DateOnly? Date = null);
-
-public sealed record DraftValidationDto(
+public sealed record ScheduleValidationDto(
     bool P0Passed,
     IReadOnlyList<RuleMetricDto> RuleMetrics,
     IReadOnlyList<MCoverageRow>? MCoverage,
     IReadOnlyList<TCoverageRow>? TCoverage,
-    IReadOnlyList<PublishBlockerDto> PublishBlockers,
     IReadOnlyList<ViolationItem> Violations);

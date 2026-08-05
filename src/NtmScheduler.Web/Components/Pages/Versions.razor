@@ -1,10 +1,11 @@
 @page "/versions"
 @rendermode InteractiveServer
-@inject IPublishService Publish
+@inject IScheduleService Schedules
+@inject OperatorState Operator
 
-<PageTitle>發布版本</PageTitle>
+<PageTitle>班表快照</PageTitle>
 
-<h1 class="h3 mb-3">發布版本</h1>
+<h1 class="h3 mb-3">班表快照</h1>
 
 <div class="row g-3 mb-3">
     <div class="col-auto">
@@ -23,7 +24,7 @@
 <table class="table table-sm table-hover">
     <thead>
         <tr>
-            <th>版本</th><th>發布時間</th><th>操作者</th><th>目前</th><th></th>
+            <th>版本</th><th>建立時間</th><th>操作者</th><th>目前歷史</th><th></th>
         </tr>
     </thead>
     <tbody>
@@ -33,9 +34,10 @@
                 <td>v@(v.VersionNo)</td>
                 <td>@v.PublishedAt.ToString("yyyy-MM-dd HH:mm")</td>
                 <td>@v.Operator</td>
-                <td>@(v.IsCurrent ? "Published" : "舊版")</td>
+                <td>@(v.IsCurrent ? "是" : "")</td>
                 <td>
                     <button class="btn btn-link btn-sm" @onclick="() => OpenAsync(v.Id)">唯讀寬表</button>
+                    <button class="btn btn-link btn-sm" @onclick="() => RestoreAsync(v.Id)">還原</button>
                 </td>
             </tr>
         }
@@ -44,31 +46,50 @@
 
 @if (_table is not null)
 {
-    <div class="alert alert-secondary">唯讀版本 #@_table.OwnerId（不可編輯）</div>
+    <div class="alert alert-secondary">唯讀快照 #@_table.OwnerId（不可編輯）</div>
     <WideTable Table="_table" />
+}
+
+@if (!string.IsNullOrEmpty(_message))
+{
+    <div class="alert alert-info">@_message</div>
 }
 
 @code {
     private Unit _unit = Unit.M;
-    private string _monthInput = $"{DateTime.Today:yyyy-MM}";
+    private string _monthInput = "2026-08";
     private IReadOnlyList<VersionDto> _versions = Array.Empty<VersionDto>();
     private WideTableDto? _table;
+    private string? _message;
 
     protected override async Task OnInitializedAsync() => await ReloadAsync();
 
     private async Task ReloadAsync()
     {
-        _versions = await Publish.GetVersionsAsync(_unit, YearMonth.Parse(_monthInput));
+        _versions = await Schedules.GetSnapshotsAsync(_unit, YearMonth.Parse(_monthInput));
         _table = null;
     }
 
     private async Task OpenAsync(long id) =>
-        _table = await Publish.GetVersionAsync(id);
+        _table = await Schedules.GetSnapshotAsync(id);
+
+    private async Task RestoreAsync(long id)
+    {
+        try
+        {
+            await Schedules.RestoreSnapshotAsync(id, Operator.Name);
+            _message = $"已還原快照 #{id} 為目前班表";
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _message = ex.Message;
+        }
+    }
 
     private async Task OnMonthChanged(ChangeEventArgs e)
     {
         _monthInput = e.Value?.ToString() ?? _monthInput;
         await ReloadAsync();
     }
-
 }

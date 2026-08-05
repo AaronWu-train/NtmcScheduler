@@ -3,13 +3,71 @@ using NtmScheduler.Core.Domain;
 
 namespace NtmScheduler.Core.Evaluation.Rules.Soft;
 
-/// <summary>GEN-S-WEEKDAY-R: max−min of weekday R/R* counts per peer group, summed over intersecting cycles.</summary>
+// ============================================================================
+// 共用軟規則（M／T 皆用）。違反量定義與預設順序見 RuleCatalog。
+// Solver 端的對應目標編碼見 MModelBuilder / TModelBuilder。
+// ============================================================================
+
+/// <summary>GEN-R-01（P1）：未滿足的指定休假 R* 人×日最少。</summary>
+public sealed class GenR01 : IRuleEvaluator
+{
+    public string RuleId => "GEN-R-01";
+
+    public RuleResult Evaluate(ScheduleContext ctx)
+    {
+        var items = new List<ViolationItem>();
+        foreach (var (empId, date) in ctx.RStarRequests)
+        {
+            if (!ctx.Period.IsInTargetMonth(date)) continue;
+            var state = ctx.GetState(empId, date);
+            if (state?.Type != DayStateType.RStar)
+            {
+                items.Add(new ViolationItem(RuleId, empId, date, "指定休假 R* 未滿足"));
+            }
+        }
+        return RuleResult.From(RuleId, items);
+    }
+}
+
+/// <summary>GEN-S-STREAK（P3）：連續工作區段長度偏離 3–5 日的總量。</summary>
+public sealed class GenSStreak : IRuleEvaluator
+{
+    public string RuleId => "GEN-S-STREAK";
+
+    public RuleResult Evaluate(ScheduleContext ctx)
+    {
+        var total = 0;
+        var items = new List<ViolationItem>();
+        foreach (var emp in ctx.Employees)
+        {
+            var d = SegmentExtractor.StreakDeviation(ctx, emp.Id);
+            if (d > 0)
+            {
+                total += d;
+                items.Add(new ViolationItem(RuleId, emp.Id, null,
+                    $"連續工作區段偏離量 {d}"));
+            }
+        }
+        return new RuleResult(RuleId, total, items);
+    }
+}
+
+/// <summary>GEN-S-WEEKDAY-R（P4）：同儕群組平日 R／R* 次數 max−min，跨週期相加。</summary>
 public sealed class GenSWeekdayR : IRuleEvaluator
 {
     public string RuleId => "GEN-S-WEEKDAY-R";
 
     public RuleResult Evaluate(ScheduleContext ctx) =>
         FairnessRest.Evaluate(ctx, RuleId, weekend: false, "平日 R/R* 不均");
+}
+
+/// <summary>GEN-S-WEEKEND-R（P4）：同儕群組週末 R／R* 次數 max−min，跨週期相加。</summary>
+public sealed class GenSWeekendR : IRuleEvaluator
+{
+    public string RuleId => "GEN-S-WEEKEND-R";
+
+    public RuleResult Evaluate(ScheduleContext ctx) =>
+        FairnessRest.Evaluate(ctx, RuleId, weekend: true, "週末 R/R* 不均");
 }
 
 internal static class FairnessRest

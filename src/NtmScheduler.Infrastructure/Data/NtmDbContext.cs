@@ -16,9 +16,9 @@ public sealed class NtmDbContext : DbContext
     public DbSet<ScheduleRun> ScheduleRuns => Set<ScheduleRun>();
     public DbSet<CandidateSolution> CandidateSolutions => Set<CandidateSolution>();
     public DbSet<Assignment> Assignments => Set<Assignment>();
-    public DbSet<DraftSchedule> DraftSchedules => Set<DraftSchedule>();
-    public DbSet<DraftEdit> DraftEdits => Set<DraftEdit>();
-    public DbSet<OfficialScheduleVersion> OfficialScheduleVersions => Set<OfficialScheduleVersion>();
+    public DbSet<MonthSchedule> MonthSchedules => Set<MonthSchedule>();
+    public DbSet<ScheduleEdit> ScheduleEdits => Set<ScheduleEdit>();
+    public DbSet<ScheduleSnapshot> ScheduleSnapshots => Set<ScheduleSnapshot>();
     public DbSet<RuleSetting> RuleSettings => Set<RuleSetting>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
@@ -99,35 +99,38 @@ public sealed class NtmDbContext : DbContext
             e.HasIndex(x => new { x.OwnerType, x.OwnerId });
         });
 
-        modelBuilder.Entity<DraftSchedule>(e =>
+        modelBuilder.Entity<MonthSchedule>(e =>
         {
             e.HasKey(x => x.Id);
+            e.Property(x => x.Unit).HasConversion<string>().HasMaxLength(8);
+            e.Property(x => x.Month).HasMaxLength(7);
             e.Property(x => x.Operator).HasMaxLength(100);
-            e.HasOne(x => x.Run)
-                .WithMany(x => x.Drafts)
-                .HasForeignKey(x => x.RunId)
-                .OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.Unit, x.Month }).IsUnique();
+            e.HasOne(x => x.SourceRun)
+                .WithMany(x => x.SourcedSchedules)
+                .HasForeignKey(x => x.SourceRunId)
+                .OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.SourceCandidate)
                 .WithMany()
                 .HasForeignKey(x => x.SourceCandidateId)
-                .OnDelete(DeleteBehavior.Restrict);
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
-        modelBuilder.Entity<DraftEdit>(e =>
+        modelBuilder.Entity<ScheduleEdit>(e =>
         {
             e.HasKey(x => x.Id);
             e.Property(x => x.EmployeeId).HasMaxLength(32);
             e.Property(x => x.BeforeState).HasMaxLength(32);
             e.Property(x => x.AfterState).HasMaxLength(32);
             e.Property(x => x.Operator).HasMaxLength(100);
-            e.HasIndex(x => new { x.DraftId, x.Seq }).IsUnique();
-            e.HasOne(x => x.Draft)
+            e.HasIndex(x => new { x.ScheduleId, x.Seq }).IsUnique();
+            e.HasOne(x => x.Schedule)
                 .WithMany(x => x.Edits)
-                .HasForeignKey(x => x.DraftId)
+                .HasForeignKey(x => x.ScheduleId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        modelBuilder.Entity<OfficialScheduleVersion>(e =>
+        modelBuilder.Entity<ScheduleSnapshot>(e =>
         {
             e.HasKey(x => x.Id);
             e.Property(x => x.Unit).HasConversion<string>().HasMaxLength(8);

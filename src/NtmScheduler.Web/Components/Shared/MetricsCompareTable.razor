@@ -59,7 +59,7 @@ else
             <button type="button" class="btn btn-primary btn-sm"
                     disabled="@PromoteDisabled"
                     @onclick="() => Promote(c.Id)">
-                候選 #@c.Index 複製為 Draft
+                候選 #@c.Index @(PromoteLabel)
             </button>
         }
     </div>
@@ -68,6 +68,7 @@ else
 @code {
     [Parameter] public CandidateCompareDto? Compare { get; set; }
     [Parameter] public bool PromoteDisabled { get; set; }
+    [Parameter] public string PromoteLabel { get; set; } = "選為目前班表";
     [Parameter] public EventCallback<long> OnPromote { get; set; }
 
     private Task Promote(long id) => OnPromote.InvokeAsync(id);

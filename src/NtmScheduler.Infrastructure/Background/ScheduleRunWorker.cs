@@ -10,6 +10,7 @@ using NtmScheduler.Core.Domain;
 using NtmScheduler.Core.Time;
 using NtmScheduler.Infrastructure.Data;
 using NtmScheduler.Infrastructure.Data.Entities;
+using NtmScheduler.Infrastructure.Services;
 using FixedEventType = NtmScheduler.Core.Abstractions.Dtos.FixedEventType;
 
 namespace NtmScheduler.Infrastructure.Background;
@@ -178,12 +179,25 @@ public sealed class ScheduleRunWorker : BackgroundService
             .ToListAsync(ct);
 
         IReadOnlyDictionary<string, ShiftType>? monthly = null;
+        IReadOnlyDictionary<string, ShiftType>? nextMonth = null;
         if (run.Unit == Unit.T)
         {
             monthly = await db.EmployeeMonthlyShifts.AsNoTracking()
                 .Where(s => s.Month == month.ToString())
                 .ToDictionaryAsync(s => s.EmployeeId, s => s.Shift, ct);
+            var next = month.Next().ToString();
+            nextMonth = await db.EmployeeMonthlyShifts.AsNoTracking()
+                .Where(s => s.Month == next)
+                .ToDictionaryAsync(s => s.EmployeeId, s => s.Shift, ct);
+            if (nextMonth.Count == 0)
+                nextMonth = null;
         }
+
+        var histFrom = cycles.Count > 0
+            ? CycleResolver.EarliestIntersectingStart(cycles, period)
+            : period.FirstDay.AddDays(-56);
+        var histories = await ScheduleContextBuilder.LoadHistoriesAsync(
+            db, run.Unit, empIds, histFrom, period.FirstDay, ct);
 
         return new SolveRequest
         {
@@ -191,11 +205,12 @@ public sealed class ScheduleRunWorker : BackgroundService
             Period = period,
             Employees = employees,
             Cycles = cycles,
-            Histories = new Dictionary<string, EmployeeHistory>(),
+            Histories = histories,
             XEvents = xEvents,
             RStarRequests = rStars,
             SoftRules = softRules,
             MonthlyShifts = monthly,
+            NextMonthShifts = nextMonth,
             Seed = run.Seed
         };
     }

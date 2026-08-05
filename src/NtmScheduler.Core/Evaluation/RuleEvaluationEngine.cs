@@ -5,7 +5,8 @@ using NtmScheduler.Core.Evaluation.Rules.Soft;
 namespace NtmScheduler.Core.Evaluation;
 
 /// <summary>
-/// Authoritative pure-C# rule evaluation used by Draft/Publish and solver cross-checks.
+/// Authoritative pure-C# rule evaluation used by schedule editing and solver cross-checks.
+/// Soft-rule defaults come from <see cref="RuleCatalog"/> (single source of truth).
 /// </summary>
 public sealed class RuleEvaluationEngine
 {
@@ -66,35 +67,11 @@ public sealed class RuleEvaluationEngine
         return ev.Evaluate(ctx);
     }
 
+    /// <summary>軟規則預設順序（單一來源：RuleCatalog）。</summary>
     public static IReadOnlyList<SoftRuleSpecDefaults> DefaultSoftRules(Unit unit) =>
-        unit == Unit.M
-            ?
-            [
-                new("GEN-R-01", 1, true),
-                new("M-S-EXT", 2, true),
-                new("M-S-HOME", 3, true),
-                new("GEN-S-STREAK", 4, true),
-                new("M-S-BLOCK", 5, true),
-                new("M-S-NIGHT-EARLY", 6, true),
-                new("M-S-NIGHT-AFTERNOON", 7, true),
-                new("M-S-RESTSWITCH", 8, true),
-                new("M-S-ROTATE", 9, true),
-                new("GEN-S-WEEKDAY-R", 10, true),
-                new("GEN-S-WEEKEND-R", 11, true),
-                new("M-S-SUPPORT-FAIR", 12, true),
-            ]
-            :
-            [
-                new("GEN-R-01", 1, true),
-                new("T-S-ATTEND", 2, true),
-                new("T-S-SPECIALTY", 3, true),
-                new("T-S-ABILITY", 4, true),
-                new("GEN-S-STREAK", 5, true),
-                new("T-S-MONTH-REST", 6, true),
-                new("T-S-MONTH-BALANCE", 7, true),
-                new("GEN-S-WEEKDAY-R", 8, true),
-                new("GEN-S-WEEKEND-R", 9, true),
-            ];
+        RuleCatalog.DefaultSoftOrder(unit)
+            .Select(x => new SoftRuleSpecDefaults(x.RuleId, x.Order, true))
+            .ToList();
 }
 
 public sealed record SoftRuleSpecDefaults(string RuleId, int Order, bool Enabled);
