@@ -1,0 +1,31 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.vs/
+*.db
+*.db-shm
+*.db-wal
+
+## Test / coverage
+TestResults/
+coverage/
+
+## OS / IDE
+.DS_Store
+.idea/
+.cursor/
+*.swp
+*~
+
+## Local secrets
+appsettings.Development.json
+*.pfx
+
+## Playwright
+**/playwright/.cache/
+**/playwright-report/
