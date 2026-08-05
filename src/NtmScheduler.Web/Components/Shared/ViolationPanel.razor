@@ -1,0 +1,35 @@
+<div class="card h-100">
+    <div class="card-header py-2">違規清單</div>
+    <div class="card-body p-0" style="max-height: 20rem; overflow: auto;">
+        @if (Violations is null || Violations.Count == 0)
+        {
+            <div class="p-3 text-muted small">目前無違規項目</div>
+        }
+        else
+        {
+            @foreach (var group in Violations.GroupBy(v => v.RuleId))
+            {
+                <div class="border-bottom px-3 py-2">
+                    <div class="fw-semibold small">@group.Key <span class="badge text-bg-secondary">@group.Count()</span></div>
+                    @foreach (var item in group)
+                    {
+                        <div class="violation-item small py-1"
+                             @onclick="() => Jump(item)">
+                            <span class="text-muted">[@item.RuleId]</span>
+                            @(item.EmployeeId ?? "-") · @(item.Date?.ToString("yyyy-MM-dd") ?? "-")
+                            — @item.Message
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<ViolationItem>? Violations { get; set; }
+    [Parameter] public EventCallback<(string? EmployeeId, DateOnly? Date, string RuleId)> OnJump { get; set; }
+
+    private Task Jump(ViolationItem item) =>
+        OnJump.InvokeAsync((item.EmployeeId, item.Date, item.RuleId));
+}

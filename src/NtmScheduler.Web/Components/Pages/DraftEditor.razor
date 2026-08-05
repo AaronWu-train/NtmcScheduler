@@ -1,0 +1,164 @@
+@page "/drafts/{Id:long}"
+@rendermode InteractiveServer
+@inject IDraftService Drafts
+@inject IPublishService Publish
+@inject OperatorState Operator
+@inject IJSRuntime Js
+
+<PageTitle>Draft #@Id</PageTitle>
+
+<h1 class="h3 mb-3">Draft 寬表編輯 #@Id</h1>
+
+<div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+    <button class="btn btn-outline-secondary btn-sm" @onclick="UndoAsync">復原</button>
+    <button class="btn btn-outline-secondary btn-sm" @onclick="RevalidateAsync">重新驗證</button>
+    <button class="btn btn-success btn-sm"
+            disabled="@(_blockers.Count > 0 || _validation?.P0Passed != true)"
+            @onclick="PublishAsync">
+        發布
+    </button>
+    @if (_validation is not null)
+    {
+        <span class="badge @(_validation.P0Passed ? "text-bg-success" : "text-bg-danger")">
+            P0 @(_validation.P0Passed ? "通過" : "未通過")
+        </span>
+    }
+</div>
+
+@if (_blockers.Count > 0)
+{
+    <div class="alert alert-warning">
+        <div class="fw-semibold">發布已停用 — 阻擋原因：</div>
+        <ul class="mb-0">
+            @foreach (var b in _blockers)
+            {
+                <li><code>@b.Code</code> @b.Message</li>
+            }
+        </ul>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(_message))
+{
+    <div class="alert alert-info">@_message</div>
+}
+
+<CellEditorPopover Visible="_editorOpen"
+                   EmployeeId="_editEmp"
+                   Date="_editDate"
+                   Options="_options"
+                   OnClose="() => _editorOpen = false"
+                   OnSelected="ApplyAsync" />
+
+<WideTable Table="_table"
+           HighlightEmployeeId="_highlightEmp"
+           HighlightDate="_highlightDate"
+           CellSelected="OpenEditorAsync" />
+
+<div class="row g-3 mt-2">
+    <div class="col-md-6">
+        <ViolationPanel Violations="_validation?.Violations" OnJump="OnJump" />
+    </div>
+    <div class="col-md-6">
+        <CoveragePanel MCoverage="_validation?.MCoverage"
+                       TCoverage="_validation?.TCoverage"
+                       RestStatsRows="_restRows" />
+    </div>
+</div>
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private WideTableDto? _table;
+    private DraftValidationDto? _validation;
+    private IReadOnlyList<PublishBlockerDto> _blockers = Array.Empty<PublishBlockerDto>();
+    private IReadOnlyList<(string Id, string Name, RestStatsDto Stats)>? _restRows;
+
+    private bool _editorOpen;
+    private string? _editEmp;
+    private DateOnly _editDate;
+    private IReadOnlyList<CellOptionDto>? _options;
+
+    private string? _highlightEmp;
+    private DateOnly? _highlightDate;
+    private string? _message;
+
+    protected override async Task OnParametersSetAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _table = await Drafts.GetAsync(Id);
+        _validation = await Drafts.RevalidateAsync(Id);
+        _blockers = await Publish.CheckAsync(Id);
+        _restRows = _table.Rows
+            .Where(r => r.RestStats is not null)
+            .Select(r => (r.EmployeeId, r.EmployeeName, r.RestStats!))
+            .ToList();
+    }
+
+    private async Task OpenEditorAsync((string EmployeeId, DateOnly Date) cell)
+    {
+        _editEmp = cell.EmployeeId;
+        _editDate = cell.Date;
+        _options = await Drafts.GetCellOptionsAsync(Id, cell.EmployeeId, cell.Date);
+        _editorOpen = true;
+    }
+
+    private async Task ApplyAsync(CellOptionDto opt)
+    {
+        if (_editEmp is null) return;
+        _validation = await Drafts.ApplyEditAsync(Id, _editEmp, _editDate, opt.State, Operator.Name);
+        _editorOpen = false;
+        _table = await Drafts.GetAsync(Id);
+        _blockers = await Publish.CheckAsync(Id);
+        _restRows = _table.Rows
+            .Where(r => r.RestStats is not null)
+            .Select(r => (r.EmployeeId, r.EmployeeName, r.RestStats!))
+            .ToList();
+    }
+
+    private async Task UndoAsync()
+    {
+        _validation = await Drafts.UndoAsync(Id, Operator.Name);
+        _table = await Drafts.GetAsync(Id);
+        _blockers = await Publish.CheckAsync(Id);
+    }
+
+    private async Task RevalidateAsync()
+    {
+        _validation = await Drafts.RevalidateAsync(Id);
+        _blockers = await Publish.CheckAsync(Id);
+    }
+
+    private async Task PublishAsync()
+    {
+        try
+        {
+            var versionId = await Publish.PublishAsync(Id, Operator.Name);
+            _message = $"已發布為版本 #{versionId}";
+            _blockers = await Publish.CheckAsync(Id);
+        }
+        catch (Exception ex)
+        {
+            _message = ex.Message;
+        }
+    }
+
+    private async Task OnJump((string? EmployeeId, DateOnly? Date, string RuleId) target)
+    {
+        _highlightEmp = target.EmployeeId;
+        _highlightDate = target.Date;
+        if (target.EmployeeId is not null && target.Date is { } d)
+        {
+            var id = $"cell-{target.EmployeeId}-{d:yyyyMMdd}";
+            try
+            {
+                await Js.InvokeVoidAsync("eval",
+                    $"document.getElementById('{id}')?.scrollIntoView({{block:'center', inline:'center'}})");
+            }
+            catch (JSException)
+            {
+            }
+        }
+    }
+}

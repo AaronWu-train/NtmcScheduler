@@ -1,0 +1,152 @@
+@if (Table is null)
+{
+    <div class="text-muted">尚無班表資料</div>
+}
+else
+{
+    <div class="mb-2 d-flex flex-wrap gap-2 align-items-end">
+        <div>
+            <label class="form-label small mb-0">姓名</label>
+            <input class="form-control form-control-sm" @bind="_nameFilter" @bind:event="oninput" />
+        </div>
+        <div>
+            <label class="form-label small mb-0">站別／群組／班組</label>
+            <input class="form-control form-control-sm" @bind="_groupFilter" @bind:event="oninput" />
+        </div>
+        <div class="small text-muted pb-1">
+            延伸日以灰底＋「延」標示；R1 以粗體底線顯示（與 R 可辨）。
+        </div>
+    </div>
+
+    <div class="wide-table-wrap">
+        <table class="wide-table">
+            <thead>
+                <tr>
+                    <th class="sticky-col">員工</th>
+                    <th class="sticky-col" style="left:7rem;">休假統計</th>
+                    @foreach (var d in Table.Dates)
+                    {
+                        var isExt = d > Table.MonthEnd;
+                        <th class="@(isExt ? "ext-day" : null)" title="@(isExt ? "延伸排班日" : null)">
+                            <div>@d.ToString("MM/dd")</div>
+                            <div class="small">@DayLabel(d.DayOfWeek)@(isExt ? "·延" : "")</div>
+                        </th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in FilteredRows)
+                {
+                    <tr @key="row.EmployeeId">
+                        <td class="sticky-col">
+                            <div class="fw-semibold">@row.EmployeeName</div>
+                            <div class="small text-muted">@row.EmployeeId · @(row.StationOrGroup ?? "-") · @(row.ShiftGroup ?? "-")</div>
+                        </td>
+                        <td class="sticky-col small text-start" style="left:7rem; min-width:9rem;">
+                            @if (row.RestStats is { } rs)
+                            {
+                                <text>
+                                    月R+R*=@rs.MonthGeneralRest /
+                                    月R1=@rs.MonthR1<br />
+                                    週期R=@rs.CycleGeneralRest/@rs.RequiredR /
+                                    R1=@rs.CycleR1/@rs.RequiredR1<br />
+                                    保留R=@rs.ReservedGeneralRest
+                                </text>
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                        @foreach (var d in Table.Dates)
+                        {
+                            var cell = row.Cells.TryGetValue(d, out var c) ? c : null;
+                            var key = $"{row.EmployeeId}|{d:yyyy-MM-dd}";
+                            <td @key="key"
+                                id="@($"cell-{row.EmployeeId}-{d:yyyyMMdd}")"
+                                class="@CellCss(row.EmployeeId, d, cell)"
+                                title="@(cell is null ? "" : CellTitle(cell))"
+                                @onclick="() => OnCellClick(row, d, cell)">
+                                @if (cell is not null)
+                                {
+                                    <span class="@StateCss(cell.StateDisplay)">@cell.StateDisplay</span>
+                                    @if (cell.ViolationRuleIds.Count > 0)
+                                    {
+                                        <span class="ms-1" title="@string.Join(", ", cell.ViolationRuleIds)">⚠</span>
+                                    }
+                                }
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    [Parameter] public WideTableDto? Table { get; set; }
+    [Parameter] public string? HighlightEmployeeId { get; set; }
+    [Parameter] public DateOnly? HighlightDate { get; set; }
+    [Parameter] public EventCallback<(string EmployeeId, DateOnly Date)> CellSelected { get; set; }
+
+    private string _nameFilter = "";
+    private string _groupFilter = "";
+
+    private IEnumerable<WideTableRowDto> FilteredRows =>
+        Table?.Rows.Where(r =>
+            (string.IsNullOrWhiteSpace(_nameFilter) ||
+             r.EmployeeName.Contains(_nameFilter, StringComparison.OrdinalIgnoreCase) ||
+             r.EmployeeId.Contains(_nameFilter, StringComparison.OrdinalIgnoreCase)) &&
+            (string.IsNullOrWhiteSpace(_groupFilter) ||
+             (r.StationOrGroup?.Contains(_groupFilter, StringComparison.OrdinalIgnoreCase) ?? false) ||
+             (r.ShiftGroup?.Contains(_groupFilter, StringComparison.OrdinalIgnoreCase) ?? false)))
+        ?? Enumerable.Empty<WideTableRowDto>();
+
+    private async Task OnCellClick(WideTableRowDto row, DateOnly date, CellDto? cell)
+    {
+        if (cell is null || !cell.IsEditable || Table?.IsEditable != true)
+            return;
+        await CellSelected.InvokeAsync((row.EmployeeId, date));
+    }
+
+    private string CellCss(string employeeId, DateOnly date, CellDto? cell)
+    {
+        var parts = new List<string>();
+        if (cell?.IsExtensionDay == true) parts.Add("ext-day");
+        if (cell?.IsEditable == true && Table?.IsEditable == true) parts.Add("editable");
+        if (cell is { ViolationRuleIds.Count: > 0 }) parts.Add("cell-has-violation");
+        if (HighlightEmployeeId == employeeId && HighlightDate is { } hd && date == hd)
+            parts.Add("cell-highlight");
+        return string.Join(' ', parts);
+    }
+
+    private static string StateCss(string display) => display switch
+    {
+        "R1" => "cell-state-r1",
+        "R" or "R*" => "cell-state-r",
+        _ => ""
+    };
+
+    private static string CellTitle(CellDto cell)
+    {
+        var parts = new List<string> { cell.StateDisplay };
+        if (cell.IsExtensionDay) parts.Add("延伸排班日");
+        if (cell.XDescription is not null)
+            parts.Add($"X：{cell.XStart:yyyy-MM-dd HH:mm}～{cell.XEnd:yyyy-MM-dd HH:mm} {cell.XDescription}");
+        if (cell.ViolationRuleIds.Count > 0)
+            parts.Add("違規：" + string.Join(", ", cell.ViolationRuleIds));
+        return string.Join(" | ", parts);
+    }
+
+    private static string DayLabel(DayOfWeek d) => d switch
+    {
+        DayOfWeek.Monday => "一",
+        DayOfWeek.Tuesday => "二",
+        DayOfWeek.Wednesday => "三",
+        DayOfWeek.Thursday => "四",
+        DayOfWeek.Friday => "五",
+        DayOfWeek.Saturday => "六",
+        _ => "日"
+    };
+}

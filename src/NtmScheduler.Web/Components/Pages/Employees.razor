@@ -1,0 +1,171 @@
+@page "/employees"
+@rendermode InteractiveServer
+@inject IEmployeeService EmployeesSvc
+@inject OperatorState Operator
+
+<PageTitle>人員管理</PageTitle>
+
+<h1 class="h3 mb-3">人員管理</h1>
+
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <button class="nav-link @(_unit == Unit.M ? "active" : null)" @onclick="() => SwitchUnit(Unit.M)">站務 M</button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link @(_unit == Unit.T ? "active" : null)" @onclick="() => SwitchUnit(Unit.T)">檢測 T</button>
+    </li>
+</ul>
+
+<div class="card mb-3">
+    <div class="card-header">新增／編輯</div>
+    <div class="card-body row g-2">
+        <div class="col-md-2"><input class="form-control" placeholder="員工編號" @bind="_edit.Id" /></div>
+        <div class="col-md-2"><input class="form-control" placeholder="姓名" @bind="_edit.Name" /></div>
+        @if (_unit == Unit.M)
+        {
+            <div class="col-md-2"><input class="form-control" placeholder="所屬站" @bind="_edit.HomeStation" /></div>
+        }
+        else
+        {
+            <div class="col-md-2"><input class="form-control" placeholder="專業" @bind="_edit.Specialty" /></div>
+            <div class="col-md-2">
+                <input class="form-control" type="number" min="1" max="5" placeholder="能力 1–5" @bind="_edit.Ability" />
+            </div>
+        }
+        <div class="col-auto">
+            <button class="btn btn-primary" @onclick="SaveAsync">儲存</button>
+        </div>
+    </div>
+    @if (!string.IsNullOrEmpty(_message))
+    {
+        <div class="card-footer small text-danger">@_message</div>
+    }
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">CSV 匯入</div>
+    <div class="card-body">
+        <InputFile OnChange="OnImport" accept=".csv" />
+        @if (_importResult is not null)
+        {
+            <div class="mt-2 small">
+                成功 @_importResult.SuccessCount 筆；錯誤 @_importResult.Errors.Count 筆
+                <ul>
+                    @foreach (var e in _importResult.Errors.Take(20))
+                    {
+                        <li>列 @(e.Row?.ToString() ?? "-")：@e.Message</li>
+                    }
+                </ul>
+            </div>
+        }
+    </div>
+</div>
+
+<table class="table table-sm table-striped">
+    <thead>
+        <tr>
+            <th>編號</th><th>姓名</th>
+            @if (_unit == Unit.M) { <th>所屬站</th> }
+            else { <th>專業</th><th>能力</th> }
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var e in _list)
+        {
+            <tr>
+                <td>@e.Id</td>
+                <td>@e.Name</td>
+                @if (_unit == Unit.M)
+                {
+                    <td>@e.HomeStation</td>
+                }
+                else
+                {
+                    <td>@(e.Specialty ?? "")</td>
+                    <td>@e.Ability</td>
+                }
+                <td>
+                    <button class="btn btn-link btn-sm" @onclick="() => Edit(e)">編輯</button>
+                    <button class="btn btn-link btn-sm text-danger" @onclick="() => DeleteAsync(e.Id)">刪除</button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private Unit _unit = Unit.M;
+    private IReadOnlyList<EmployeeInfo> _list = Array.Empty<EmployeeInfo>();
+    private EditModel _edit = new();
+    private string? _message;
+    private ImportResult? _importResult;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task SwitchUnit(Unit unit)
+    {
+        _unit = unit;
+        _edit = new();
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync() => _list = await EmployeesSvc.ListAsync(_unit);
+
+    private void Edit(EmployeeInfo e) =>
+        _edit = new EditModel
+        {
+            Id = e.Id,
+            Name = e.Name,
+            HomeStation = e.HomeStation,
+            Specialty = e.Specialty,
+            Ability = e.Ability
+        };
+
+    private async Task SaveAsync()
+    {
+        try
+        {
+            var info = new EmployeeInfo(
+                _edit.Id.Trim(),
+                _edit.Name.Trim(),
+                _unit,
+                _unit == Unit.M ? _edit.HomeStation : null,
+                _unit == Unit.T ? _edit.Specialty : null,
+                _unit == Unit.T ? _edit.Ability : null);
+            await EmployeesSvc.UpsertAsync(info, Operator.Name);
+            _message = null;
+            _edit = new();
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _message = ex.Message;
+        }
+    }
+
+    private async Task DeleteAsync(string id)
+    {
+        await EmployeesSvc.DeleteAsync(id, Operator.Name);
+        await ReloadAsync();
+    }
+
+    private async Task OnImport(InputFileChangeEventArgs e)
+    {
+        await using var stream = e.File.OpenReadStream(5_000_000);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        ms.Position = 0;
+        _importResult = await EmployeesSvc.ImportCsvAsync(_unit, ms, Operator.Name);
+        await ReloadAsync();
+    }
+
+    private sealed class EditModel
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string? HomeStation { get; set; }
+        public string? Specialty { get; set; }
+        public int? Ability { get; set; }
+    }
+}

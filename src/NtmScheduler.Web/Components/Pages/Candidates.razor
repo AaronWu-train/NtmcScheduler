@@ -1,0 +1,39 @@
+@page "/runs/{Id:long}/candidates"
+@rendermode InteractiveServer
+@inject ICandidateService CandidatesSvc
+@inject OperatorState Operator
+@inject NavigationManager Nav
+
+<PageTitle>候選比較</PageTitle>
+
+<h1 class="h3 mb-3">Run #@Id 候選比較</h1>
+
+<MetricsCompareTable Compare="_compare" OnPromote="PromoteAsync" />
+
+@if (!string.IsNullOrEmpty(_message))
+{
+    <div class="alert alert-info mt-3">@_message</div>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private CandidateCompareDto? _compare;
+    private string? _message;
+
+    protected override async Task OnParametersSetAsync() =>
+        _compare = await CandidatesSvc.CompareAsync(Id);
+
+    private async Task PromoteAsync(long candidateId)
+    {
+        try
+        {
+            var draftId = await CandidatesSvc.PromoteToDraftAsync(candidateId, Operator.Name);
+            Nav.NavigateTo($"drafts/{draftId}");
+        }
+        catch (Exception ex)
+        {
+            _message = ex.Message;
+        }
+    }
+}

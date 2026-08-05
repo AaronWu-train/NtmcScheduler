@@ -1,0 +1,126 @@
+@page "/rules"
+@rendermode InteractiveServer
+@inject IRuleSettingService RulesSvc
+@inject OperatorState Operator
+
+<PageTitle>規則管理</PageTitle>
+
+<h1 class="h3 mb-3">規則管理</h1>
+
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <button class="nav-link @(_unit == Unit.M ? "active" : null)" @onclick="() => Switch(Unit.M)">站務 M</button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link @(_unit == Unit.T ? "active" : null)" @onclick="() => Switch(Unit.T)">檢測 T</button>
+    </li>
+</ul>
+
+<p class="small text-muted">P0 鎖定不可關閉；P1 固定最高軟規則順位；P2–P4 可啟用／停用／調整順序與參數。</p>
+
+<table class="table table-sm align-middle">
+    <thead>
+        <tr>
+            <th>Rule ID</th><th>優先級</th><th>啟用</th><th>順序</th><th>參數 JSON</th><th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @for (var i = 0; i < _rules.Count; i++)
+        {
+            var idx = i;
+            var r = _rules[idx];
+            var locked = r.Priority is 0 or 1;
+            <tr class="@(r.Priority == 0 ? "table-secondary" : null)">
+                <td>
+                    <code>@r.RuleId</code>
+                    @if (r.Priority == 0)
+                    {
+                        <span class="badge text-bg-dark ms-1">P0 鎖定</span>
+                    }
+                    else if (r.Priority == 1)
+                    {
+                        <span class="badge text-bg-primary ms-1">P1 固定</span>
+                    }
+                </td>
+                <td>P@r.Priority</td>
+                <td>
+                    <input type="checkbox" class="form-check-input"
+                           checked="@r.Enabled"
+                           disabled="@locked"
+                           @onchange="e => Toggle(idx, (bool)(e.Value ?? false))" />
+                </td>
+                <td>@r.Order</td>
+                <td style="min-width:12rem;">
+                    <input class="form-control form-control-sm"
+                           value="@(r.ParametersJson ?? "")"
+                           disabled="@(r.Priority == 0)"
+                           @onchange="e => SetParams(idx, e.Value?.ToString())" />
+                </td>
+                <td class="text-nowrap">
+                    @if (r.Priority is >= 2 and <= 4)
+                    {
+                        <button class="btn btn-outline-secondary btn-sm" disabled="@(idx == 0)" @onclick="() => Move(idx, -1)">上移</button>
+                        <button class="btn btn-outline-secondary btn-sm" disabled="@(idx >= _rules.Count - 1)" @onclick="() => Move(idx, 1)">下移</button>
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<button class="btn btn-primary" @onclick="SaveAsync">儲存變更</button>
+@if (!string.IsNullOrEmpty(_message))
+{
+    <span class="ms-2 small">@_message</span>
+}
+
+@code {
+    private Unit _unit = Unit.M;
+    private List<RuleSettingDto> _rules = [];
+    private string? _message;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task Switch(Unit unit)
+    {
+        _unit = unit;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _rules = (await RulesSvc.GetAsync(_unit)).ToList();
+    }
+
+    private void Toggle(int idx, bool enabled)
+    {
+        var r = _rules[idx];
+        _rules[idx] = r with { Enabled = enabled };
+    }
+
+    private void SetParams(int idx, string? json)
+    {
+        var r = _rules[idx];
+        _rules[idx] = r with { ParametersJson = string.IsNullOrWhiteSpace(json) ? null : json };
+    }
+
+    private void Move(int idx, int delta)
+    {
+        var target = idx + delta;
+        if (target < 0 || target >= _rules.Count) return;
+        if (_rules[idx].Priority < 2 || _rules[target].Priority < 2) return;
+
+        (_rules[idx], _rules[target]) = (_rules[target], _rules[idx]);
+        for (var i = 0; i < _rules.Count; i++)
+            _rules[i] = _rules[i] with { Order = i };
+    }
+
+    private async Task SaveAsync()
+    {
+        for (var i = 0; i < _rules.Count; i++)
+            _rules[i] = _rules[i] with { Order = i };
+        await RulesSvc.UpdateAsync(_unit, _rules, Operator.Name);
+        _message = "已儲存";
+        await ReloadAsync();
+    }
+}

@@ -1,0 +1,151 @@
+@page "/events"
+@rendermode InteractiveServer
+@inject IEventService EventsSvc
+@inject OperatorState Operator
+
+<PageTitle>R*／X 事件</PageTitle>
+
+<h1 class="h3 mb-3">R*／X 事件</h1>
+
+<div class="row g-3 mb-3">
+    <div class="col-auto">
+        <label class="form-label">單位</label>
+        <select class="form-select" @bind="_unit" @bind:after="ReloadAsync">
+            <option value="@Unit.M">M</option>
+            <option value="@Unit.T">T</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">月份</label>
+        <input class="form-control" type="month" value="@_monthInput" @onchange="OnMonthChanged" />
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">新增 R*</div>
+            <div class="card-body row g-2">
+                <div class="col"><input class="form-control" placeholder="員工編號" @bind="_rEmp" /></div>
+                <div class="col"><input class="form-control" type="date" @bind="_rDate" /></div>
+                <div class="col-auto"><button class="btn btn-primary" @onclick="AddRAsync">新增</button></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">新增 X</div>
+            <div class="card-body row g-2">
+                <div class="col-12"><input class="form-control" placeholder="員工編號" @bind="_xEmp" /></div>
+                <div class="col"><input class="form-control" type="datetime-local" @bind="_xStart" /></div>
+                <div class="col"><input class="form-control" type="datetime-local" @bind="_xEnd" /></div>
+                <div class="col-12"><input class="form-control" placeholder="說明" @bind="_xDesc" /></div>
+                <div class="col-auto"><button class="btn btn-primary" @onclick="AddXAsync">新增</button></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (_errors.Count > 0)
+{
+    <div class="alert alert-danger">
+        <ul class="mb-0">
+            @foreach (var e in _errors)
+            {
+                <li><code>@e.Code</code> @e.Message</li>
+            }
+        </ul>
+    </div>
+}
+
+<div class="mb-3">
+    <InputFile OnChange="OnImport" accept=".csv" />
+</div>
+
+<table class="table table-sm table-striped">
+    <thead>
+        <tr>
+            <th>ID</th><th>員工</th><th>類型</th><th>日期／起訖</th><th>說明</th><th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var e in _list)
+        {
+            <tr>
+                <td>@e.Id</td>
+                <td>@e.EmployeeId</td>
+                <td>@(e.Type == FixedEventType.RStar ? "R*" : "X")</td>
+                <td>
+                    @if (e.Type == FixedEventType.RStar)
+                    {
+                        @e.Date?.ToString("yyyy-MM-dd")
+                    }
+                    else
+                    {
+                        @($"{e.Start:yyyy-MM-dd HH:mm}～{e.End:yyyy-MM-dd HH:mm}")
+                    }
+                </td>
+                <td>@(e.Description ?? "")</td>
+                <td><button class="btn btn-link btn-sm text-danger" @onclick="() => DeleteAsync(e.Id)">刪除</button></td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private Unit _unit = Unit.M;
+    private string _monthInput = $"{DateTime.Today:yyyy-MM}";
+    private IReadOnlyList<FixedEventDto> _list = Array.Empty<FixedEventDto>();
+    private List<ValidationError> _errors = [];
+
+    private string _rEmp = "";
+    private DateTime _rDate = DateTime.Today;
+    private string _xEmp = "";
+    private DateTime _xStart = DateTime.Today.AddHours(8);
+    private DateTime _xEnd = DateTime.Today.AddHours(17);
+    private string _xDesc = "";
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _list = await EventsSvc.ListAsync(_unit, YearMonth.Parse(_monthInput));
+    }
+
+    private async Task AddRAsync()
+    {
+        _errors = (await EventsSvc.AddRStarAsync(_rEmp.Trim(), DateOnly.FromDateTime(_rDate), Operator.Name)).ToList();
+        if (_errors.Count == 0) await ReloadAsync();
+    }
+
+    private async Task AddXAsync()
+    {
+        _errors = (await EventsSvc.AddXAsync(
+            new XEvent(_xEmp.Trim(), _xStart, _xEnd, _xDesc), Operator.Name)).ToList();
+        if (_errors.Count == 0) await ReloadAsync();
+    }
+
+    private async Task DeleteAsync(long id)
+    {
+        await EventsSvc.DeleteAsync(id, Operator.Name);
+        await ReloadAsync();
+    }
+
+    private async Task OnImport(InputFileChangeEventArgs e)
+    {
+        await using var stream = e.File.OpenReadStream(5_000_000);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        ms.Position = 0;
+        var result = await EventsSvc.ImportCsvAsync(ms, Operator.Name);
+        _errors = result.Errors.Select(err => new ValidationError("IMPORT", err.Message, err.EmployeeId)).ToList();
+        await ReloadAsync();
+    }
+
+    private async Task OnMonthChanged(ChangeEventArgs e)
+    {
+        _monthInput = e.Value?.ToString() ?? _monthInput;
+        await ReloadAsync();
+    }
+
+}

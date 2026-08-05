@@ -1,0 +1,91 @@
+@page "/import"
+@rendermode InteractiveServer
+@inject IHistoryImportService History
+@inject OperatorState Operator
+
+<PageTitle>歷史匯入</PageTitle>
+
+<h1 class="h3 mb-3">歷史匯入</h1>
+<p class="text-muted">
+    匯入過去的 <code>schedule.csv</code>＋可選 <code>events.csv</code> 作為 Published 歷史（決策 D-05）。
+    狀態字樣 <strong>R1</strong> 必須原樣保留。
+</p>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label">schedule.csv（必填）</label>
+            <InputFile OnChange="OnSchedule" accept=".csv" />
+            @if (_scheduleName is not null)
+            {
+                <div class="small text-success">已選：@_scheduleName</div>
+            }
+        </div>
+        <div class="mb-3">
+            <label class="form-label">events.csv（選填）</label>
+            <InputFile OnChange="OnEvents" accept=".csv" />
+            @if (_eventsName is not null)
+            {
+                <div class="small text-success">已選：@_eventsName</div>
+            }
+        </div>
+        <button class="btn btn-primary" disabled="@(_scheduleBytes is null)" @onclick="ImportAsync">開始匯入</button>
+    </div>
+</div>
+
+@if (_result is not null)
+{
+    <div class="alert @(_result.Errors.Count == 0 ? "alert-success" : "alert-warning")">
+        成功 @_result.SuccessCount 筆員工列；錯誤 @_result.Errors.Count
+        <ul>
+            @foreach (var e in _result.Errors.Take(30))
+            {
+                <li>@(e.Row?.ToString() ?? "-")：@e.Message</li>
+            }
+        </ul>
+    </div>
+}
+
+@code {
+    private byte[]? _scheduleBytes;
+    private byte[]? _eventsBytes;
+    private string? _scheduleName;
+    private string? _eventsName;
+    private ImportResult? _result;
+
+    private async Task OnSchedule(InputFileChangeEventArgs e)
+    {
+        _scheduleName = e.File.Name;
+        _scheduleBytes = await ReadAsync(e.File);
+    }
+
+    private async Task OnEvents(InputFileChangeEventArgs e)
+    {
+        _eventsName = e.File.Name;
+        _eventsBytes = await ReadAsync(e.File);
+    }
+
+    private async Task ImportAsync()
+    {
+        if (_scheduleBytes is null) return;
+        await using var schedule = new MemoryStream(_scheduleBytes);
+        Stream? events = _eventsBytes is null ? null : new MemoryStream(_eventsBytes);
+        try
+        {
+            _result = await History.ImportAsync(schedule, events, Operator.Name);
+        }
+        finally
+        {
+            if (events is not null)
+                await events.DisposeAsync();
+        }
+    }
+
+    private static async Task<byte[]> ReadAsync(IBrowserFile file)
+    {
+        await using var stream = file.OpenReadStream(20_000_000);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        return ms.ToArray();
+    }
+}

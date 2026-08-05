@@ -1,0 +1,116 @@
+﻿@page "/"
+@rendermode InteractiveServer
+@inject IPreparationService Preparation
+@inject IScheduleRunService Runs
+
+<PageTitle>儀表板</PageTitle>
+
+<h1 class="h3 mb-3">排班準備儀表板</h1>
+
+<div class="row g-3 mb-3">
+    <div class="col-auto">
+        <label class="form-label">單位</label>
+        <select class="form-select" @bind="_unit">
+            <option value="@Unit.M">站務 M</option>
+            <option value="@Unit.T">檢測 T</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">目標月</label>
+        <input class="form-control" type="month" value="@_monthInput" @onchange="OnMonthChanged" />
+    </div>
+    <div class="col-auto d-flex align-items-end">
+        <button class="btn btn-primary" @onclick="RefreshAsync">重新整理</button>
+    </div>
+</div>
+
+@if (_status is not null)
+{
+    <div class="row g-3 mb-4">
+        @foreach (var item in _status.Items)
+        {
+            <div class="col-md-4">
+                <div class="card h-100 @(item.IsComplete ? "border-success" : "border-warning")">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <h2 class="h6 mb-1">@item.Label</h2>
+                            <span class="badge @(item.IsComplete ? "text-bg-success" : "text-bg-warning")">
+                                @(item.IsComplete ? "完整" : "缺漏")
+                            </span>
+                        </div>
+                        @if (item.MissingDetails.Count > 0)
+                        {
+                            <ul class="small mb-0 ps-3">
+                                @foreach (var d in item.MissingDetails)
+                                {
+                                    <li>@d</li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+    <div class="mb-3">
+        整體準備：
+        <span class="badge @(_status.IsReady ? "text-bg-success" : "text-bg-secondary")">
+            @(_status.IsReady ? "可建立 Run" : "尚未齊備")
+        </span>
+        <a class="ms-2" href="runs">前往求解</a>
+    </div>
+}
+
+<h2 class="h5">最近 Run</h2>
+@if (_runs.Count == 0)
+{
+    <div class="text-muted">尚無 Run 紀錄</div>
+}
+else
+{
+    <table class="table table-sm table-hover">
+        <thead>
+            <tr>
+                <th>ID</th><th>單位</th><th>月份</th><th>狀態</th>
+                <th>優化</th><th>候選</th><th>操作者</th><th>建立時間</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in _runs)
+            {
+                <tr>
+                    <td><a href="@($"runs/{r.Id}")">@r.Id</a></td>
+                    <td>@r.Unit</td>
+                    <td>@r.TargetMonth</td>
+                    <td><span class="badge text-bg-secondary status-badge">@r.Status</span></td>
+                    <td>@(r.OptimizationStatus?.ToString() ?? "-")</td>
+                    <td>@r.CandidateCount</td>
+                    <td>@r.Operator</td>
+                    <td>@r.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private Unit _unit = Unit.M;
+    private string _monthInput = $"{DateTime.Today:yyyy-MM}";
+    private PreparationStatusDto? _status;
+    private IReadOnlyList<RunSummaryDto> _runs = Array.Empty<RunSummaryDto>();
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        var month = YearMonth.Parse(_monthInput);
+        _status = await Preparation.GetStatusAsync(_unit, month);
+        _runs = await Runs.ListAsync(_unit);
+    }
+
+    private void OnMonthChanged(ChangeEventArgs e)
+    {
+        _monthInput = e.Value?.ToString() ?? _monthInput;
+    }
+
+}

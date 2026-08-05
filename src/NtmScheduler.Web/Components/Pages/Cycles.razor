@@ -1,0 +1,114 @@
+@page "/cycles"
+@rendermode InteractiveServer
+@inject IScheduleCycleService CyclesSvc
+@inject OperatorState Operator
+
+<PageTitle>8 週週期</PageTitle>
+
+<h1 class="h3 mb-3">8 週週期</h1>
+<p class="text-muted">
+    requiredR＝一般休假（R+R*）需求，預設 16；requiredR1＝該週期國定假日數（R1 額度）。
+</p>
+
+<div class="card mb-3">
+    <div class="card-body row g-2 align-items-end">
+        <div class="col-md-2">
+            <label class="form-label">開始日</label>
+            <input class="form-control" type="date" @bind="_start" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">結束日</label>
+            <input class="form-control" type="date" @bind="_end" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">requiredR</label>
+            <input class="form-control" type="number" @bind="_requiredR" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">requiredR1</label>
+            <input class="form-control" type="number" @bind="_requiredR1" />
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-primary" @onclick="SaveAsync">儲存</button>
+        </div>
+    </div>
+    @if (!string.IsNullOrEmpty(_hint))
+    {
+        <div class="card-footer small">@_hint</div>
+    }
+</div>
+
+<table class="table table-sm table-striped">
+    <thead>
+        <tr>
+            <th>開始</th><th>結束</th><th>天數</th>
+            <th>requiredR</th><th>requiredR1</th><th>提示</th><th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var c in _list)
+        {
+            <tr>
+                <td>@c.Start.ToString("yyyy-MM-dd")</td>
+                <td>@c.End.ToString("yyyy-MM-dd")</td>
+                <td>@c.CycleDays</td>
+                <td>@c.RequiredR</td>
+                <td>@c.RequiredR1</td>
+                <td class="small">@Hint(c)</td>
+                <td>
+                    <button class="btn btn-link btn-sm" @onclick="() => Edit(c)">編輯</button>
+                    <button class="btn btn-link btn-sm text-danger" @onclick="() => DeleteAsync(c.Start)">刪除</button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private IReadOnlyList<CycleInfo> _list = Array.Empty<CycleInfo>();
+    private DateTime _start = DateTime.Today;
+    private DateTime _end = DateTime.Today.AddDays(55);
+    private int _requiredR = 16;
+    private int _requiredR1;
+    private string? _hint;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync() => _list = await CyclesSvc.ListAsync();
+
+    private void Edit(CycleInfo c)
+    {
+        _start = c.Start.ToDateTime(TimeOnly.MinValue);
+        _end = c.End.ToDateTime(TimeOnly.MinValue);
+        _requiredR = c.RequiredR;
+        _requiredR1 = c.RequiredR1;
+        _hint = Hint(c);
+    }
+
+    private async Task SaveAsync()
+    {
+        var cycle = new CycleInfo(
+            DateOnly.FromDateTime(_start),
+            DateOnly.FromDateTime(_end),
+            _requiredR,
+            _requiredR1);
+        _hint = Hint(cycle);
+        await CyclesSvc.UpsertAsync(cycle, Operator.Name);
+        await ReloadAsync();
+    }
+
+    private async Task DeleteAsync(DateOnly start)
+    {
+        await CyclesSvc.DeleteAsync(start, Operator.Name);
+        await ReloadAsync();
+    }
+
+    private static string Hint(CycleInfo c)
+    {
+        if (c.CycleDays != 56)
+            return $"⚠ 天數為 {c.CycleDays}（標準 8 週＝56 天）";
+        if (c.RequiredR + c.RequiredR1 > c.CycleDays)
+            return "⚠ requiredR + requiredR1 超過週期天數";
+        return "額度合理";
+    }
+}

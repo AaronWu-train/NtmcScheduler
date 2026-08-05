@@ -1,0 +1,47 @@
+@if (Visible)
+{
+    <div class="card shadow-sm mb-3" style="max-width: 28rem;">
+        <div class="card-header d-flex justify-content-between align-items-center py-2">
+            <span>編輯儲存格 · @EmployeeId · @Date.ToString("yyyy-MM-dd")</span>
+            <button type="button" class="btn-close" @onclick="Close"></button>
+        </div>
+        <div class="card-body">
+            @if (Options is null)
+            {
+                <div class="text-muted">載入可選狀態…</div>
+            }
+            else
+            {
+                <div class="d-flex flex-wrap gap-2">
+                    @foreach (var opt in Options)
+                    {
+                        <button type="button"
+                                class="btn btn-outline-primary btn-sm"
+                                title="@(opt.P0ViolationsIfApplied.Count > 0 ? "套用後可能違反 P0：" + string.Join(", ", opt.P0ViolationsIfApplied) : "可選")"
+                                @onclick="() => Select(opt)">
+                            <span class="@(opt.StateDisplay == "R1" ? "fw-bold text-decoration-underline" : null)">
+                                @opt.StateDisplay
+                            </span>
+                            @if (opt.P0ViolationsIfApplied.Count > 0)
+                            {
+                                <span class="badge text-bg-warning ms-1">P0</span>
+                            }
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public string? EmployeeId { get; set; }
+    [Parameter] public DateOnly Date { get; set; }
+    [Parameter] public IReadOnlyList<CellOptionDto>? Options { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<CellOptionDto> OnSelected { get; set; }
+
+    private Task Close() => OnClose.InvokeAsync();
+    private Task Select(CellOptionDto opt) => OnSelected.InvokeAsync(opt);
+}

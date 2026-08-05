@@ -1,0 +1,74 @@
+@if (Compare is null || Compare.Candidates.Count == 0)
+{
+    <div class="alert alert-secondary">尚無候選可供比較</div>
+}
+else
+{
+    var compare = Compare;
+    <div class="table-responsive">
+        <table class="table table-bordered table-sm align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>規則／指標</th>
+                    @foreach (var c in compare.Candidates)
+                    {
+                        <th>候選 #@c.Index</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var ruleId in compare.RuleIds)
+                {
+                    <tr>
+                        <td><code>@ruleId</code></td>
+                        @for (var i = 0; i < compare.Candidates.Count; i++)
+                        {
+                            var vals = compare.ViolationMatrix is { } matrix && matrix.TryGetValue(ruleId, out var list)
+                                ? list
+                                : (compare.Candidates[i].RuleMetrics.TryGetValue(ruleId, out var v)
+                                    ? (IReadOnlyList<int>)new[] { v }
+                                    : Array.Empty<int>());
+                            var display = compare.ViolationMatrix is not null
+                                ? (i < vals.Count ? vals[i] : 0)
+                                : (compare.Candidates[i].RuleMetrics.TryGetValue(ruleId, out var m) ? m : 0);
+                            <td>@display</td>
+                        }
+                    </tr>
+                }
+                <tr>
+                    <td>差異率</td>
+                    @foreach (var c in compare.Candidates)
+                    {
+                        <td>@(c.DiversityRate is { } d ? d.ToString("P1") : "-")</td>
+                    }
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    @if (compare.PairwiseDiversityRates is { Count: > 0 } rates)
+    {
+        <div class="small text-muted mb-2">
+            成對差異率：@string.Join("、", rates.Select(r => r.ToString("P1")))
+        </div>
+    }
+
+    <div class="d-flex flex-wrap gap-2">
+        @foreach (var c in compare.Candidates)
+        {
+            <button type="button" class="btn btn-primary btn-sm"
+                    disabled="@PromoteDisabled"
+                    @onclick="() => Promote(c.Id)">
+                候選 #@c.Index 複製為 Draft
+            </button>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public CandidateCompareDto? Compare { get; set; }
+    [Parameter] public bool PromoteDisabled { get; set; }
+    [Parameter] public EventCallback<long> OnPromote { get; set; }
+
+    private Task Promote(long id) => OnPromote.InvokeAsync(id);
+}

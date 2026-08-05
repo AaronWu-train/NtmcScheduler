@@ -1,0 +1,33 @@
+@page "/runs/{Id:long}/shortage"
+@rendermode InteractiveServer
+@inject IShortageAnalysisService ShortageSvc
+
+<PageTitle>缺班分析</PageTitle>
+
+<div class="alert alert-danger fw-semibold">
+    缺班分析／衝突摘要結果 — 不可發布
+</div>
+
+<h1 class="h3 mb-3">Run #@Id 缺班分析</h1>
+
+@if (_dto is null)
+{
+    <div class="alert alert-secondary">
+        尚無缺班分析結果。當求解狀態為 INFEASIBLE 且單位為 M 時，Worker 會寫入短缺候選；
+        T 單位則顯示衝突摘要（目前 stub 可能尚未產生）。
+    </div>
+}
+else
+{
+    <p>@_dto.Summary</p>
+    <CoveragePanel MCoverage="_dto.Coverage" />
+    <WideTable Table="_dto.Table" />
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+    private ShortageDto? _dto;
+
+    protected override async Task OnParametersSetAsync() =>
+        _dto = await ShortageSvc.GetAsync(Id);
+}

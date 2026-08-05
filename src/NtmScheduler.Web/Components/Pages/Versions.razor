@@ -1,0 +1,74 @@
+@page "/versions"
+@rendermode InteractiveServer
+@inject IPublishService Publish
+
+<PageTitle>發布版本</PageTitle>
+
+<h1 class="h3 mb-3">發布版本</h1>
+
+<div class="row g-3 mb-3">
+    <div class="col-auto">
+        <label class="form-label">單位</label>
+        <select class="form-select" @bind="_unit" @bind:after="ReloadAsync">
+            <option value="@Unit.M">M</option>
+            <option value="@Unit.T">T</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">月份</label>
+        <input class="form-control" type="month" value="@_monthInput" @onchange="OnMonthChanged" />
+    </div>
+</div>
+
+<table class="table table-sm table-hover">
+    <thead>
+        <tr>
+            <th>版本</th><th>發布時間</th><th>操作者</th><th>目前</th><th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var v in _versions)
+        {
+            <tr class="@(v.IsCurrent ? "table-success" : null)">
+                <td>v@(v.VersionNo)</td>
+                <td>@v.PublishedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                <td>@v.Operator</td>
+                <td>@(v.IsCurrent ? "Published" : "舊版")</td>
+                <td>
+                    <button class="btn btn-link btn-sm" @onclick="() => OpenAsync(v.Id)">唯讀寬表</button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@if (_table is not null)
+{
+    <div class="alert alert-secondary">唯讀版本 #@_table.OwnerId（不可編輯）</div>
+    <WideTable Table="_table" />
+}
+
+@code {
+    private Unit _unit = Unit.M;
+    private string _monthInput = $"{DateTime.Today:yyyy-MM}";
+    private IReadOnlyList<VersionDto> _versions = Array.Empty<VersionDto>();
+    private WideTableDto? _table;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _versions = await Publish.GetVersionsAsync(_unit, YearMonth.Parse(_monthInput));
+        _table = null;
+    }
+
+    private async Task OpenAsync(long id) =>
+        _table = await Publish.GetVersionAsync(id);
+
+    private async Task OnMonthChanged(ChangeEventArgs e)
+    {
+        _monthInput = e.Value?.ToString() ?? _monthInput;
+        await ReloadAsync();
+    }
+
+}
