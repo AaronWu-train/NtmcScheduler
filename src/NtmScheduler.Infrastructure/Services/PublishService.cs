@@ -12,10 +12,10 @@ namespace NtmScheduler.Infrastructure.Services;
 public sealed class PublishService : IPublishService
 {
     private readonly NtmDbContext _db;
-    private readonly DraftService _drafts;
+    private readonly IDraftService _drafts;
     private readonly AuditWriter _audit;
 
-    public PublishService(NtmDbContext db, DraftService drafts, AuditWriter audit)
+    public PublishService(NtmDbContext db, IDraftService drafts, AuditWriter audit)
     {
         _db = db;
         _drafts = drafts;
@@ -39,7 +39,7 @@ public sealed class PublishService : IPublishService
         var hasAssignments = await _db.Assignments.AsNoTracking()
             .AnyAsync(a => a.OwnerType == AssignmentOwnerType.Draft && a.OwnerId == draftId, ct);
         if (!hasAssignments)
-            blockers.Add(new PublishBlockerDto("NO_ASSIGNMENTS", "Draft 尚無班表資料（stub 求解未產生候選）"));
+            blockers.Add(new PublishBlockerDto("NO_ASSIGNMENTS", "Draft 尚無班表資料"));
 
         if (!validation.P0Passed)
             blockers.Add(new PublishBlockerDto("P0_FAILED", "存在 P0 硬規則違反"));

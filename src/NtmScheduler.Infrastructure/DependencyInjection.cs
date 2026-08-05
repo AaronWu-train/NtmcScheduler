@@ -11,12 +11,6 @@ namespace NtmScheduler.Infrastructure;
 
 public static class DependencyInjection
 {
-    /// <summary>Alias required by M3 plan: AddInfrastructure(services, connectionString).</summary>
-    public static IServiceCollection AddInfrastructure(
-        this IServiceCollection services,
-        string connectionString) =>
-        AddNtmInfrastructure(services, connectionString);
-
     public static IServiceCollection AddNtmInfrastructure(
         this IServiceCollection services,
         string sqliteConnectionString)
@@ -32,8 +26,7 @@ public static class DependencyInjection
         services.AddScoped<IRuleSettingService, RuleSettingService>();
         services.AddScoped<IScheduleRunService, ScheduleRunService>();
         services.AddScoped<ICandidateService, CandidateService>();
-        services.AddScoped<DraftService>();
-        services.AddScoped<IDraftService>(sp => sp.GetRequiredService<DraftService>());
+        services.AddScoped<IDraftService, DraftService>();
         services.AddScoped<IPublishService, PublishService>();
         services.AddScoped<IHistoryImportService, HistoryImportService>();
         services.AddScoped<IExportService, ExportService>();
@@ -41,7 +34,7 @@ public static class DependencyInjection
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<IPreparationService, PreparationService>();
 
-        services.AddSolvers();
+        services.AddSingleton<ISolveService, SolveService>();
         services.AddHostedService<ScheduleRunWorker>();
 
         return services;

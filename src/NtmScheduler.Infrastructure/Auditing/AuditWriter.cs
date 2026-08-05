@@ -37,16 +37,4 @@ public sealed class AuditWriter
         });
     }
 
-    public Task AddAndSaveAsync(
-        string op,
-        string action,
-        string targetType,
-        string targetId,
-        object? before = null,
-        object? after = null,
-        CancellationToken ct = default)
-    {
-        Add(op, action, targetType, targetId, before, after);
-        return _db.SaveChangesAsync(ct);
-    }
 }

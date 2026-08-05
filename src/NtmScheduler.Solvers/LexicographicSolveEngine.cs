@@ -63,8 +63,7 @@ public sealed class LexicographicSolveEngine
                 break;
             }
 
-            StoreIncumbent(built, solver, request, out incumbentAssign, out incumbentExt, out incumbentMetrics,
-                out _);
+            StoreIncumbent(built, solver, request, out incumbentAssign, out incumbentExt, out incumbentMetrics);
 
             var value = (long)solver.Value(obj);
             model.Add(obj == value);
@@ -85,8 +84,7 @@ public sealed class LexicographicSolveEngine
             var status = solver.Solve(model);
             if (status is not (CpSolverStatus.Optimal or CpSolverStatus.Feasible))
                 return CreateInfeasible(request, budget);
-            StoreIncumbent(built, solver, request, out incumbentAssign, out incumbentExt, out incumbentMetrics,
-                out _);
+            StoreIncumbent(built, solver, request, out incumbentAssign, out incumbentExt, out incumbentMetrics);
         }
 
         var candidates = new List<CandidateSolutionDto>
@@ -120,7 +118,7 @@ public sealed class LexicographicSolveEngine
                 if (status is not (CpSolverStatus.Optimal or CpSolverStatus.Feasible))
                     break;
 
-                StoreIncumbent(built, solver, request, out var assign, out var ext, out var metrics, out _);
+                StoreIncumbent(built, solver, request, out var assign, out var ext, out var metrics);
                 candidates.Add(ToCandidate(k, assign!, ext, metrics!, request));
             }
         }
@@ -184,8 +182,7 @@ public sealed class LexicographicSolveEngine
         SolveRequest request,
         out IReadOnlyDictionary<string, IReadOnlyDictionary<DateOnly, DayState>> assign,
         out IReadOnlySet<(string Station, DateOnly Date, ShiftType Shift)>? ext,
-        out Dictionary<string, int> metrics,
-        out List<(BoolVar Lit, string Label)> lits)
+        out Dictionary<string, int> metrics)
     {
         if (request.Unit == Unit.M)
         {
@@ -200,7 +197,6 @@ public sealed class LexicographicSolveEngine
         }
 
         metrics = SolutionExtractor.ReadMetrics(built, solver).ToDictionary(kv => kv.Key, kv => kv.Value);
-        lits = SolutionExtractor.IncumbentLiterals(built, solver);
     }
 
     private static List<(BoolVar Lit, string Label)> LiteralsMatchingAssignment(

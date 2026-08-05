@@ -22,7 +22,7 @@ public sealed class EmployeeImportTests
         Assert.AreEqual(2, result.SuccessCount);
 
         var list = await fx.Employees.ListAsync(Unit.M);
-        Assert.AreEqual(2, list.Count);
+        Assert.HasCount(2, list);
         Assert.AreEqual("LB01", list.Single(e => e.Id == "M001").HomeStation);
 
         var exported = await fx.Employees.ExportCsvAsync(Unit.M);
@@ -32,7 +32,7 @@ public sealed class EmployeeImportTests
         Assert.AreEqual(2, reimport.SuccessCount);
 
         var audits = fx.Db.AuditLogs.Where(a => a.TargetType == "Employee").ToList();
-        Assert.IsTrue(audits.Count >= 2);
+        Assert.IsGreaterThanOrEqualTo(2, audits.Count);
     }
 
     [TestMethod]
@@ -46,7 +46,7 @@ public sealed class EmployeeImportTests
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(bad));
         var result = await fx.Employees.ImportCsvAsync(Unit.T, stream, "tester");
         Assert.AreEqual(0, result.SuccessCount);
-        Assert.IsTrue(result.Errors.Count >= 1);
+        Assert.IsGreaterThanOrEqualTo(1, result.Errors.Count);
 
         const string good = """
             employee_id,name,specialty,ability

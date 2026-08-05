@@ -35,7 +35,7 @@ public sealed class GenH03Tests
         };
 
         var result = new GenH03RestGap().Evaluate(ctx);
-        Assert.IsTrue(result.ViolationCount > 0);
+        Assert.IsGreaterThan(0, result.ViolationCount);
         Assert.IsTrue(result.Items.Any(i => i.EmployeeId == emp && i.Date == new DateOnly(2026, 8, 2)));
     }
 }

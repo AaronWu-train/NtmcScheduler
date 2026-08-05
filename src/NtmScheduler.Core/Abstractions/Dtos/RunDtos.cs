@@ -26,6 +26,7 @@ public sealed record CreateRunResult(
 
 public sealed record RunProgressDto(
     long RunId,
+    Unit Unit,
     RunLifecycleStatus Lifecycle,
     ScheduleStatus? ScheduleStatus,
     OptimizationStatus? OptimizationStatus,

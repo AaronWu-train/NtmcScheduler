@@ -22,8 +22,4 @@
     <ProjectReference Include="..\..\src\NtmScheduler.Infrastructure\NtmScheduler.Infrastructure.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Compile Remove="E2E\**\*.cs" />
-  </ItemGroup>
-
 </Project>

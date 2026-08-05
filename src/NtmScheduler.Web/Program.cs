@@ -23,22 +23,16 @@ var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<NtmDbContext>();
-    // Prefer Migrate when migrations exist; fall back to EnsureCreated for M1/M6 skeleton.
-    if (db.Database.GetPendingMigrations().Any())
-        db.Database.Migrate();
-    else
-        db.Database.EnsureCreated();
+    scope.ServiceProvider.GetRequiredService<NtmDbContext>().Database.Migrate();
 }
 
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    app.UseHsts();
+    app.UseHsts().UseHttpsRedirection();
 }
 
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseHttpsRedirection();
 
 // app.UseAuthentication();
 // app.UseAuthorization();

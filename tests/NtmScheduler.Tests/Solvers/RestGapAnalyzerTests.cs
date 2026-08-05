@@ -16,8 +16,8 @@ public class RestGapAnalyzerTests
         // Gap = 8h10m < 11h
         var (_, end) = ShiftTimeConfig.Interval(Unit.M, d, ShiftType.Afternoon);
         var (start, _) = ShiftTimeConfig.Interval(Unit.M, d.AddDays(1), ShiftType.Morning);
-        Assert.IsTrue((start - end).TotalHours < 11);
-        Assert.IsTrue((start - end).TotalHours > 8);
+        Assert.IsLessThan(11, (start - end).TotalHours);
+        Assert.IsGreaterThan(8, (start - end).TotalHours);
     }
 
     [TestMethod]

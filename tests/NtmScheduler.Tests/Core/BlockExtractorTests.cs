@@ -39,7 +39,7 @@ public sealed class BlockExtractorTests
         };
 
         var blocks = BlockExtractor.Extract(ctx, emp);
-        Assert.AreEqual(2, blocks.Count);
+        Assert.HasCount(2, blocks);
         Assert.AreEqual(ShiftType.Morning, blocks[0].Shift);
         Assert.AreEqual(3, blocks[0].Count);
         Assert.IsTrue(blocks[0].Closed);

@@ -82,13 +82,17 @@ public sealed class CandidateService : ICandidateService
     private static CandidateDto Map(CandidateSolution c)
     {
         IReadOnlyDictionary<string, int> metrics = new Dictionary<string, int>();
+        double? diversityRate = null;
         try
         {
             if (!string.IsNullOrWhiteSpace(c.MetricsJson) && c.MetricsJson != "{}")
             {
-                var dict = JsonSerializer.Deserialize<Dictionary<string, int>>(c.MetricsJson);
-                if (dict is not null)
-                    metrics = dict;
+                using var doc = JsonDocument.Parse(c.MetricsJson);
+                if (doc.RootElement.TryGetProperty("violations", out var violations))
+                    metrics = violations.Deserialize<Dictionary<string, int>>() ?? metrics;
+                if (doc.RootElement.TryGetProperty("diversityRate", out var diversity)
+                    && diversity.ValueKind == JsonValueKind.Number)
+                    diversityRate = diversity.GetDouble();
             }
         }
         catch (JsonException)
@@ -96,6 +100,6 @@ public sealed class CandidateService : ICandidateService
             // ignore
         }
 
-        return new CandidateDto(c.Id, c.RunId, c.Index, c.IsShortageAnalysis, metrics, null, c.MetricsJson);
+        return new CandidateDto(c.Id, c.RunId, c.Index, c.IsShortageAnalysis, metrics, diversityRate, c.MetricsJson);
     }
 }

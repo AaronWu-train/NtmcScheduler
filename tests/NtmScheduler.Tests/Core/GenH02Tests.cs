@@ -54,7 +54,7 @@ public sealed class GenH02Tests
             DayState.Work(ShiftType.Morning)
         };
         var result = EvaluateSequence(states);
-        Assert.IsTrue(result.ViolationCount > 0);
+        Assert.IsGreaterThan(0, result.ViolationCount);
         Assert.IsTrue(result.Items.Any(i => i.Message.Contains("超過 6")));
     }
 

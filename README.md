@@ -14,11 +14,10 @@
 git clone https://github.com/AaronWu-train/employee_scheduling.git
 cd employee_scheduling
 
-dotnet restore NtmScheduler.slnx
-dotnet run --project src/NtmScheduler.Web
+dotnet run --project src/NtmScheduler.Web --launch-profile http
 ```
 
-瀏覽器開啟 https://localhost:7036（或 http://localhost:5109）。
+瀏覽器開啟 http://localhost:5109。
 
 開發環境使用 SQLite，首次啟動會自動建立 `ntm.db`。
 
@@ -45,6 +44,13 @@ docs/                              規格與決策紀錄
 - ASP.NET Core Blazor（Interactive Server）
 - Google OR-Tools CP-SAT
 - EF Core + SQLite（開發）
+
+## 目前缺口
+
+- Run 的 `SnapshotJson` 目前只有中繼資料；Worker 仍讀取即時資料庫，尚未做到可重現的完整輸入快照與 Published 歷史銜接。
+- Draft 的完整 P0／Coverage／軟規則驗證與逐格選項預檢尚未實作；目前採 fail-closed，不能發布未驗證班表。
+- M 缺班詳情與 T 衝突摘要尚未完整接上 UI。
+- 尚無真正的瀏覽器 E2E 測試；已移除原本永遠通過的 placeholder。
 
 ## 文件
 

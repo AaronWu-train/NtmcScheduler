@@ -39,7 +39,7 @@ public class MSolverAcceptanceTests
         Assert.IsNotNull(result.ShortageAnalysis);
         Assert.IsTrue(result.ShortageAnalysis!.IsShortageAnalysis);
         Assert.IsTrue(result.ShortageAnalysis.ModelMetrics.ContainsKey("SHORTAGE"));
-        Assert.IsTrue(result.ShortageAnalysis.ModelMetrics["SHORTAGE"] > 0);
+        Assert.IsGreaterThan(0, result.ShortageAnalysis.ModelMetrics["SHORTAGE"]);
     }
 
     [TestMethod]
@@ -49,7 +49,7 @@ public class MSolverAcceptanceTests
         var request = FeasibleMRequest(month, requiredR: 8, requiredR1: 1, cycleEndsInRange: true);
         var result = await _svc.SolveAsync(request);
         Assert.AreEqual(ScheduleStatus.Feasible, result.ScheduleStatus, result.ErrorMessage);
-        Assert.IsTrue(result.Candidates.Count >= 1);
+        Assert.IsGreaterThanOrEqualTo(1, result.Candidates.Count);
 
         var engine = new RuleEvaluationEngine();
         var cand = result.Candidates[0];
@@ -107,7 +107,7 @@ public class MSolverAcceptanceTests
         Assert.AreEqual(6, cw);
         var next = ContinuousWorkCounter.Compute(DayState.Work(ShiftType.Morning), cw);
         Assert.AreEqual(7, next);
-        Assert.IsTrue(next > 6);
+        Assert.IsGreaterThan(6, next);
     }
 
     [TestMethod]
@@ -120,7 +120,7 @@ public class MSolverAcceptanceTests
         var cand = result.Candidates[0];
         var r1Days = cand.Assignments.SelectMany(kv =>
             kv.Value.Where(d => d.Value.Type == DayStateType.HolidayRest).Select(d => d.Key)).ToList();
-        Assert.IsTrue(r1Days.Count > 0);
+        Assert.IsNotEmpty(r1Days);
         // Not required to fall on a national holiday — any date is fine
     }
 
@@ -194,7 +194,7 @@ public class MSolverAcceptanceTests
                     : histories[emp.Id].Days.GetValueOrDefault(d);
                 if (st.IsGeneralRest) gen++;
             }
-            Assert.IsTrue(gen <= 12, $"{emp.Id} 月底一般休假 {gen} > 12");
+            Assert.IsLessThanOrEqualTo(12, gen, $"{emp.Id} 月底一般休假 {gen} > 12");
         }
     }
 

@@ -9,7 +9,6 @@ using NtmScheduler.Infrastructure.Data.Entities;
 
 namespace NtmScheduler.Infrastructure.Services;
 
-/// <summary>M3 skeleton — Draft CRUD/validate wiring completed in M5/M6.</summary>
 public sealed class DraftService : IDraftService
 {
     private readonly NtmDbContext _db;
@@ -139,15 +138,14 @@ public sealed class DraftService : IDraftService
 
     public Task<DraftValidationDto> RevalidateAsync(long draftId, CancellationToken ct = default)
     {
-        // Full P0/soft evaluation wired in M5; M3 returns empty validation payload.
         _ = draftId;
         _ = ct;
         return Task.FromResult(new DraftValidationDto(
-            true,
+            false,
             Array.Empty<RuleMetricDto>(),
             null,
             null,
-            Array.Empty<PublishBlockerDto>(),
+            [new PublishBlockerDto("VALIDATION_NOT_IMPLEMENTED", "Draft 完整規則驗證尚未實作，禁止發布")],
             Array.Empty<Core.Evaluation.ViolationItem>()));
     }
 }

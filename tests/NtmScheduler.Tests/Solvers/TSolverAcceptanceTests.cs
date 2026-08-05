@@ -16,7 +16,7 @@ public class TSolverAcceptanceTests
         var request = FeasibleTRequest(YearMonth.Parse("2026-08"), requiredR: 10, requiredR1: 0);
         var result = await _svc.SolveAsync(request);
         Assert.AreEqual(ScheduleStatus.Feasible, result.ScheduleStatus, result.ErrorMessage);
-        Assert.IsTrue(result.Candidates.Count >= 1);
+        Assert.IsGreaterThanOrEqualTo(1, result.Candidates.Count);
     }
 
     [TestMethod]
@@ -26,8 +26,8 @@ public class TSolverAcceptanceTests
         var result = await _svc.SolveAsync(request);
         Assert.AreEqual(ScheduleStatus.Infeasible, result.ScheduleStatus);
         Assert.IsNotNull(result.TConflictSummary);
-        Assert.IsTrue(result.TConflictSummary!.Message.Contains("無解"));
-        Assert.IsTrue(result.TConflictSummary.CycleStats.Count >= 1);
+        Assert.Contains("無解", result.TConflictSummary!.Message);
+        Assert.IsGreaterThanOrEqualTo(1, result.TConflictSummary.CycleStats.Count);
     }
 
     [TestMethod]

@@ -233,14 +233,6 @@ public sealed class ScheduleRunWorker : BackgroundService
             tConflict = result.TConflictSummary?.Message
         }, JsonOptions);
 
-        if (!string.IsNullOrEmpty(result.ErrorMessage) && result.Candidates.Count == 0 && result.ShortageAnalysis is null)
-        {
-            run.Status = ScheduleRunStatus.Failed;
-            run.ProgressJson = JsonSerializer.Serialize(new { message = result.ErrorMessage }, JsonOptions);
-            await db.SaveChangesAsync(ct);
-            return;
-        }
-
         run.Status = ScheduleRunStatus.Completed;
         run.ProgressJson = JsonSerializer.Serialize(new
         {

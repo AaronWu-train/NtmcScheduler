@@ -70,7 +70,7 @@ public sealed class ScheduleCsvRoundTripTests
         var body = Encoding.UTF8.GetBytes("employee_id,name,home_station\nM001,\"王,小明\",LB01\n");
         using var ms = new MemoryStream(bom.Concat(body).ToArray());
         var (header, rows) = CsvReader.ReadTable(ms);
-        Assert.AreEqual(3, header.Count);
+        Assert.HasCount(3, header);
         Assert.AreEqual("王,小明", rows[0][1]);
     }
 }

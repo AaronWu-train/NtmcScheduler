@@ -104,32 +104,4 @@ public static class SolutionExtractor
         return dict;
     }
 
-    public static List<(BoolVar Lit, string Label)> IncumbentLiterals(
-        BuiltModel built, CpSolver solver, bool targetMonthOnly = true)
-    {
-        var list = new List<(BoolVar, string)>();
-        foreach (var ((empId, date), dv) in built.Days)
-        {
-            if (dv.IsFixed) continue;
-            if (targetMonthOnly && !built.Request.Period.IsInTargetMonth(date)) continue;
-
-            if (solver.Value(dv.Rest!) == 1)
-                list.Add((dv.Rest!, $"{empId}@{date:yyyy-MM-dd}/rest"));
-            else if (solver.Value(dv.R1!) == 1)
-                list.Add((dv.R1!, $"{empId}@{date:yyyy-MM-dd}/r1"));
-            else
-            {
-                foreach (var (key, lit) in dv.Work)
-                {
-                    if (solver.Value(lit) == 1)
-                    {
-                        list.Add((lit, $"{empId}@{date:yyyy-MM-dd}/{key}"));
-                        break;
-                    }
-                }
-            }
-        }
-
-        return list;
-    }
 }

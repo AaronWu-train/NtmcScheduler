@@ -72,8 +72,7 @@ else
         _cts = new CancellationTokenSource();
         await LoadAsync();
 
-        // Infer unit from first progress load via rules of both — load M defaults for display stub
-        var rules = await RulesSvc.GetAsync(Unit.M);
+        var rules = await RulesSvc.GetAsync(_progress!.Unit);
         _ruleIds = rules.Where(r => r.Enabled).OrderBy(r => r.Priority).ThenBy(r => r.Order).Select(r => r.RuleId).ToList();
 
         _ = PollLoop(_cts.Token);

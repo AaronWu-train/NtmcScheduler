@@ -50,7 +50,7 @@ public sealed class TsSoftRuleTests
 
         var result = new TsAttend().Evaluate(ctx);
         // floor(11/2)=5, attend 4 → shortfall 1 on that day; other days shortfall 5 each
-        Assert.IsTrue(result.ViolationCount >= 1);
+        Assert.IsGreaterThanOrEqualTo(1, result.ViolationCount);
         Assert.IsTrue(result.Items.Any(i => i.Date == workDay && i.Message.Contains("不足 1")));
     }
 
@@ -84,6 +84,6 @@ public sealed class TsSoftRuleTests
         };
 
         var result = new TsAbility().Evaluate(ctx);
-        Assert.IsTrue(result.ViolationCount >= 1);
+        Assert.IsGreaterThanOrEqualTo(1, result.ViolationCount);
     }
 }

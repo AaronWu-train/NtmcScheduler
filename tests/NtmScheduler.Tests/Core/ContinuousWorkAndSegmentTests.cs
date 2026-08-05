@@ -55,7 +55,7 @@ public sealed class ContinuousWorkAndSegmentTests
             ("2026-08-02", DayState.Work(ShiftType.Morning))
         ], Unit.M);
         var result = new GenH03RestGap().Evaluate(ctx);
-        Assert.IsTrue(result.ViolationCount > 0);
+        Assert.IsGreaterThan(0, result.ViolationCount);
     }
 
     [TestMethod]
@@ -97,7 +97,7 @@ public sealed class ContinuousWorkAndSegmentTests
             ("2026-08-08", DayState.Work(ShiftType.Morning)) // 7th work day in cw sense
         };
         var ctx = BuildCtx("E1", days);
-        Assert.IsTrue(new GenH02ContinuousWork().Evaluate(ctx).ViolationCount > 0);
+        Assert.IsGreaterThan(0, new GenH02ContinuousWork().Evaluate(ctx).ViolationCount);
     }
 
     [TestMethod]

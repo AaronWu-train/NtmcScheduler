@@ -11,9 +11,6 @@ using NtmScheduler.Infrastructure.Data.Entities;
 
 namespace NtmScheduler.Infrastructure.Services;
 
-/// <summary>
-/// Minimal ScheduleRun service: validates lightly, snapshots input, queues for ScheduleRunWorker.
-/// </summary>
 public sealed class ScheduleRunService : IScheduleRunService
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -48,8 +45,7 @@ public sealed class ScheduleRunService : IScheduleRunService
             unit = unit.ToString(),
             targetMonth = month.ToString(),
             seed = 42,
-            programVersion = "0.1.0-stub",
-            note = "STUB snapshot；完整 SolveRequest 由 M5 擴充"
+            programVersion = typeof(ScheduleRunService).Assembly.GetName().Version?.ToString()
         };
 
         var run = new ScheduleRun
@@ -58,22 +54,16 @@ public sealed class ScheduleRunService : IScheduleRunService
             TargetMonth = month.ToString(),
             Status = ScheduleRunStatus.Queued,
             Seed = 42,
-            ProgramVersion = "0.1.0-stub",
+            ProgramVersion = snapshot.programVersion ?? "unknown",
             Operator = op,
             CreatedAt = TaipeiTime.Now,
             SnapshotJson = JsonSerializer.Serialize(snapshot, JsonOptions)
         };
 
         _db.ScheduleRuns.Add(run);
-        _audit.Add(op, "CreateRun", "ScheduleRun", "(pending)", after: snapshot);
         await _db.SaveChangesAsync(ct);
-
-        var lastAudit = await _db.AuditLogs.OrderByDescending(a => a.Id).FirstOrDefaultAsync(ct);
-        if (lastAudit is not null && lastAudit.TargetId == "(pending)")
-        {
-            lastAudit.TargetId = run.Id.ToString();
-            await _db.SaveChangesAsync(ct);
-        }
+        _audit.Add(op, "CreateRun", "ScheduleRun", run.Id.ToString(), after: snapshot);
+        await _db.SaveChangesAsync(ct);
 
         return CreateRunResult.Ok(run.Id);
     }
@@ -109,6 +99,7 @@ public sealed class ScheduleRunService : IScheduleRunService
 
         return new RunProgressDto(
             run.Id,
+            run.Unit,
             MapLifecycle(run.Status),
             MapScheduleStatus(run.ScheduleStatus),
             MapOptimizationStatus(run.OptimizationStatus),
