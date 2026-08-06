@@ -1,0 +1,1589 @@
+% !TeX program = xelatex
+% !TeX options = -shell-escape
+% !TEX encoding = UTF-8
+
+% --------------------------------------------------------------
+% This is all preamble stuff that you don't have to worry about.
+% Head down to where it says "Start here"
+% --------------------------------------------------------------
+
+\documentclass[12pt]{article}
+\usepackage[margin=2cm]{geometry} % 頁面邊距設置
+\usepackage{amsmath,amssymb,amsthm} % 數學相關套件
+\usepackage{graphicx} % 圖形插入
+\usepackage{booktabs} % 表格線條
+\usepackage[AutoFakeBold,AutoFakeSlant]{xeCJK} % 中文支援
+\usepackage{fancyhdr} % 頁首頁尾設置
+\usepackage{xcolor,changepage,mdframed} % 顏色與框線相關
+\usepackage{setspace} % 行距
+\usepackage{minted} % 程式碼高亮（需安裝 Python 套件 pygments）
+\usepackage{caption}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{ulem}
+\usepackage[shortlabels]{enumitem} % 列表格式
+\usepackage[colorlinks=true,linkcolor=black,urlcolor=blue,citecolor=blue]{hyperref}
+\usepackage{multicol}
+\usepackage{parskip}
+\usepackage{paracol}
+\setlength{\parskip}{6pt plus 2pt minus 1pt} % 段落間距
+\graphicspath{{images}}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning}
+% 字體設定 (xeCJK)
+\setCJKmainfont{黑體-繁}
+\setCJKmonofont{Noto Sans Mono CJK TC}
+
+% 頁首/頁尾設定 (fancyhdr)
+\pagestyle{fancy}
+\fancyhead[L]{新北捷運公司} % 可以用 \leftmark 取代
+\fancyhead[R]{求解器數學模型}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+\setlength{\headheight}{15pt}
+\usepackage{siunitx}
+\sisetup{
+  round-mode=places,
+  round-precision=6,
+  table-number-alignment = center,
+  detect-mode,
+  detect-weight=true,
+  detect-family=true
+}
+
+\captionsetup{width=0.45\textwidth}
+
+% tex-fmt: off
+% 自訂框線環境
+\newmdenv[
+  linewidth=2pt, linecolor=gray, backgroundcolor=gray!10,
+  topline=false, bottomline=false, rightline=false,
+  skipabove=10pt, skipbelow=10pt, innerleftmargin=10pt,
+  innerrightmargin=10pt, innertopmargin=5pt, innerbottommargin=5pt
+]{myquote}
+
+\newenvironment{mycolorbox}[1][gray]{
+  \renewmdenv[
+    linewidth=1pt, linecolor=#1, backgroundcolor=#1!15,
+    skipabove=10pt, skipbelow=10pt, innerleftmargin=10pt,
+    innerrightmargin=10pt, innertopmargin=10pt, innerbottommargin=10pt
+  ]{myquote}
+  \begin{myquote}
+}{\end{myquote}}
+
+\newtheorem*{theorem}{Theorem}
+\newenvironment{lemma}[2][Lemma]{\begin{trivlist}
+\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2.}]}{\end{trivlist}}
+\newenvironment{exercise}[2][Exercise]{\begin{trivlist}
+\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2.}]}{\end{trivlist}}
+\newenvironment{problem}[2][Problem]{\smallskip\begin{myquote}\begin{trivlist}
+\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2}]}{\end{trivlist}\end{myquote}}
+\newenvironment{question}[2][Question]{\begin{trivlist}
+\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2.}]}{\end{trivlist}}
+\newenvironment{corollary}[2][Corollary]{\begin{trivlist}
+\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2.}]}{\end{trivlist}}
+\newenvironment{solution}{\begin{proof}[Solution]}{\end{proof}}
+\newenvironment{answer}{\begin{proof}[Ans]}{\end{proof}}
+
+% 樣式設定
+
+\setminted{frame=lines, linenos, framesep=2mm, breaklines=true, breakanywhere=true, autogobble=true}
+
+\linespread{1.1}
+% \usemintedstyle{xcode}
+\AtBeginEnvironment{minted}{\vspace{-10pt}} % 可根據需求調整間距數值
+\setminted{breaklines=true, breakanywhere=true, autogobble=true}
+\newcolumntype{Y}{>{\centering\arraybackslash}X}
+\renewcommand\tabularxcolumn[1]{m{#1}} % 垂直置中
+\setlength{\extrarowheight}{2pt}       % 多一點行距
+\usepackage{ragged2e}
+\renewcommand{\arraystretch}{1.2}
+\renewcommand\tabularxcolumn[1]{>{\RaggedRight\arraybackslash}p{#1}}
+\newcolumntype{P}[1]{>{\centering\arraybackslash}p{#1}}
+
+% tex-fmt: on
+\begin{document}
+\thispagestyle{fancy}
+
+%------------------------------------------------------------
+%                         Start here
+% -----------------------------------------------------------
+
+\begin{center}
+  {\large \bfseries 新北捷運公司人員自動排班系統} \\
+  \vspace{1em}
+  {\Large \bfseries 求解器數學模型} \\
+\end{center}
+
+\vspace{1em}
+
+\begin{tabular}{@{}l l}
+  \textbf{Intern:} & 吳亞倫 \\[-5pt]
+  \textbf{ID:} & 1508S0342  \\[-5pt]
+  \textbf{Department:} & 企劃處
+\end{tabular}
+
+\bigskip
+\section{Problem Statement}
+
+本研究考慮新北捷運站務人員之月排班問題。系統需對站務人員
+M、檢修人員 T 與行控人員 S 分別建立排班模型。本節先描述整體
+問題。
+
+給定一個目標月份、人員資料、所屬單位、歷史班表、指定休假、
+其他勤務、八週休假週期、班別時間與每日人力需求，排班系統必須
+決定每位人員每日的工作班別或休假狀態。
+
+排班結果首先必須滿足勞動法規與營運需求等硬性限制，包括：
+
+\begin{itemize}
+  \item 每人每日只能具有一個班表狀態；
+  \item 不得超過允許的連續工作日數；
+  \item 任兩次工作之間至少具有十一小時休息；
+  \item 八週週期內的一般休假與國定假日休假數量必須正確；
+  \item 每日各車站之必要班位必須補足；
+  \item 人員不得被指派至不具資格的車站或班別。
+\end{itemize}
+
+在所有硬性限制成立的前提下，系統進一步改善指定休假滿足程度、
+外派人力、跨站支援、工作區段、班別輪轉、月休假分布與人員間的
+公平性。
+
+目標月份以外，系統額外建立固定 \(K\) 日的延伸決策日期，
+其中 \(K\in\mathbb{Z}_{\geq 0}\) 為系統設定的延伸天數。
+延伸日期只用於驗證月底安排是否仍可合法延續，不計入本月統計、
+本月軟規則目標或候選方案差異率。
+
+\section{Methodology}
+
+\subsection{CP-SAT}
+
+本研究使用 Constraint Programming--Satisfiability
+（CP-SAT）求解離散排班問題。模型中的主要決策皆表示為布林變數
+或有限範圍整數變數。
+
+一般而言，模型可表示為
+
+\[
+  \begin{aligned}
+    \min_{\mathbf{x}}\quad
+    & \Phi(\mathbf{x}) \\
+    \text{s.t.}\quad
+    & \mathbf{x}\in\mathbb{Z}^{n},\\
+    & A\mathbf{x}\leq \mathbf{b},\\
+    & \mathbf{x}\text{ 滿足布林、條件式、表格與狀態轉移限制。}
+  \end{aligned}
+\]
+
+其中，硬性規則直接加入可行域；每一條軟性規則則轉換為一個非負
+整數違反量
+
+\[
+  \Phi_j(\mathbf{x})\in\mathbb{Z}_{\geq 0}.
+\]
+
+若採字典序最佳化，則依優先順序分別求解
+
+\[
+  \min \Phi_1,\quad
+  \min \Phi_2,\quad
+  \dots,\quad
+  \min \Phi_K.
+\]
+
+當第 \(j\) 個目標取得最優值 \(\Phi_j^\star\) 後，加入
+
+\[
+  \Phi_j(\mathbf{x})=\Phi_j^\star
+\]
+
+再最佳化下一個目標。如此可保證低順位規則不會使高順位規則惡化。
+
+若數個規則被認定為相同層級，也可先形成同層目標
+
+\[
+  \Phi^{(p)}
+  =
+  \sum_{j\in\mathcal{J}_p}
+  \omega_j\Phi_j,
+\]
+
+再對不同層級進行字典序最佳化。本文採用「組間字典序、組內加權和」；
+各群組及初始權重於 Objective Terms 小節中定義。
+
+模型中的非線性離散函數，例如本月休假數量懲罰，使用有限整數查表
+表示。連續工作計數與班別序列則使用有限狀態轉移或允許組合表
+表示。
+
+\subsection{The M Problem}
+
+\subsubsection{Sets and Indices}
+
+定義下列集合：
+
+\begin{description}
+  \item[\(\mathcal{E}\)] 有效的 M 人員集合，索引為 \(e\)。
+
+  \item[\(\mathcal{D}^{M}\)] 目標月份內的日期集合。
+
+  \item[\(\mathcal{D}^{+}\)] 目標月份月底之後固定 \(K\) 日的延伸日期集合。
+    若目標月份最後一天為 \(d_{\mathrm{end}}\)，則
+    \[
+      \mathcal{D}^{+}
+      =
+      \{d_{\mathrm{end}}+1,\ldots,d_{\mathrm{end}}+K\}.
+    \]
+
+  \item[\(\mathcal{D}\)] 本次 CP-SAT 模型使用的完整日期集合，
+    \(\mathcal{D}=\mathcal{D}^{M}\cup\mathcal{D}^{+}\)。
+
+  \item[\(\mathcal{L}\)] 車站集合，
+    \(\mathcal{L}=\{\mathrm{LB01},\ldots,\mathrm{LB12}\}\)。
+
+  \item[\(\mathcal{S}\)] 正常班別集合，
+    \(\mathcal{S}=\{\mathrm{E},\mathrm{A},\mathrm{N}\}\)，分別表示早班、午班與夜班。
+
+  \item[\(\mathcal{C}\)] 八週休假週期集合，索引為 \(c\)。
+
+  \item[\(\mathcal{G}\)] 車站群組集合，
+    \(\mathcal{G}=\{\mathrm{A},\mathrm{B},\mathrm{C},\mathrm{D}\}\)。
+
+  \item[\(\mathcal{D}^{wd}\)] 平日集合，即星期一至星期五且不是國定假日的日期。
+
+  \item[\(\mathcal{D}^{hol}\)] 假日集合，即星期六、星期日或國定假日的日期。
+
+  \item[\(\mathcal{L}^{ext}\)] 允許使用外派人力的車站集合，
+    \(\mathcal{L}^{ext}=\{\mathrm{LB02},\mathrm{LB04},\mathrm{LB11}\}\)。
+\end{description}
+
+車站群組定義如下：
+\[
+  \begin{aligned}
+    \mathcal{L}_{A}&=\{\mathrm{LB01},\mathrm{LB02},\mathrm{LB03}\},\\
+    \mathcal{L}_{B}&=\{\mathrm{LB04},\mathrm{LB05},\mathrm{LB06}\},\\
+    \mathcal{L}_{C}&=\{\mathrm{LB07},\mathrm{LB08},\mathrm{LB09}\},\\
+    \mathcal{L}_{D}&=\{\mathrm{LB10},\mathrm{LB11},\mathrm{LB12}\}.
+  \end{aligned}
+\]
+
+\subsubsection{Parameters}
+
+令 \(K\in\mathbb{Z}_{\geq 0}\) 表示固定延伸檢查天數。對每位人員
+\(e\)，令 \(h_e\in\mathcal{L}\) 表示其所屬車站，並定義合法工作車站集合
+\[
+  \mathcal{A}_e
+  =
+  \{l\in\mathcal{L}:g(l)=g(h_e)\},
+\]
+其中 \(g(l)\) 表示車站 \(l\) 所屬的群組。
+
+令 \(b_{dls}\in\mathbb{Z}_{\geq 0}\) 表示日期 \(d\)、車站 \(l\)、班別
+\(s\) 的必要人數。M 的每日固定需求為
+\[
+  b_{dl\mathrm{E}}=1,
+  \qquad
+  b_{dl\mathrm{A}}=1
+  \qquad
+  \forall d\in\mathcal{D},\ l\in\mathcal{L},
+\]
+以及
+\[
+  b_{dl\mathrm{N}}
+  =
+  \begin{cases}
+    1, & l\in\{\mathrm{LB01},\mathrm{LB06},\mathrm{LB08},\mathrm{LB12}\},\\
+    0, & \text{otherwise}.
+  \end{cases}
+\]
+星期六、星期日與國定假日使用相同需求。
+
+M 的班別時間固定為：早班 \(06{:}30\)--\(14{:}30\)、午班
+\(14{:}20\)--\(22{:}20\)、夜班 \(22{:}00\)--翌日 \(07{:}00\)。夜班歸屬於
+其開始日期。
+
+令 \(p_{ed}\in\{0,1\}\) 表示人員 \(e\) 是否在日期 \(d\) 提出指定休假
+\(R^*\)。\(R^*\) 只是休假申請標記，不是一種獨立的休假額度；若申請被
+滿足，求解器仍須決定該日實際使用一般 \(R\) 或 \(R1\)。
+
+令 \(z_{ed}\in\{0,1\}\) 表示日期 \(d\) 是否已有固定勤務 \(X\)。每筆
+\(X\) 另包含實際開始時間、結束時間與說明，並由輸入資料固定，不由求解器
+移動。
+
+對每個八週週期 \(c\)，令 \(H_c\in\mathbb{Z}_{\geq 0}\) 表示該週期必須
+配置的 \(R1\) 數量，即該週期認定的國定假日數。令
+\(\overline{R}_{ec}\) 與 \(\overline{R1}_{ec}\) 分別表示人員 \(e\) 在本次模型
+開始前，週期 \(c\) 已使用的一般 \(R\) 與 \(R1\) 數量。
+
+令 \(n\) 與 \(m\) 分別表示目標月份依月曆應配置的一般 \(R\) 與 \(R1\)
+基準數量。另由歷史班表計算月初邊界狀態，包括最近一次實際工作結束時間、
+連續日數計數，以及軟規則所需的未結束區段狀態。公平性規則所需的歷史累積量
+分別記為 \(\overline{R}^{wd}_{ec}\)、\(\overline{R}^{hol}_{ec}\) 與
+\(\overline{S}_{ec}\)，代表週期開始至本次模型開始前的平日休假數、假日
+休假數與跨站支援次數。
+
+\subsubsection{Solver Input and Output Format}
+
+為兼顧人工閱讀與程式處理，班表相關資料採用一人一列、一天一欄的寬表
+CSV。設定資料則集中於單一設定檔，軟規則分組與權重集中於一個容易修改的
+程式檔。
+
+\paragraph{history.csv}
+
+\texttt{history.csv} 使用既有正式班表，其欄位格式與求解器輸出完全相同。
+若單一前期班表已涵蓋所有必要日期，可直接讀入；否則將數份既有班表依日期欄
+橫向合併：
+
+\begin{center}
+  \footnotesize
+  \xeCJKsetup{CJKecglue={}}
+  \begin{tabular}{|c|c|c|c|c|c|}
+    \hline
+    employee\_id & name & home\_station & 2026-08-01 & 2026-08-02 & 2026-08-03 \\
+    \hline
+    M001 & 王小明 & LB01 & LB01早 & R & LB02午 \\
+    \hline
+    M002 & 陳小華 & LB02 & R1 & LB02夜 & R*[R] \\
+    \hline
+    M003 & 林小美 & LB03 & LB01午 & X[0900-1700|教育訓練] & R*[R1] \\
+    \hline
+  \end{tabular}
+\end{center}
+
+程式由歷史日期欄自動計算八週週期已使用的 \(R\)、\(R1\)、月初連續日數、
+最近工作結束時間及必要的區段狀態，不要求使用者另外填寫摘要欄位。
+\texttt{history.csv} 至少須涵蓋目前八週週期起始日至目標月份前一天。若需精確
+承接跨期的同班別區塊或其他軟規則狀態，資料還應向前涵蓋至相關未結束區段的
+起點；若前一期班表不足，則將更早的正式班表日期欄併入同一檔案。
+
+\paragraph{input.csv}
+
+\texttt{input.csv} 使用相同寬表格式。目標月份中交由求解器決定的儲存格留白，
+只填入指定休假、固定勤務或其他固定指派：
+
+\begin{center}
+  \xeCJKsetup{CJKecglue={}}
+  \footnotesize
+  \begin{tabular}{|c|c|c|c|c|c|}
+    \hline
+    employee\_id & name & home\_station & 2026-09-01 & 2026-09-02 & 2026-09-03 \\
+    \hline
+    M001 & 王小明 & LB01 & R* & & X[09:00-17:00|教育訓練] \\
+    \hline
+    M002 & 陳小華 & LB02 & & LB02夜 & \\
+    \hline
+  \end{tabular}
+\end{center}
+
+\paragraph{Cell syntax}
+
+日期儲存格使用下列簡單語法：
+
+\begin{itemize}
+    \xeCJKsetup{CJKecglue={}}
+  \item \texttt{LB01早}、\texttt{LB02午}、\texttt{LB06夜}：正常班，無論是否在
+    本站工作都明確寫出車站與班別。
+  \item \texttt{R}：一般休假；\texttt{R1}：國定假日額度休假。
+  \item \texttt{R*}：本期休假申請，實際使用 \(R\) 或 \(R1\) 由求解器決定。
+  \item \texttt{R*[R]}、\texttt{R*[R1]}：已滿足的休假申請，方括號內保存其
+    實際消耗的休假類型。此格式用於輸出與歷史資料。
+  \item \texttt{X[09:00-17:00|教育訓練]}：同日固定勤務。跨日勤務則在
+    儲存格內填入完整起訖日期時間，例如：
+  \begin{minted}{text}
+X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
+  \end{minted}
+  \item 空白：該日完全交由求解器決定。
+\end{itemize}
+
+\paragraph{schedule\_config.json}
+
+非表格式資料集中於 \texttt{schedule\_config.json}，包括目標月份、延伸天數、
+月休基準、國定假日及八週週期：
+
+\begin{minted}{json}
+{
+  "targetMonth": "2026-09",
+  "extensionDays": 7,
+  "monthlyTargets": { "r": 8, "r1": 1 },
+  "nationalHolidays": ["2026-09-28"],
+  "cycles": [
+    {
+      "start": "2026-08-10",
+      "end": "2026-10-04",
+      "requiredR": 16,
+      "requiredR1": 2
+    }
+  ]
+}
+\end{minted}
+
+\paragraph{軟規則}
+
+軟規則的啟用狀態、分組、權重與可調參數直接寫在程式中，但集中於單一檔案，避免散落於模型建構程式。
+
+\paragraph{schedule.csv}
+
+求解器輸出 \texttt{schedule.csv}，其格式與 \texttt{history.csv} 相同。其日期欄可直接附加至既有歷史資料；下一期求解前，程式只需保留足以重建硬限制與跨期狀態
+的滾動歷史區間。正式輸出只包含目標月份；延伸日期僅存在於本次求解模型中，
+不發布，也不成為下一期固定歷史。
+
+\subsubsection{Decision Variables}
+
+對每位人員、日期、車站與正常班別，定義
+\[
+  x_{edls}\in\{0,1\},
+\]
+其中 \(x_{edls}=1\) 表示人員 \(e\) 在日期 \(d\) 於車站 \(l\) 上班別 \(s\)。
+
+實際休假類型只包含
+\[
+  r_{ed}\in\{0,1\},
+  \qquad
+  r^{1}_{ed}\in\{0,1\},
+\]
+分別表示一般 \(R\) 與 \(R1\)。\(R^*\) 不建立獨立狀態變數；其是否被滿足，
+由參數 \(p_{ed}\) 與實際休假變數共同判斷。
+
+外派班位變數為 \(a_{dls}\in\mathbb{Z}_{\geq 0}\)。另定義下列衍生變數：
+\[
+  y_{eds}=\sum_{l\in\mathcal{A}_e}x_{edls},
+  \qquad
+  w_{ed}=\sum_{s\in\mathcal{S}}y_{eds}+z_{ed},
+  \qquad
+  \rho_{ed}=r_{ed}+r^{1}_{ed}.
+\]
+其中 \(y_{eds}\) 表示當日正常班別、\(w_{ed}\) 表示實際工作日，\(\rho_{ed}\)
+表示當日為任一種實際休假。
+
+\subsubsection{Hard Constraints}
+
+\paragraph{Daily unique assignment (\texttt{GEN-H-01})}
+
+每位人員每天恰好具有一個實際狀態：
+\[
+  \sum_{l\in\mathcal{A}_e}\sum_{s\in\mathcal{S}}x_{edls}
+  +r_{ed}+r^{1}_{ed}+z_{ed}=1,
+  \qquad
+  \forall e\in\mathcal{E},\ d\in\mathcal{D}.
+\]
+因此固定 \(X\) 當日不能再安排正常班或休假。若 \texttt{input.csv} 已填入固定
+正常班、\(R\) 或 \(R1\)，則前處理階段將相應變數固定為 1。\texttt{R*} 只要求
+當日盡量休假，不固定其底層休假類型。
+
+\paragraph{Legal working stations (\texttt{M-H-01})}
+
+若車站 \(l\notin\mathcal{A}_e\)，則 \(x_{edls}=0\)。因此人員只能在本人所屬
+車站或同群組車站工作，不得跨群組。
+
+\paragraph{Coverage and external-staffing restriction (\texttt{M-H-02}, \texttt{M-H-03})}
+
+嚴格可行解必須完全補足所有必要班位：
+\[
+  \sum_{e\in\mathcal{E}}x_{edls}+a_{dls}=b_{dls},
+  \qquad
+  \forall d\in\mathcal{D},\ l\in\mathcal{L},\ s\in\mathcal{S}.
+\]
+對所有 \(l\notin\mathcal{L}^{ext}\)，固定 \(a_{dls}=0\)。外派只補足班位，
+不代表一名虛構的 M 人員。
+
+\paragraph{Minimum eleven-hour rest (\texttt{GEN-H-03})}
+
+令 \(\mathcal{I}\) 為所有休息時間少於十一小時的工作區間組合。對任一組不相容
+的正常班別 \(((d,s),(d',s'))\in\mathcal{I}\)，加入
+\[
+  y_{eds}+y_{ed's'}\leq 1,
+  \qquad
+  \forall e\in\mathcal{E}.
+\]
+若某個正常班別與固定 \(X\) 之間的休息時間不足十一小時，則直接固定相應的
+\(y_{eds}=0\)。兩筆固定 \(X\) 彼此間隔不足十一小時時，輸入驗證應直接回報衝突，
+而不是將不合法資料送入求解器。例如 M 午班於 \(22{:}20\) 結束，而隔日早班於
+\(06{:}30\) 開始，間隔僅八小時十分，因此不得同時選取。
+
+\paragraph{At most six consecutive days without a general rest (\texttt{GEN-H-02})}
+
+定義 \(q_{ed}\in\{0,1,\ldots,6\}\) 表示人員 \(e\) 在日期 \(d\) 結束後，自
+最近一次一般 \(R\) 以來連續經過的排班日數。\(R^*\) 只是一個顯示與申請標記，
+因此是否中斷計數取決於其底層休假類型。
+
+狀態更新分成兩種情況：
+\begin{itemize}
+  \item 若日期 \(d\) 使用一般 \(R\)，則計數歸零：\(q_{ed}=0\)。
+  \item 若日期 \(d\) 為正常班、\(X\) 或 \(R1\)，則
+    \(q_{ed}=q_{e,d-1}+1\)。
+\end{itemize}
+
+模型要求 \(q_{ed}\leq 6\)。因此底層為一般 \(R\) 的 \texttt{R*[R]} 會中斷
+計數，而底層為 \(R1\) 的 \texttt{R*[R1]} 仍使計數增加一。例如
+\(\mathrm{E},\mathrm{E},\mathrm{E},R1,\mathrm{A},\mathrm{A},\mathrm{A}\) 的計數為
+\(1,2,3,4,5,6,7\)，故此排列不合法。月初初始值由歷史班表計算。
+
+\paragraph{Eight-week general rest quota (\texttt{GEN-H-04})}
+
+對每個週期 \(c\)，令 \(\mathcal{D}_c=c\cap\mathcal{D}\)，並令
+\[
+  F_c=|\{d\in c:d>\max\mathcal{D}\}|
+\]
+表示模型區間結束後，週期中仍未排入模型的日期數。
+
+若本次模型已涵蓋週期 \(c\) 的結束日，則每位人員必須滿足
+\[
+  \overline{R}_{ec}+\sum_{d\in\mathcal{D}_c}r_{ed}=16.
+\]
+若本次模型尚未涵蓋週期結束日，則同時要求
+\[
+  \overline{R}_{ec}+\sum_{d\in\mathcal{D}_c}r_{ed}\leq 16,
+  \qquad
+  \overline{R}_{ec}+\sum_{d\in\mathcal{D}_c}r_{ed}+F_c\geq 16.
+\]
+第一式避免超用，第二式確保剩餘日期仍足以補足 16 個一般 \(R\)。
+
+\paragraph{Eight-week national-holiday rest quota (\texttt{GEN-H-04})}
+
+每個八週週期中的 \(R1\) 數量必須等於該週期國定假日數量 \(H_c\)。若本次模型
+已涵蓋週期結束日，則
+\[
+  \overline{R1}_{ec}+\sum_{d\in\mathcal{D}_c}r^{1}_{ed}=H_c.
+\]
+若尚未涵蓋週期結束日，則要求
+\[
+  \overline{R1}_{ec}+\sum_{d\in\mathcal{D}_c}r^{1}_{ed}\leq H_c,
+  \qquad
+  \overline{R1}_{ec}+\sum_{d\in\mathcal{D}_c}r^{1}_{ed}+F_c\geq H_c.
+\]
+\(R1\) 可以安排在週期內任意日期，不必安排於國定假日當日。
+
+當週期尚未結束時，還需確認一般 \(R\) 與 \(R1\) 可在剩餘日期中同時補足。由於
+同一日不能同時使用兩種休假，因此加入聯合可補足性限制
+\[
+  \overline{R}_{ec}+\overline{R1}_{ec}
+  +\sum_{d\in\mathcal{D}_c}(r_{ed}+r^{1}_{ed})+F_c
+  \geq 16+H_c.
+\]
+單獨檢查兩種額度的可補足性不足以保證此條件成立。
+
+\paragraph{Fixed events and historical state (\texttt{GEN-H-05})}
+
+所有固定 \(X\) 與 \texttt{input.csv} 中的固定指派均不得由求解器改寫。
+\texttt{history.csv} 不直接成為本期決策變數，而是在建模前轉換為下列初始狀態：
+
+\begin{itemize}
+  \item 各八週週期已使用的一般 \(R\) 與 \(R1\) 數量；
+  \item 最近一次實際工作的結束時間；
+  \item 自最近一次一般 \(R\) 以來的連續日數；
+  \item 尚未結束的連續工作區段與同班別區塊；
+  \item 最近一個有效正常班別，以及換班規則所需的狀態。
+\end{itemize}
+
+\subsubsection{Soft Constraints}
+
+\paragraph{Requested rest (\texttt{GEN-R-01})}
+
+對所有滿足 \(p_{ed}=1\) 的人員日期 \((e,d)\)，只要當日實際使用一般
+\(R\) 或 \(R1\)，即視為申請被滿足。因此未滿足指定休假的違反量為
+\[
+  \Phi^{R^*}
+  =
+  \sum_{\substack{e\in\mathcal{E},\ d\in\mathcal{D}^{M}\\p_{ed}=1}}
+  (1-r_{ed}-r^{1}_{ed}).
+\]
+若申請以一般 \(R\) 滿足，輸出為 \texttt{R*[R]}；若以 \(R1\) 滿足，輸出為
+\texttt{R*[R1]}。
+
+\paragraph{Monthly general-rest distribution}
+
+每位人員在目標月份內實際使用的一般休假數為
+\(Q^R_e=\sum_{d\in\mathcal{D}^{M}}r_{ed}\)。以月曆基準 \(n\) 為中心，
+\([n-1,n+1]\) 內不產生懲罰。定義超出容許區間的偏離量
+\[
+  \Delta^R_e=\max\{0,|Q^R_e-n|-1\},
+\]
+並令
+\[
+  \Phi^{month,R}=\sum_{e\in\mathcal{E}}(\Delta^R_e)^2.
+\]
+因此偏離基準 0 或 1 日時懲罰為 0；偏離 2、3、4 日時，懲罰依序為
+1、4、9。以下將此離散函數記為
+\(f_n(q)=[\max\{0,|q-n|-1\}]^2\)。
+
+\paragraph{Monthly national-holiday-rest distribution}
+
+同理，令 \(Q^{R1}_e=\sum_{d\in\mathcal{D}^{M}}r^{1}_{ed}\)。以 \(m\) 為基準，
+\([m-1,m+1]\) 內不產生懲罰，並定義
+\[
+  \Delta^{R1}_e=\max\{0,|Q^{R1}_e-m|-1\},
+  \qquad
+  \Phi^{month,R1}=\sum_{e\in\mathcal{E}}(\Delta^{R1}_e)^2.
+\]
+以下將對應的離散函數記為
+\(f_m(q)=[\max\{0,|q-m|-1\}]^2\)。上述平方懲罰可使用整數查表，
+或以絕對值、最大值與乘法等整數限制建立。兩項月休分布皆為軟性偏好，
+不取代八週週期的精確額度限制。此規則會抑制在單一月份過早使用過多週期額度，
+但因其仍為軟限制，必要時不保證一定保留固定數量至後續月份。
+
+\paragraph{External staffing (\texttt{M-S-EXT})}
+
+外派班位違反量為
+\[
+  \Phi^{ext}
+  =
+  \sum_{d\in\mathcal{D}^{M}}
+  \sum_{l\in\mathcal{L}^{ext}}
+  \sum_{s\in\mathcal{S}}a_{dls}.
+\]
+
+\paragraph{Non-home-station assignments (\texttt{M-S-HOME})}
+
+定義人員 \(e\) 在日期 \(d\) 是否跨站支援為
+\[
+  u_{ed}
+  =
+  \sum_{s\in\mathcal{S}}
+  \sum_{\substack{l\in\mathcal{A}_e\\l\neq h_e}}x_{edls}.
+\]
+非本站工作違反量為
+\(\Phi^{home}=\sum_{e\in\mathcal{E}}\sum_{d\in\mathcal{D}^{M}}u_{ed}\)。
+
+\paragraph{Continuous work-streak length (\texttt{GEN-S-STREAK})}
+此規則避免工作日與休假過度零碎，或工作區段長期貼近六日上限。
+此軟規則中的連續工作區段，是連續曆日皆為正常班或 \(X\) 的最大區段。
+一般 \(R\) 與 \(R1\) 都會結束此區段；這與前述「最多連續六日」硬限制不同，
+因為該硬限制把 \(R1\) 視為未出現一般休假的一日。
+
+定義區段偏離函數
+\[
+  D(L)
+  =
+  \begin{cases}
+    4, & L=1,\\
+    2, & L=2,\\
+    1, & L=3,\\
+    0, & 4\leq L\leq 5,\\
+    2(L-5), & L\geq 6.
+  \end{cases}
+\]
+因此長度 1、2、3、4--5、6 的懲罰分別為 4、2、1、0、2。
+
+令 \(c^{work}_{ed}\) 表示截至日期 \(d\) 的連續工作區段長度。其更新方式為：
+\begin{itemize}
+  \item 若 \(w_{ed}=1\)，則 \(c^{work}_{ed}=c^{work}_{e,d-1}+1\)。
+  \item 若 \(w_{ed}=0\)，則 \(c^{work}_{ed}=0\)；若前一日仍在工作區段中，
+    則該區段產生 \(D(c^{work}_{e,d-1})\) 的懲罰。
+\end{itemize}
+
+月初承接歷史區段長度。只有在目標月份內結束的區段才計入本月目標；月底仍
+未結束的區段不在本月作最終長度評分。總違反量記為 \(\Phi^{streak}\)。
+
+\paragraph{Same-shift block length (\texttt{M-S-BLOCK})}
+此規則避免正常班別切換過於頻繁，以維持較穩定的作息。
+同班別區塊只觀察正常班別。一般 \(R\)、\(R1\) 與 \(X\) 都不切斷區塊，其中
+\(X\) 完全略過；只有出現不同正常班別時，原區塊才結束。
+
+令 \(\lambda_{ed}\in\{0,\mathrm{E},\mathrm{A},\mathrm{N}\}\) 表示最近一個有效正常
+班別，令 \(\ell_{ed}\) 表示目前同班別區塊累積的正常班次數。狀態更新分為：
+
+\begin{itemize}
+  \item 若日期 \(d\) 沒有正常班，則區塊保持不變：
+    \((\lambda_{ed},\ell_{ed})=(\lambda_{e,d-1},\ell_{e,d-1})\)。
+  \item 若尚未建立任何正常班區塊，即 \(\lambda_{e,d-1}=0\)，且當日為正常班別
+    \(s\)，則直接建立第一個區塊：
+    \((\lambda_{ed},\ell_{ed})=(s,1)\)，不產生懲罰。
+  \item 若已存在區塊，且當日正常班別 \(s=\lambda_{e,d-1}\)，則
+    \((\lambda_{ed},\ell_{ed})=(s,\ell_{e,d-1}+1)\)。
+  \item 若已存在區塊，且當日正常班別 \(s\neq\lambda_{e,d-1}\)，則原區塊產生
+    \(D(\ell_{e,d-1})\) 的懲罰，並建立新區塊
+    \((\lambda_{ed},\ell_{ed})=(s,1)\)。
+\end{itemize}
+
+月初承接歷史中的上一班別與累積次數。月底仍未結束的區塊不在本月作最終
+長度評分。總違反量記為 \(\Phi^{block}\)。
+
+\paragraph{Night--rest--early pattern (\texttt{M-S-NIGHT-EARLY})}
+
+對所有完全位於目標月份內的三日視窗，令 \(\pi^{NE}_{ed}=1\) 若且唯若日期
+\(d\) 為夜班、日期 \(d+1\) 為任一種實際休假、日期 \(d+2\) 為早班。其條件為
+\[
+  y_{ed\mathrm{N}}=1,
+  \qquad
+  \rho_{e,d+1}=1,
+  \qquad
+  y_{e,d+2,\mathrm{E}}=1.
+\]
+此布林乘積以標準 AND 線性化限制建立，總違反量為
+\(\Phi^{NE}=\sum_{e,d}\pi^{NE}_{ed}\)。
+
+\paragraph{Night--rest--afternoon pattern (\texttt{M-S-NIGHT-AFTERNOON})}
+
+同理，令 \(\pi^{NA}_{ed}=1\) 若且唯若日期 \(d\) 為夜班、日期 \(d+1\) 為任一
+種實際休假、日期 \(d+2\) 為午班。總違反量為
+\(\Phi^{NA}=\sum_{e,d}\pi^{NA}_{ed}\)。
+
+\paragraph{Shift change without rest (\texttt{M-S-RESTSWITCH})}
+
+令 \(\gamma_{ed}\in\{0,\mathrm{E},\mathrm{A},\mathrm{N}\}\) 表示自最近一次實際休假
+後，最近出現的正常班別。更新規則如下：
+
+\begin{itemize}
+  \item 若當日為一般 \(R\) 或 \(R1\)，則 \(\gamma_{ed}=0\)。
+  \item 若當日為 \(X\)，則 \(\gamma_{ed}=\gamma_{e,d-1}\)。
+  \item 若當日為正常班別 \(s\)，則 \(\gamma_{ed}=s\)。若
+    \(\gamma_{e,d-1}\notin\{0,s\}\)，則產生一次違反。
+\end{itemize}
+
+因此 \(\mathrm{E}\rightarrow X\rightarrow\mathrm{A}\) 仍視為未經休假換班。總違反量
+記為 \(\Phi^{restswitch}\)。
+
+\paragraph{Preferred shift rotation (\texttt{M-S-ROTATE})}
+
+令 \(\eta_{ed}\in\{0,\mathrm{E},\mathrm{A},\mathrm{N}\}\) 表示截至日期 \(d\) 最近出現的
+有效正常班別；一般 \(R\)、\(R1\) 與 \(X\) 均不改變此狀態。偏好轉移集合為
+\[
+  \mathcal{P}
+  =
+  \{(\mathrm{E},\mathrm{A}),(\mathrm{A},\mathrm{N}),(\mathrm{N},\mathrm{E})\}.
+\]
+當新的正常班別 \(s\) 與前一有效正常班別不同，且
+\((\eta_{e,d-1},s)\notin\mathcal{P}\)，則產生一次違反。總違反量記為
+\(\Phi^{rotate}\)。
+
+\paragraph{Weekday rest fairness (\texttt{GEN-S-WEEKDAY-R})}
+
+對每位人員與八週週期 \(c\)，定義平日休假數
+\[
+  R^{wd}_{ec}
+  =
+  \overline{R}^{wd}_{ec}
+  +
+  \sum_{d\in c\cap\mathcal{D}^{M}\cap\mathcal{D}^{wd}}\rho_{ed}.
+\]
+其中國定假日即使落在星期一至星期五，也不屬於平日集合。對每個車站群組
+\(g\) 及週期 \(c\)，平日休假公平性違反量為
+\[
+  \Phi^{weekday}
+  =
+  \sum_{g,c}
+  \left(
+    \max_{e:g(h_e)=g}R^{wd}_{ec}
+    -
+    \min_{e:g(h_e)=g}R^{wd}_{ec}
+  \right).
+\]
+
+\paragraph{Holiday rest fairness (\texttt{GEN-S-WEEKEND-R})}
+
+令
+\[
+  R^{hol}_{ec}
+  =
+  \overline{R}^{hol}_{ec}
+  +
+  \sum_{d\in c\cap\mathcal{D}^{M}\cap\mathcal{D}^{hol}}\rho_{ed}.
+\]
+假日包含星期六、星期日及所有國定假日。假日休假公平性違反量為
+\[
+  \Phi^{holiday}
+  =
+  \sum_{g,c}
+  \left(
+    \max_{e:g(h_e)=g}R^{hol}_{ec}
+    -
+    \min_{e:g(h_e)=g}R^{hol}_{ec}
+  \right).
+\]
+
+\paragraph{Cross-station support fairness (\texttt{M-S-SUPPORT-FAIR})}
+
+人員 \(e\) 在週期 \(c\) 的跨站支援次數為
+\[
+  S_{ec}
+  =
+  \overline{S}_{ec}
+  +
+  \sum_{d\in c\cap\mathcal{D}^{M}}u_{ed}.
+\]
+對每個車站群組 \(g\) 及週期 \(c\)，跨站支援公平性違反量為
+\[
+  \Phi^{support}
+  =
+  \sum_{g,c}
+  \left(
+    \max_{e:g(h_e)=g}S_{ec}
+    -
+    \min_{e:g(h_e)=g}S_{ec}
+  \right).
+\]
+\subsubsection{Objective Terms}
+
+M 模型目前定義下列軟性違反量：
+\[
+  \begin{aligned}
+    \Phi^{R^*}        &:\text{未滿足指定休假},\\
+    \Phi^{month,R}    &:\text{本月一般 }R\text{ 數量偏離},\\
+    \Phi^{month,R1}   &:\text{本月 }R1\text{ 數量偏離},\\
+    \Phi^{ext}        &:\text{外派班位},\\
+    \Phi^{home}       &:\text{非本站工作},\\
+    \Phi^{streak}     &:\text{連續工作區段長度},\\
+    \Phi^{block}      &:\text{同班別區塊長度},\\
+    \Phi^{NE}         &:\text{夜--休--早},\\
+    \Phi^{NA}         &:\text{夜--休--午},\\
+    \Phi^{restswitch} &:\text{未經休假換班},\\
+    \Phi^{rotate}     &:\text{非偏好輪轉},\\
+    \Phi^{weekday}    &:\text{平日休假公平},\\
+    \Phi^{holiday}    &:\text{假日休假公平},\\
+    \Phi^{support}    &:\text{跨站支援公平}.
+  \end{aligned}
+\]
+
+考量各違反量的業務重要性與原始尺度差異，本模型採用
+「組間字典序、組內加權和」的最佳化方式。首先定義五個目標群組：
+
+\[
+  J_1=\Phi^{R^*},
+\]
+
+\[
+  J_2=\Phi^{ext},
+\]
+
+\[
+  J_3
+  =
+  4\Phi^{month,R}
+  +
+  8\Phi^{month,R1},
+\]
+
+\[
+  \begin{aligned}
+    J_4={}&
+    8\Phi^{home}
+    +3\Phi^{streak}
+    +2\Phi^{block}\\
+    &+12\Phi^{NE}
+    +8\Phi^{NA}
+    +6\Phi^{restswitch},
+  \end{aligned}
+\]
+
+以及
+
+\[
+  J_5
+  =
+  \Phi^{rotate}
+  +2\Phi^{weekday}
+  +4\Phi^{holiday}
+  +3\Phi^{support}.
+\]
+
+各群組的意義如下：
+
+\begin{itemize}
+  \item \(J_1\)：優先滿足人員提出的指定休假。
+  \item \(J_2\)：在不降低指定休假滿足程度的前提下，減少外派班位。
+  \item \(J_3\)：使一般 \(R\) 與 \(R1\) 的月內數量接近月曆基準。
+  \item \(J_4\)：改善主要班表品質，包括跨站工作、工作區段及不良班別模式。
+  \item \(J_5\)：最後改善班別輪轉與群組內公平性。
+\end{itemize}
+
+完整最佳化目標為
+
+\[
+  \operatorname{lexmin}
+  \left(
+    J_1,\,
+    J_2,\,
+    J_3,\,
+    J_4,\,
+    J_5
+  \right).
+\]
+
+亦即，求解器先取得 \(J_1\) 的最優值並將其固定，再依序最佳化
+\(J_2\) 至 \(J_5\)。因此低順位群組無法以犧牲高順位群組為代價取得改善；
+各權重只表示同一群組內不同軟規則之間的相對交換比例。上述權重作為初始設定，
+後續仍可依實際測試班表的違反量分布進行調整。
+
+\subsubsection{Soft-rule Scale Summary}
+
+令 \(N=|\mathcal{E}|\)、\(D=|\mathcal{D}^{M}|\)，並令 \(P\) 為當月指定休假
+申請數。下表列出各違反量的原始尺度。數值範圍是為了協助分組與加權，並不
+代表建議權重；實際尺度仍應以測試資料統計為準。
+
+\small
+\begin{longtable}{p{3.0cm}p{3.0cm}p{4.4cm}p{5.0cm}}
+  \toprule
+  軟規則 & 計算單位 & 參數化上限或量級 & 以 \(N=36\text{--}48\)、\(D=30\text{--}31\) 估計 \\
+  \midrule
+  \endfirsthead
+  \toprule
+  軟規則 & 計算單位 & 參數化上限或量級 & 以 \(N=36\text{--}48\)、\(D=30\text{--}31\) 估計 \\
+  \midrule
+  \endhead
+  未滿足 \(R^*\) & 申請人日 & \(0\leq\Phi^{R^*}\leq P\) & 通常為 0 至數十；可直接與申請數比較。 \\
+  本月一般 \(R\) & 超出 \(\pm1\) 後的平方懲罰 & 理論上至 \(N\max_q f_n(q)\) & 合法班表通常為 0 至數十；極端值可達數千以上，平方項可能主導同組目標。 \\
+  本月 \(R1\) & 超出 \(\pm1\) 後的平方懲罰 & 理論上至 \(N\max_q f_m(q)\) & 通常小於一般 \(R\)，但仍應避免與純計數規則直接使用相同權重。 \\
+  外派班位 & 班位數 & \(0\leq\Phi^{ext}\leq 6D\) & 上限約為 180--186。 \\
+  非本站工作 & 人日 & \(0\leq\Phi^{home}\leq ND\) & 上限約為 1080--1488。 \\
+  連續工作區段 & 區段偏離值 & 約不超過 \(4N\lceil D/2\rceil\) & 上限約為 2160--3072；實際通常遠低於上限。 \\
+  同班別區塊 & 區塊偏離值 & 粗略上限約 \(4ND\) & 上限約為 4320--5952；短區塊很多時會快速累積。 \\
+  夜--休--早 & 三日模式次數 & \(0\leq\Phi^{NE}\leq N(D-2)\) & 上限約為 1008--1392。 \\
+  夜--休--午 & 三日模式次數 & \(0\leq\Phi^{NA}\leq N(D-2)\) & 上限約為 1008--1392。 \\
+  未經休假換班 & 換班次數 & \(0\leq\Phi^{restswitch}\leq N(D-1)\) & 上限約為 1044--1440。 \\
+  非偏好輪轉 & 換班次數 & \(0\leq\Phi^{rotate}\leq N(D-1)\) & 上限約為 1044--1440。 \\
+  平日休假公平 & 群組內最大值減最小值 & 每群組至多為週期內平日數 & 四群組合計通常為 0--160 左右。 \\
+  假日休假公平 & 群組內最大值減最小值 & 每群組至多為週期內假日數 & 四群組合計通常為 0--64 至 96。 \\
+  跨站支援公平 & 群組內最大值減最小值 & 每群組至多為週期工作日數 & 四群組合計上限約 224，實際通常明顯較小。 \\
+  \bottomrule
+\end{longtable}
+\normalsize
+
+平方懲罰與純計數型違反量的尺度差異最大。若放在同一加權層，應先正規化，
+或使用較小權重；公平性規則的原始值通常較小，若希望其效果可見，通常需要較
+高的相對權重。
+
+\subsubsection{Alternative Candidates}
+
+在最終軟規則品質固定後，系統可產生最多三份候選班表。候選差異只計算
+\((e,d)\in\mathcal{E}\times\mathcal{D}^{M}\) 中真正由求解器決定的格子。所有由
+\texttt{input.csv} 固定的正常班、\(R\)、\(R1\) 或 \(X\)，以及延伸日期，均不列入
+差異分母。\(R^*\) 只固定休假申請，底層使用 \(R\) 或 \(R1\) 仍由求解器決定，
+因此該格仍列入比較。
+
+候選比較依實際排班狀態進行，忽略 \(R^*\) 的顯示標記：\texttt{R} 與
+\texttt{R*[R]} 視為相同結果，\texttt{R1} 與 \texttt{R*[R1]} 視為相同結果；一般
+\(R\) 與 \(R1\) 仍視為不同狀態。若可比較格子數為 \(N_{cell}\)，兩份候選至少
+須有 \(\lceil0.1N_{cell}\rceil\) 個格子不同，第三份候選需分別與第一、第二份
+達到此門檻。
+
+\subsubsection{Shortage Analysis}
+
+若嚴格 M 模型被證明不可行，可建立缺班分析模型。增加
+\(u^{miss}_{dls}\in\mathbb{Z}_{\geq 0}\)，並將 Coverage 改為
+\[
+  \sum_{e\in\mathcal{E}}x_{edls}+a_{dls}+u^{miss}_{dls}=b_{dls}.
+\]
+缺班分析只放寬班位需求，其他人員硬限制仍須成立，並優先最小化
+\(\sum_{d,l,s}u^{miss}_{dls}\)。該結果只用於分析不可行原因，不視為合法候選
+班表。
+
+\subsection{the T problem}
+
+T 人員以「月班組」方式輪動：每位人員在每個月份均明確隸屬早、午或夜班組，
+求解器只決定其每日是否正常出勤、休假或執行固定勤務，不得自行將人員調往其他
+班組。T 模型沒有 M 的車站班位與外派變數；其核心營運目標是維持各班組的出勤、
+專業組成與能力水準。
+
+本節沿用前節的日期集合 \(\mathcal{D}^{M}\)、\(\mathcal{D}^{+}\)、
+\(\mathcal{D}\)、八週週期集合 \(\mathcal{C}\)、班別集合
+\(\mathcal{S}=\{\mathrm{E},\mathrm{A},\mathrm{N}\}\)，以及平日與假日集合
+\(\mathcal{D}^{wd}\)、\(\mathcal{D}^{hol}\)。其中 \(\mathcal{D}^{M}\) 的上標
+表示 target month，而不是 M 人員。
+
+\subsubsection{Sets and Indices}
+
+定義下列 T 專用集合：
+
+\begin{description}
+  \item[\(\mathcal{E}^{T}\)] 有效的 T 人員集合，索引為 \(e\)。
+
+  \item[\(\mathcal{Q}\)] 非空白專業組別集合，索引為 \(q\)。未填專業的人員不形成
+    專業出勤目標。
+
+  \item[\(\mathcal{E}_{ds}\)] 日期 \(d\) 屬於固定班別 \(s\) 的人員集合。
+
+  \item[\(\mathcal{E}^{M}_{s}\)] 目標月份隸屬班別 \(s\) 的人員集合，用於班組內
+    公平性比較。
+
+  \item[\(\mathcal{S}^{M}\)] 目標月份實際有人員的班別集合，即
+    \(\mathcal{S}^{M}=\{s\in\mathcal{S}:\mathcal{E}^{M}_{s}\neq\varnothing\}\)。
+
+  \item[\(\mathcal{E}^{N\rightarrow E}\)] 前一月份屬於夜班、目標月份屬於早班的
+    人員集合。此集合只用於夜班轉早班的跨月規則。
+\end{description}
+
+\subsubsection{Parameters}
+
+令
+\[
+  \sigma_{ed}\in\mathcal{S}
+\]
+表示人員 \(e\) 在日期 \(d\) 所屬的固定班別。目標月份直接使用該月班組資料；
+延伸日期若進入下一月份，則使用明確提供的下月班組，或在前處理階段依
+\(\mathrm{E}\rightarrow\mathrm{A}\rightarrow\mathrm{N}\rightarrow\mathrm{E}\)
+輪轉產生。班組由輸入決定，不是求解器的決策。
+
+T 的班別時間固定為：早班 \(07{:}00\)--\(15{:}00\)、午班
+\(15{:}00\)--\(23{:}00\)、夜班 \(23{:}00\)--翌日 \(07{:}00\)。夜班歸屬於
+其開始日期。
+
+對每位人員，令 \(\kappa_e\in\mathcal{Q}\cup\{\varnothing\}\) 表示專業組別，
+並令
+\[
+  \alpha_e\in\{1,2,3,4,5\}
+\]
+表示能力分數。能力愈高，代表其工作能力或經驗愈高。
+
+依固定班組定義
+\[
+  \mathcal{E}_{ds}
+  =
+  \{e\in\mathcal{E}^{T}:\sigma_{ed}=s\},
+  \qquad
+  N_{ds}=|\mathcal{E}_{ds}|,
+\]
+以及每日班組出勤目標
+\[
+  B_{ds}=\left\lfloor\frac{N_{ds}}{2}\right\rfloor.
+\]
+對每個班組，只有實際存在於該班組的非空白專業需要檢查：
+\[
+  \mathcal{Q}_{ds}
+  =
+  \{q\in\mathcal{Q}:\exists e\in\mathcal{E}_{ds},\ \kappa_e=q\}.
+\]
+
+指定休假參數 \(p_{ed}\)、固定勤務參數 \(z_{ed}\)、八週週期國定假日數
+\(H_c\)，以及歷史累積量 \(\overline{R}_{ec}\)、\(\overline{R1}_{ec}\) 的定義
+與 M 模型相同。目標月份的一般 \(R\) 與 \(R1\) 基準數量同樣分別記為
+\(n\) 與 \(m\)。\(R^*\) 仍只是一個申請與顯示標記；被滿足時，實際休假類型由
+求解器在一般 \(R\) 與 \(R1\) 之間選擇。
+
+令 \(d_0=\min\mathcal{D}^{M}-1\) 為目標月份前一日，
+\(d_1=\min\mathcal{D}^{M}\) 為目標月份第一日。對每位
+\(e\in\mathcal{E}^{N\rightarrow E}\)，令 \(\beta_e\) 表示歷史中「最後一次實際
+夜班結束後，到 \(d_1\) 之前」已出現的實際休假日數。此值由
+\texttt{history.csv} 計算，不由使用者另行填寫。
+
+公平性規則所需的歷史累積量記為
+\(\overline{R}^{wd}_{ec}\) 與 \(\overline{R}^{hol}_{ec}\)，分別表示週期開始至
+本次模型開始前的平日與假日休假數。
+
+\subsubsection{Solver Input and Output Format}
+
+T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含員工編號、姓名、
+專業與能力，並為模型涵蓋的月份提供班組欄位：
+
+\begin{center}
+  \footnotesize
+  \xeCJKsetup{CJKecglue={}}
+  \begin{tabular}{|c|c|c|c|c|c|c|c|}
+    \hline
+    employee\_id & name & specialty & ability & shift\_2026-09 & shift\_2026-10 & 2026-09-01 & 2026-09-02 \\
+    \hline
+    T001 & 陳小明 & 軌道 & 4 & 夜 & 早 & 夜 & R* \\
+    \hline
+    T002 & 林小華 & 號誌 & 3 & 夜 & 早 & X[09:00-17:00|上課] & \\
+    \hline
+  \end{tabular}
+\end{center}
+
+\texttt{history.csv}、\texttt{input.csv} 與 \texttt{schedule.csv} 使用相同的日期
+儲存格語法。正常出勤直接寫為 \texttt{早}、\texttt{午} 或 \texttt{夜}；其值必須
+符合該日期的固定班組，否則輸入無效。\texttt{R}、\texttt{R1}、\texttt{R*}、
+\texttt{R*[R]}、\texttt{R*[R1]}、\texttt{X[...]} 與空白的意義均與 M 模型相同。
+
+下一月份班組可直接填入對應的 \texttt{shift\_YYYY-MM} 欄，也可由程式依固定輪轉
+規則產生；兩者同時存在但不一致時，應回報輸入錯誤。求解器輸出的
+\texttt{schedule.csv} 可直接作為下一期歷史資料。T 軟規則的啟用狀態、順序、
+分組與權重集中於 \texttt{TRuleSettings.cs}。
+
+\subsubsection{Decision Variables}
+
+對每位人員、日期與正常班別，定義
+\[
+  x^{T}_{eds}\in\{0,1\},
+\]
+其中 \(x^{T}_{eds}=1\) 表示人員 \(e\) 在日期 \(d\) 正常出勤班別 \(s\)。實際
+休假變數為 \(r^{T}_{ed},r^{T,1}_{ed}\in\{0,1\}\)，分別表示一般 \(R\) 與
+\(R1\)。
+
+另定義正常出勤、工作日與休假指示變數
+\[
+  v_{ed}=\sum_{s\in\mathcal{S}}x^{T}_{eds},
+  \qquad
+  w^{T}_{ed}=v_{ed}+z_{ed},
+  \qquad
+  \rho^{T}_{ed}=r^{T}_{ed}+r^{T,1}_{ed}.
+\]
+其中 \(X\) 算工作日，但不算正常出勤，因此不計入 T 的出勤、專業或能力指標。
+
+\subsubsection{Hard Constraints}
+
+\paragraph{Daily unique assignment (\texttt{GEN-H-01})}
+
+每位 T 人員每天恰好具有一個實際狀態：
+\[
+  \sum_{s\in\mathcal{S}}x^{T}_{eds}
+  +r^{T}_{ed}+r^{T,1}_{ed}+z_{ed}=1,
+  \qquad
+  \forall e\in\mathcal{E}^{T},\ d\in\mathcal{D}.
+\]
+同一人同日同時存在互相衝突的固定事件，應在建模前回報
+\texttt{INVALID\_INPUT}，而不是交由求解器選擇。
+
+\paragraph{Fixed monthly shift (\texttt{T-H-01})}
+
+T 的正常工作只能是該日期的固定班別。對所有 \(s\neq\sigma_{ed}\)，固定
+\[
+  x^{T}_{eds}=0.
+\]
+因此一般工作日只能排入 \(\sigma_{ed}\)，不能為了改善出勤或能力指標將人員跨
+班組調動。延伸日期進入下月時，限制自動改用下月班組。
+
+\paragraph{Minimum eleven-hour rest (\texttt{GEN-H-03})}
+
+令 \(\mathcal{I}^{T}\) 為所有前後實際工作間隔不足十一小時的 T 正常班組合。
+對每一組 \(((d,s),(d',s'))\in\mathcal{I}^{T}\)，加入
+\[
+  x^{T}_{eds}+x^{T}_{ed's'}\leq 1,
+  \qquad
+  \forall e\in\mathcal{E}^{T}.
+\]
+正常班與固定 \(X\) 的間隔不足十一小時時，直接移除相應正常班選項；兩筆固定
+\(X\) 彼此衝突或間隔不足時，輸入無效。所有判斷均使用完整日期時間。
+
+\paragraph{At most six consecutive days without a general rest (\texttt{GEN-H-02})}
+
+定義 \(q^{T}_{ed}\in\{0,1,\ldots,6\}\) 表示日期 \(d\) 結束後，自最近一次一般
+\(R\) 以來連續經過的排班日數：
+
+\begin{itemize}
+  \item 若 \(r^{T}_{ed}=1\)，則 \(q^{T}_{ed}=0\)。
+  \item 若日期 \(d\) 為正常班、\(X\) 或 \(R1\)，則
+    \(q^{T}_{ed}=q^{T}_{e,d-1}+1\)。
+\end{itemize}
+
+模型要求 \(q^{T}_{ed}\leq 6\)。因此 \texttt{R*[R]} 會中斷計數，
+\texttt{R*[R1]} 則不會。月初初始值由歷史班表計算。
+
+\paragraph{Eight-week rest quotas (\texttt{GEN-H-04})}
+
+對每個週期 \(c\)，令 \(\mathcal{D}_c=c\cap\mathcal{D}\)，並令
+\[
+  F_c=|\{d\in c:d>\max\mathcal{D}\}|.
+\]
+若本次模型已涵蓋週期結束日，則每位 T 人員必須滿足
+\[
+  \overline{R}_{ec}+\sum_{d\in\mathcal{D}_c}r^{T}_{ed}=16,
+  \qquad
+  \overline{R1}_{ec}+\sum_{d\in\mathcal{D}_c}r^{T,1}_{ed}=H_c.
+\]
+若尚未涵蓋週期結束日，則兩種額度都不得超用，且剩餘日期必須足以補足：
+\[
+  \overline{R}_{ec}+\sum_{d\in\mathcal{D}_c}r^{T}_{ed}\leq16,
+  \qquad
+  \overline{R}_{ec}+\sum_{d\in\mathcal{D}_c}r^{T}_{ed}+F_c\geq16,
+\]
+\[
+  \overline{R1}_{ec}+\sum_{d\in\mathcal{D}_c}r^{T,1}_{ed}\leq H_c,
+  \qquad
+  \overline{R1}_{ec}+\sum_{d\in\mathcal{D}_c}r^{T,1}_{ed}+F_c\geq H_c.
+\]
+此外，同一日不能同時使用兩種休假，因此加入聯合可補足性限制
+\[
+  \overline{R}_{ec}+\overline{R1}_{ec}
+  +\sum_{d\in\mathcal{D}_c}(r^{T}_{ed}+r^{T,1}_{ed})+F_c
+  \geq16+H_c.
+\]
+
+\paragraph{Fixed events and historical state (\texttt{GEN-H-05})}
+
+所有固定 \(X\) 與 \texttt{input.csv} 中的固定指派均不得由求解器改寫。
+\texttt{history.csv} 在建模前轉換為八週額度、最近實際工作結束時間、連續日數、
+尚未結束的工作區段，以及跨月夜轉早規則需要的歷史狀態。若必要歷史不足，模型
+不得自行猜測。
+
+\subsubsection{Soft Constraints}
+
+\paragraph{Requested rest (\texttt{GEN-R-01})}
+
+指定休假的定義與 M 模型相同。未滿足指定休假的違反量為
+\[
+  \Phi^{T,R^*}
+  =
+  \sum_{\substack{e\in\mathcal{E}^{T},\ d\in\mathcal{D}^{M}\\p_{ed}=1}}
+  (1-r^{T}_{ed}-r^{T,1}_{ed}).
+\]
+滿足後依實際額度輸出為 \texttt{R*[R]} 或 \texttt{R*[R1]}。
+
+\paragraph{Monthly general-rest distribution}
+
+每位 T 人員在目標月份內實際使用的一般休假數為
+\[
+  Q^{T,R}_e
+  =
+  \sum_{d\in\mathcal{D}^{M}}r^{T}_{ed}.
+\]
+以月曆基準 \(n\) 為中心，\([n-1,n+1]\) 內不產生懲罰。定義
+\[
+  \Delta^{T,R}_e
+  =
+  \max\{0,|Q^{T,R}_e-n|-1\},
+  \qquad
+  \Phi^{T,month,R}
+  =
+  \sum_{e\in\mathcal{E}^{T}}(\Delta^{T,R}_e)^2.
+\]
+因此偏離基準 0 或 1 日時懲罰為 0；偏離 2、3、4 日時，懲罰依序為
+1、4、9。
+
+\paragraph{Monthly national-holiday-rest distribution}
+
+同理，令
+\[
+  Q^{T,R1}_e
+  =
+  \sum_{d\in\mathcal{D}^{M}}r^{T,1}_{ed},
+\]
+並以 \(m\) 為基準，定義
+\[
+  \Delta^{T,R1}_e
+  =
+  \max\{0,|Q^{T,R1}_e-m|-1\},
+  \qquad
+  \Phi^{T,month,R1}
+  =
+  \sum_{e\in\mathcal{E}^{T}}(\Delta^{T,R1}_e)^2.
+\]
+兩項平方懲罰可使用有限整數查表或 \texttt{AddElement} 建立。它們只用於改善
+目標月份內的休假分布，不取代八週週期的精確額度限制；必要時仍可超出無懲罰
+區間，但會產生相應代價。
+
+\paragraph{Shift attendance (\texttt{T-S-ATTEND})}
+
+此規則避免同一班組在單日出勤人數過低。日期 \(d\)、班別 \(s\) 的正常出勤
+人數為
+\[
+  A_{ds}=\sum_{e\in\mathcal{E}_{ds}}x^{T}_{eds}.
+\]
+令缺少人數 \(\delta^{att}_{ds}\in\mathbb{Z}_{\geq0}\) 滿足
+\[
+  \delta^{att}_{ds}\geq B_{ds}-A_{ds}.
+\]
+由於目標會最小化此變數，其值等於
+\(\max(0,B_{ds}-A_{ds})\)。總違反量為
+\[
+  \Phi^{T,att}
+  =
+  \sum_{d\in\mathcal{D}^{M}}
+  \sum_{s\in\mathcal{S}}\delta^{att}_{ds}.
+\]
+例如班組共有 11 人，當日正常出勤 4 人時，目標為 5 人，違反量增加 1。
+
+\paragraph{Specialty attendance (\texttt{T-S-SPECIALTY})}
+
+此規則避免班組當日完全缺少某個既有專業。對每個
+\(q\in\mathcal{Q}_{ds}\)，定義
+\[
+  A^{sp}_{dsq}
+  =
+  \sum_{\substack{e\in\mathcal{E}_{ds}\\\kappa_e=q}}x^{T}_{eds}.
+\]
+令 \(M^{sp}_{dsq}=|\{e\in\mathcal{E}_{ds}:\kappa_e=q\}|\)，並以
+\(\delta^{sp}_{dsq}\in\{0,1\}\) 表示該專業是否無人正常出勤。加入
+\[
+  A^{sp}_{dsq}\geq1-\delta^{sp}_{dsq},
+  \qquad
+  A^{sp}_{dsq}\leq M^{sp}_{dsq}(1-\delta^{sp}_{dsq}).
+\]
+因此 \(\delta^{sp}_{dsq}=1\) 若且唯若 \(A^{sp}_{dsq}=0\)。專業缺席違反量為
+\[
+  \Phi^{T,specialty}
+  =
+  \sum_{d\in\mathcal{D}^{M}}
+  \sum_{s\in\mathcal{S}}
+  \sum_{q\in\mathcal{Q}_{ds}}\delta^{sp}_{dsq}.
+\]
+專業欄空白的人員仍可正常出勤，但空白不形成一個需要覆蓋的專業類別。
+
+\paragraph{Ability level (\texttt{T-S-ABILITY})}
+
+正常出勤者的平均能力希望至少為 3。日期 \(d\)、班別 \(s\) 的能力總和為
+\[
+  C_{ds}=\sum_{e\in\mathcal{E}_{ds}}\alpha_e x^{T}_{eds}.
+\]
+定義能力不足量
+\[
+  \delta^{ability}_{ds}
+  =
+  \max(0,3A_{ds}-C_{ds}),
+\]
+並令
+\[
+  \Phi^{T,ability}
+  =
+  \sum_{d\in\mathcal{D}^{M}}
+  \sum_{s\in\mathcal{S}}\delta^{ability}_{ds}.
+\]
+此寫法不需要除法，且所有係數均為整數。若當日無人正常出勤，能力不足量為 0，
+由出勤規則負責處理無人出勤問題。
+
+\paragraph{Continuous work-streak length (\texttt{GEN-S-STREAK})}
+
+此規則避免工作與休假過度零碎，或長期貼近連續六日上限。T 的連續工作區段是
+連續曆日皆為正常班或 \(X\) 的最大區段；一般 \(R\) 與 \(R1\) 都會結束區段。
+沿用 M 模型的區段偏離函數 \(D(L)\)，令已在目標月份內結束的每個工作區段依
+其長度產生懲罰，總違反量記為 \(\Phi^{T,streak}\)。月初承接歷史區段；月底仍
+未結束的區段不在本月作最終長度評分。
+
+\paragraph{Night-to-early month transition rest (\texttt{T-S-MONTH-REST})}
+
+此規則只適用於 \(e\in\mathcal{E}^{N\rightarrow E}\)，目的是讓夜班轉早班的人員
+在最後一次實際夜班與第一次實際早班之間具有至少兩個休假日。
+
+令 \(f_{ed}=1\) 表示日期 \(d\) 是人員 \(e\) 在目標月份第一次正常早班，亦即
+\[
+  f_{ed}=1
+  \Longleftrightarrow
+  x^{T}_{ed\mathrm{E}}=1
+  \text{ 且此前尚未出現正常早班}.
+\]
+此前是否已出現正常早班，可用一個布林前綴狀態建立。若第一次早班發生於日期
+\(d\)，則最後夜班至該日之間的休假日數為
+\[
+  B^{bridge}_{ed}
+  =
+  \beta_e
+  +
+  \sum_{\substack{\tau\in\mathcal{D}^{M}\\\tau<d}}\rho^{T}_{e\tau}.
+\]
+令條件式違反量為
+\[
+  \delta^{bridge}_{ed}
+  =
+  \begin{cases}
+    \max(0,2-B^{bridge}_{ed}), & f_{ed}=1,\\
+    0, & f_{ed}=0.
+  \end{cases}
+\]
+此關係可使用有限查表或條件式限制實作。總違反量為
+\[
+  \Phi^{T,monthrest}
+  =
+  \sum_{e\in\mathcal{E}^{N\rightarrow E}}
+  \sum_{d\in\mathcal{D}^{M}}\delta^{bridge}_{ed}.
+\]
+因此只有一個休假日時違反量為 1，沒有休假日時違反量為 2。
+
+\paragraph{Month-boundary rest balance (\texttt{T-S-MONTH-BALANCE})}
+
+此規則避免所有夜轉早人員把休假集中在月交界的同一側。預設比較前月最後一日
+\(d_0\) 與本月第一日 \(d_1\)。令 \(\overline{\rho}^{T}_{e,d_0}\) 為歷史班表中的
+實際休假指示，則
+\[
+  B^{-}
+  =
+  \sum_{e\in\mathcal{E}^{N\rightarrow E}}
+  \overline{\rho}^{T}_{e,d_0},
+  \qquad
+  B^{+}
+  =
+  \sum_{e\in\mathcal{E}^{N\rightarrow E}}
+  \rho^{T}_{e,d_1}.
+\]
+月交界休假分散違反量為
+\[
+  \Phi^{T,monthbalance}=|B^{-}-B^{+}|.
+\]
+若業務上選定其他兩個主要交界休假日，只需將 \(d_0,d_1\) 改為對應日期。
+
+\paragraph{Weekday rest fairness (\texttt{GEN-S-WEEKDAY-R})}
+
+對每位人員與八週週期 \(c\)，定義平日休假數
+\[
+  R^{T,wd}_{ec}
+  =
+  \overline{R}^{wd}_{ec}
+  +
+  \sum_{d\in c\cap\mathcal{D}^{M}\cap\mathcal{D}^{wd}}\rho^{T}_{ed}.
+\]
+公平性只在目標月份同一固定班組內比較：
+\[
+  \Phi^{T,weekday}
+  =
+  \sum_{s\in\mathcal{S}^{M}}
+  \sum_{c\in\mathcal{C}}
+  \left(
+    \max_{e\in\mathcal{E}^{M}_{s}}R^{T,wd}_{ec}
+    -
+    \min_{e\in\mathcal{E}^{M}_{s}}R^{T,wd}_{ec}
+  \right).
+\]
+國定假日即使落在星期一至星期五，也不計入平日。
+
+\paragraph{Holiday rest fairness (\texttt{GEN-S-WEEKEND-R})}
+
+同理，定義
+\[
+  R^{T,hol}_{ec}
+  =
+  \overline{R}^{hol}_{ec}
+  +
+  \sum_{d\in c\cap\mathcal{D}^{M}\cap\mathcal{D}^{hol}}\rho^{T}_{ed},
+\]
+並令
+\[
+  \Phi^{T,holiday}
+  =
+  \sum_{s\in\mathcal{S}^{M}}
+  \sum_{c\in\mathcal{C}}
+  \left(
+    \max_{e\in\mathcal{E}^{M}_{s}}R^{T,hol}_{ec}
+    -
+    \min_{e\in\mathcal{E}^{M}_{s}}R^{T,hol}_{ec}
+  \right).
+\]
+此處假日包含星期六、星期日與所有國定假日。
+\subsubsection{Objective Terms}
+
+T 模型的軟性違反量為
+\[
+  \begin{aligned}
+    \Phi^{T,R^*}          &: \text{未滿足指定休假},\\
+    \Phi^{T,month,R}      &: \text{本月一般 }R\text{ 數量偏離},\\
+    \Phi^{T,month,R1}     &: \text{本月 }R1\text{ 數量偏離},\\
+    \Phi^{T,att}          &: \text{班組出勤不足},\\
+    \Phi^{T,specialty}    &: \text{專業組別缺席},\\
+    \Phi^{T,ability}      &: \text{平均能力不足},\\
+    \Phi^{T,streak}       &: \text{連續工作區段長度},\\
+    \Phi^{T,monthrest}    &: \text{夜班轉早班休假不足},\\
+    \Phi^{T,monthbalance} &: \text{月交界休假過度集中},\\
+    \Phi^{T,weekday}      &: \text{平日休假公平},\\
+    \Phi^{T,holiday}      &: \text{假日休假公平}.
+  \end{aligned}
+\]
+
+考量各規則的業務重要性與原始尺度差異，T 模型同樣採用
+「組間字典序、組內加權和」的最佳化方式。定義五個目標群組：
+
+\[
+  J^T_1=\Phi^{T,R^*},
+\]
+
+\[
+  J^T_2
+  =
+  9\Phi^{T,att}
+  +3\Phi^{T,specialty}
+  +\Phi^{T,ability},
+\]
+
+\[
+  J^T_3
+  =
+  \Phi^{T,month,R}
+  +\Phi^{T,month,R1},
+\]
+
+\[
+  J^T_4
+  =
+  3\Phi^{T,streak}
+  +12\Phi^{T,monthrest}
+  +5\Phi^{T,monthbalance},
+\]
+
+以及
+
+\[
+  J^T_5
+  =
+  2\Phi^{T,weekday}
+  +4\Phi^{T,holiday}.
+\]
+
+各群組的意義如下：
+
+\begin{itemize}
+  \item \(J^T_1\)：優先滿足人員提出的指定休假。
+  \item \(J^T_2\)：維持各班組的出勤人數、專業配置與整體能力水準。
+  \item \(J^T_3\)：使一般 \(R\) 與 \(R1\) 的月內數量接近月曆基準。
+  \item \(J^T_4\)：改善工作區段及夜班轉早班的跨月作息安排。
+  \item \(J^T_5\)：最後改善同班組內平日與假日休假的公平性。
+\end{itemize}
+
+完整最佳化目標為
+
+\[
+  \operatorname{lexmin}
+  \left(
+    J^T_1,\,
+    J^T_2,\,
+    J^T_3,\,
+    J^T_4,\,
+    J^T_5
+  \right).
+\]
+
+其中，班組出勤不足直接影響正常運作，因此在 \(J^T_2\) 中具有最高權重；
+專業組別缺席次之。能力不足的原始違反量會隨出勤人數累積，因此使用較低的
+單位權重。夜班轉早班休假不足直接影響跨月作息，故在 \(J^T_4\) 中給予較高
+權重；假日休假公平的原始尺度通常較小，因此其權重高於平日休假公平。
+
+求解器依序固定各群組的最優值，再處理下一群組，因此低順位規則不會犧牲
+高順位群組；各權重只表示同一群組內不同規則的相對交換比例。上述數值作為
+初始設定，後續應依實際測試班表的違反量分布調整。
+\subsubsection{Soft-rule Scale Summary}
+
+令 \(N_T=|\mathcal{E}^{T}|\)、\(D=|\mathcal{D}^{M}|\)、\(P_T\) 為 T 的指定休假
+申請數，並令 \(Q_{\max}=\max_{d,s}|\mathcal{Q}_{ds}|\)。另沿用
+\(f_n(q)=[\max\{0,|q-n|-1\}]^2\) 與
+\(f_m(q)=[\max\{0,|q-m|-1\}]^2\)。各違反量的原始尺度如下：
+
+\small
+\begin{longtable}{p{2.8cm}p{2.5cm}p{4.5cm}p{4.3cm}}
+  \toprule
+  軟規則 & 計算單位 & 參數化上限或量級 & 加權注意事項 \\
+  \midrule
+  \endfirsthead
+  \toprule
+  軟規則 & 計算單位 & 參數化上限或量級 & 加權注意事項 \\
+  \midrule
+  \endhead
+  未滿足 \(R^*\) & 申請人日 & \(0\leq\Phi^{T,R^*}\leq P_T\) & 應維持最高順位，通常不與其他規則直接交換。 \\
+  本月一般 \(R\) & 超出 \(\pm1\) 後的平方懲罰 & 理論上至 \(N_T\max_q f_n(q)\) & 平方項可能快速放大，不宜直接與純計數規則使用相同權重。 \\
+  本月 \(R1\) & 超出 \(\pm1\) 後的平方懲罰 & 理論上至 \(N_T\max_q f_m(q)\) & 原始值通常小於一般 \(R\)，但仍需注意平方尺度。 \\
+  班組出勤不足 & 缺少人數 & 上限為 \(\sum_{d,s}B_{ds}\)，約不超過 \(DN_T/2\) & 是人數缺口，單位意義直接。 \\
+  專業組別缺席 & 班別--日期--專業 & 上限為 \(\sum_{d,s}|\mathcal{Q}_{ds}|\leq3DQ_{\max}\) & 專業種類愈多，原始值愈大。 \\
+  能力不足 & 能力分數 & \(0\leq\Phi^{T,ability}\leq2DN_T\) & 與人數型違反量尺度不同，宜獨立分組或縮小權重。 \\
+  連續工作區段 & 區段偏離值 & 約不超過 \(4N_T\lceil D/2\rceil\) & 實際通常遠低於粗略上限。 \\
+  夜轉早休假不足 & 缺少休假日 & \(0\leq\Phi^{T,monthrest}\leq2|\mathcal{E}^{N\rightarrow E}|\) & 原始值很小，與大型總和同組時需提高相對權重。 \\
+  月交界休假分散 & 人數差 & \(0\leq\Phi^{T,monthbalance}\leq|\mathcal{E}^{N\rightarrow E}|\) & 只在夜轉早月份出現。 \\
+  平日休假公平 & 班組內最大值減最小值 & 每班組至多為週期內平日數 & 原始值通常較小。 \\
+  假日休假公平 & 班組內最大值減最小值 & 每班組至多為週期內假日數 & 假日較少，通常需較高相對權重才會明顯。 \\
+  \bottomrule
+\end{longtable}
+\normalsize
+
+\subsubsection{Alternative Candidates}
+
+在已完成的軟規則品質固定後，T 模型同樣可產生最多三份候選班表。差異只計算
+目標月份內真正由求解器決定的人員日期格。所有由 \texttt{input.csv} 固定的正常班、
+\(R\)、\(R1\) 或 \(X\)，以及延伸日期，均不列入差異分母。\(R^*\) 的底層休假類型
+仍由求解器決定，因此該格仍列入比較。
+
+比較時忽略 \(R^*\) 顯示標記：\texttt{R} 與 \texttt{R*[R]} 視為相同，\texttt{R1}
+與 \texttt{R*[R1]} 視為相同；一般 \(R\) 與 \(R1\) 仍是不同實際狀態。兩份候選的
+最低差異格數為 \(\lceil0.1N_{cell}\rceil\)。
+
+\subsubsection{Infeasibility Handling}
+
+T 沒有 M 的班位覆蓋與外派變數，因此不建立 Shortage Analysis。若固定班組、
+固定事件、十一小時、連續六日或八週額度等硬限制互相衝突，系統回傳
+\texttt{INFEASIBLE}，不得放寬硬限制產生可發布候選。
+
+為產生可定位的衝突摘要，建模時對可診斷的固定輸入與硬限制群組建立 assumption
+literal。每個 literal 均保存其 Rule ID、員工與日期範圍；相應限制只在該 literal
+成立時啟用。若模型不可行，則由 CP-SAT 取得一組 sufficient assumptions for
+infeasibility，並將其中的 literal 映射回人員、日期與 Rule ID。必要時可透過移除
+單一 assumption 後重新求解，縮小衝突集合。此摘要只用於說明可能的衝突核心，
+不代表列出的每一條限制單獨即會造成不可行。
+
+\subsection{the S problem}
+
+% -----------------------------------------------------------
+%    You don't have to mess with anything below this line.
+% -----------------------------------------------------------
+\end{document}
