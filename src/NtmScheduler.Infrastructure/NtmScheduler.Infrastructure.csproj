@@ -2,7 +2,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\NtmScheduler.Core\NtmScheduler.Core.csproj" />
-    <ProjectReference Include="..\NtmScheduler.Solvers\NtmScheduler.Solvers.csproj" />
   </ItemGroup>
 
   <ItemGroup>

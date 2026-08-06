@@ -18,7 +18,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\NtmScheduler.Core\NtmScheduler.Core.csproj" />
-    <ProjectReference Include="..\..\src\NtmScheduler.Solvers\NtmScheduler.Solvers.csproj" />
     <ProjectReference Include="..\..\src\NtmScheduler.Infrastructure\NtmScheduler.Infrastructure.csproj" />
   </ItemGroup>
 
