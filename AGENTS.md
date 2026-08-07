@@ -19,7 +19,8 @@
 
 ## 文件索引
 
-`docs/` Markdown 與決策紀錄是本專案的**唯一真相來源**。原始規格書
+一般產品規格以 `docs/` Markdown 與決策紀錄為準；solver 數學公式另以
+[`tex/main2.tex`](tex/main2.tex) 為真相來源（決策 D-21）。原始規格書
 [docs/新北捷人員排班系統_完整開發規格書_v6.pdf](docs/新北捷人員排班系統_完整開發規格書_v6.pdf)
 應一併參考；若 PDF 與 Markdown／決策衝突，**以 Markdown 與決策為準**。
 
@@ -41,10 +42,10 @@
 ## Agent 工作守則
 
 1. **遇到文件未定義的業務情況，回報規格缺口，不得自行補上業務假設。** 這是本專案的最高原則。
-2. **Rule ID 一旦定義即固定不變**（例如 `GEN-H-02`、`T-S-ABILITY`），程式、資料庫、UI、匯出檔都必須使用相同 ID。
+2. Solver 的短 Rule ID 只存在於文件供交叉查閱；程式以有意義的英文函數與違反量名稱對應公式，不保存 Rule ID（決策 D-21）。
 3. `NtmScheduler.Core` **不得參考 OR-Tools 或 EF Core**。凡介面參數含
    `CpModel`、`BoolVar`、`IntVar`、`LinearExpr` 者，該介面必須位於 `NtmScheduler.Solvers`。
 4. Blazor 元件不得直接建立 OR-Tools 模型；驗證與求解一律由後端服務執行。
 5. 修改任何規則行為前，先更新對應的 `docs/` 文件，並在 `docs/10-decisions.md` 追加一筆決策紀錄。
-6. P0 規則不可關閉；P1 固定最高順位；P2–P4 可由管理者開關與排序，程式不得寫死其順序。
+6. Solver 硬限制不可關閉；軟限制依 `tex/main2.tex` 的 J1–J5 固定群組做字典序最佳化，群組與權重直接寫在 M/T solver 原始碼（決策 D-21）。
 7. 所有時間以台北時間（UTC+8）處理；夜班歸屬其**開始日期**。

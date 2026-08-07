@@ -162,7 +162,8 @@
 
 為便於數學模型與規格書交叉查閱，規則使用短 ID：\texttt{CH}/\texttt{CS}
 表示 M、T 共通的硬性／軟性規則，\texttt{MH}/\texttt{MS} 表示 M 規則，
-\texttt{TH}/\texttt{TS} 表示 T 規則。ID 僅識別規則本身，不表示優先順序。
+\texttt{TH}/\texttt{TS} 表示 T 規則。ID 僅存在於文件並識別規則本身，不表示
+優先順序；程式以有意義的英文函數名稱對應公式，不保存 Rule ID。
 
 \subsection{The M Problem}
 
@@ -172,12 +173,11 @@ M 模型的輸入包括：
 \begin{itemize}
   \item 目標月份與固定延伸天數 \(K\)；
   \item M 人員及其所屬車站；
-  \item 車站群組、各站各班別需求與允許外派的車站；
-  \item 正常班別的實際起訖時間；
   \item 指定休假 \(R^*\)、固定勤務 \(X\) 與其他固定指派；
   \item 八週週期的一般 \(R\) 與 \(R1\) 額度；
   \item 目標月份的一般 \(R\) 與 \(R1\) 基準數量；
-  \item 足以重建月初邊界狀態與公平性累積值的歷史班表；
+  \item 月初前連續七個日曆日的歷史班表；
+  \item 建模開始前各人員、各八週週期已使用的 R 與 R1 數量；
   \item 國定假日集合。星期六與星期日由日期本身決定。
 \end{itemize}
 
@@ -247,9 +247,9 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 \(c\) 已使用的一般 \(R\) 與 \(R1\) 數量。令 \(n\)、\(m\) 分別為目標月份
 的一般 \(R\) 與 \(R1\) 基準數量。
 
-歷史班表另提供月初邊界值：法規連續日數、尚未結束的實際工作區段、尚未結束
-的同班別區塊、最近一次有效正常班別，以及平日休假、假日休假與跨站支援的
-週期累積值。這些值視為模型的固定初始參數。
+月初前連續七日的歷史班表用來重建法規連續日數、尚未結束的實際工作區段、
+尚未結束的同班別區塊與最近一次有效正常班別。八週 R/R1 已使用數量由獨立
+輸入提供，不從七日歷史推算；公平性不使用歷史累積值。
 
 \subsubsection{Variables}
 
@@ -568,13 +568,11 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 此規則只判斷換班方向，與換班前是否休假無關。
 
 \paragraph{Weekday rest fairness (\texttt{CS05})}
-對每位人員與週期，定義平日休假累積數
+對每位人員定義目標月份平日休假數
 \[
-  R^{M,wd}_{ec}
+  R^{M,wd}_{e}
   =
-  \overline{R}^{wd}_{ec}
-  +
-  \sum_{d\in c\cap\mathcal{D}^{\mathrm{tar}}\cap\mathcal{D}^{wd}}
+  \sum_{d\in\mathcal{D}^{\mathrm{tar}}\cap\mathcal{D}^{wd}}
   \rho^{M}_{ed}.
 \]
 同一車站群組內的公平性違反量為
@@ -582,22 +580,19 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
   \Phi^{M,weekday}
   =
   \sum_{g\in\mathcal{G}}
-  \sum_{c\in\mathcal{C}}
   \left(
-    \max_{e:g(h_e)=g}R^{M,wd}_{ec}
+    \max_{e:g(h_e)=g}R^{M,wd}_{e}
     -
-    \min_{e:g(h_e)=g}R^{M,wd}_{ec}
+    \min_{e:g(h_e)=g}R^{M,wd}_{e}
   \right).
 \]
 
 \paragraph{Holiday rest fairness (\texttt{CS06})}
 令
 \[
-  R^{M,hol}_{ec}
+  R^{M,hol}_{e}
   =
-  \overline{R}^{hol}_{ec}
-  +
-  \sum_{d\in c\cap\mathcal{D}^{\mathrm{tar}}\cap\mathcal{D}^{hol}}
+  \sum_{d\in\mathcal{D}^{\mathrm{tar}}\cap\mathcal{D}^{hol}}
   \rho^{M}_{ed}.
 \]
 則
@@ -605,33 +600,29 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
   \Phi^{M,holiday}
   =
   \sum_{g\in\mathcal{G}}
-  \sum_{c\in\mathcal{C}}
   \left(
-    \max_{e:g(h_e)=g}R^{M,hol}_{ec}
+    \max_{e:g(h_e)=g}R^{M,hol}_{e}
     -
-    \min_{e:g(h_e)=g}R^{M,hol}_{ec}
+    \min_{e:g(h_e)=g}R^{M,hol}_{e}
   \right).
 \]
 
 \paragraph{Cross-station support fairness (\texttt{MS08})}
 令
 \[
-  S^{M}_{ec}
+  S^{M}_{e}
   =
-  \overline{S}_{ec}
-  +
-  \sum_{d\in c\cap\mathcal{D}^{\mathrm{tar}}}u_{ed}.
+  \sum_{d\in\mathcal{D}^{\mathrm{tar}}}u_{ed}.
 \]
 則
 \[
   \Phi^{M,support}
   =
   \sum_{g\in\mathcal{G}}
-  \sum_{c\in\mathcal{C}}
   \left(
-    \max_{e:g(h_e)=g}S^{M}_{ec}
+    \max_{e:g(h_e)=g}S^{M}_{e}
     -
-    \min_{e:g(h_e)=g}S^{M}_{ec}
+    \min_{e:g(h_e)=g}S^{M}_{e}
   \right).
 \]
 
@@ -682,12 +673,12 @@ M 模型定義五個目標群組：
 T 模型的輸入包括：
 \begin{itemize}
   \item 目標月份與固定延伸天數 \(K\)；
-  \item T 人員、專業組別、能力分數及各月份固定班組；
-  \item T 正常班別的實際起訖時間；
+  \item T 人員、專業組別、能力分數及建模日期的固定班組；
   \item 指定休假 \(R^*\)、固定勤務 \(X\) 與其他固定指派；
   \item 八週週期的一般 \(R\) 與 \(R1\) 額度；
   \item 目標月份的一般 \(R\) 與 \(R1\) 基準數量；
-  \item 足以重建月初邊界狀態、跨月夜轉早狀態及公平性累積值的歷史班表；
+  \item 月初前連續七個日曆日的歷史班表與跨月夜轉早休假數；
+  \item 建模開始前各人員、各八週週期已使用的 R 與 R1 數量；
   \item 國定假日集合。
 \end{itemize}
 
@@ -749,8 +740,8 @@ T 模型的輸入包括：
 令 \(d_0=\min\mathcal{D}^{\mathrm{tar}}-1\) 為目標月份前一日，令
 \(d_1=\min\mathcal{D}^{\mathrm{tar}}\) 為目標月份第一日。對
 \(e\in\mathcal{E}^{N\rightarrow E}\)，令 \(\beta_e\) 為最後一次實際夜班
-結束後至 \(d_1\) 之前已出現的實際休假日數。歷史資料另提供法規連續日數、
-尚未結束的實際工作區段，以及平日與假日休假的週期累積值。
+結束後至 \(d_1\) 之前已出現的實際休假日數。月初前連續七日歷史另用來
+重建法規連續日數與尚未結束的實際工作區段；公平性不使用歷史累積值。
 
 \subsubsection{Variables}
 
@@ -1038,11 +1029,9 @@ T 的實際工作區段同樣由連續正常班或 \(X\) 組成，\(R\) 與 \(R1
 \paragraph{Weekday rest fairness (\texttt{CS05})}
 令
 \[
-  R^{T,wd}_{ec}
+  R^{T,wd}_{e}
   =
-  \overline{R}^{wd}_{ec}
-  +
-  \sum_{d\in c\cap\mathcal{D}^{\mathrm{tar}}\cap\mathcal{D}^{wd}}
+  \sum_{d\in\mathcal{D}^{\mathrm{tar}}\cap\mathcal{D}^{wd}}
   \rho^{T}_{ed}.
 \]
 只在目標月份同一固定班組內比較：
@@ -1050,22 +1039,19 @@ T 的實際工作區段同樣由連續正常班或 \(X\) 組成，\(R\) 與 \(R1
   \Phi^{T,weekday}
   =
   \sum_{s\in\mathcal{S}^{\mathrm{tar}}}
-  \sum_{c\in\mathcal{C}}
   \left(
-    \max_{e\in\mathcal{E}^{\mathrm{tar}}_s}R^{T,wd}_{ec}
+    \max_{e\in\mathcal{E}^{\mathrm{tar}}_s}R^{T,wd}_{e}
     -
-    \min_{e\in\mathcal{E}^{\mathrm{tar}}_s}R^{T,wd}_{ec}
+    \min_{e\in\mathcal{E}^{\mathrm{tar}}_s}R^{T,wd}_{e}
   \right).
 \]
 
 \paragraph{Holiday rest fairness (\texttt{CS06})}
 令
 \[
-  R^{T,hol}_{ec}
+  R^{T,hol}_{e}
   =
-  \overline{R}^{hol}_{ec}
-  +
-  \sum_{d\in c\cap\mathcal{D}^{\mathrm{tar}}\cap\mathcal{D}^{hol}}
+  \sum_{d\in\mathcal{D}^{\mathrm{tar}}\cap\mathcal{D}^{hol}}
   \rho^{T}_{ed}.
 \]
 則
@@ -1073,11 +1059,10 @@ T 的實際工作區段同樣由連續正常班或 \(X\) 組成，\(R\) 與 \(R1
   \Phi^{T,holiday}
   =
   \sum_{s\in\mathcal{S}^{\mathrm{tar}}}
-  \sum_{c\in\mathcal{C}}
   \left(
-    \max_{e\in\mathcal{E}^{\mathrm{tar}}_s}R^{T,hol}_{ec}
+    \max_{e\in\mathcal{E}^{\mathrm{tar}}_s}R^{T,hol}_{e}
     -
-    \min_{e\in\mathcal{E}^{\mathrm{tar}}_s}R^{T,hol}_{ec}
+    \min_{e\in\mathcal{E}^{\mathrm{tar}}_s}R^{T,hol}_{e}
   \right).
 \]
 
@@ -1118,6 +1103,118 @@ T 模型定義五個目標群組：
   \operatorname{lexmin}
   \left(J^T_1,J^T_2,J^T_3,J^T_4,J^T_5\right).
 \]
+
+\section{Alternative Candidates}
+
+只有在五個目標群組皆證明為最優後，系統才搜尋替代候選。每個模型最多輸出
+三份候選；所有已固定的 \(J_1,\ldots,J_5\) 最優值維持不變。
+
+候選差異只比較目標月份中真正由求解器決定的 \((e,d)\) 格。固定正常班、
+固定 \(R\)、固定 \(R1\)、固定 \(X\) 與延伸日期均排除；指定休假 \(R^*\)
+仍由求解器決定底層使用 \(R\) 或 \(R1\)，因此保留在比較集合。比較實際狀態
+時忽略 \(R^*\) 顯示標記，但 \(R\) 與 \(R1\) 仍視為不同狀態。
+
+若可比較格數為 \(N_{cell}\)，定義最低差異格數
+\[
+  \Delta_{min}=\left\lceil0.1N_{cell}\right\rceil.
+\]
+第二份候選與第一份至少相差 \(\Delta_{min}\) 格；第三份必須分別與前兩份
+達到相同門檻。候選搜尋共用整次求解的剩餘時間；時間用完時保留已找到的候選。
+
+\section{Mathematical Symbols and C\# Variables}
+
+本章是數學模型與 source-as-spec 實作的直接對照。Rule ID 不寫入程式；以下
+函數名稱就是公式在原始碼中的定位方式。公開資料型別位於
+\texttt{SolverContracts.cs}、\texttt{MContracts.cs} 與
+\texttt{TContracts.cs}，建模函數分別只位於 \texttt{MSolver.cs} 與
+\texttt{TSolver.cs}。
+
+\subsection{Input and Sets}
+
+\small
+\begin{longtable}{p{2.7cm}p{5.2cm}p{6.4cm}}
+  \toprule
+  數學符號 & C\# 資料 & 來源或建立位置 \\
+  \midrule
+  \endfirsthead
+  \toprule
+  數學符號 & C\# 資料 & 來源或建立位置 \\
+  \midrule
+  \endhead
+  \(\mathcal D^{\mathrm{tar}}\) & \texttt{DateOnly[] targetDates} & \texttt{TargetDates(input)} \\
+  \(\mathcal D^{+},\mathcal D\) & \texttt{DateOnly[] modelDates} & \texttt{ModelDates(input)}；目標月後 \texttt{ExtensionDays} 日 \\
+  \(\mathcal E^M\) & \texttt{MInput.Employees} & \texttt{IReadOnlyList<MEmployee>} \\
+  \(\mathcal E^T\) & \texttt{TInput.Employees} & \texttt{IReadOnlyList<TEmployee>} \\
+  \(\mathcal C,G_c,H_c\) & \texttt{RestCycles} & \texttt{RestCycle.Id/Start/End/}\newline\texttt{RequiredRest/RequiredSpecialRest} \\
+  \(\overline R_{ec},\overline{R1}_{ec}\) & \texttt{UsageBeforeMonth} & \texttt{EmployeeCycleUsage.}\newline\texttt{RestUsed/SpecialRestUsed} \\
+  \(n,m\) & \texttt{MonthlyRestTarget}, \texttt{MonthlySpecialRestTarget} & \texttt{MInput} 或 \texttt{TInput} \\
+  \(h_e\) & \texttt{MEmployee.HomeStation} & \texttt{MContracts.cs} \\
+  \(p_{ed}\) & \texttt{RequestedRests} & \texttt{RequestedRest(EmployeeId, Date)} \\
+  \(z_{ed}\) & \texttt{WorkEvents} & 有相同人員與日期的 \texttt{WorkEvent} 即為 1 \\
+  \(\sigma_{ed}\) & \texttt{TInput.FixedShifts} & \texttt{TFixedShift(EmployeeId, Date, Shift)} \\
+  \(\kappa_e,\alpha_e\) & \texttt{TEmployee.Specialty/Ability} & \texttt{TContracts.cs} \\
+  \(\beta_e\) & \texttt{NightToEarlyHistory.}\newline\texttt{RestDaysAfterLastNight} & 只供前月夜班轉目標月早班者 \\
+  月初七日歷史 & \texttt{PreviousSevenDays} & \texttt{MHistoryDay} 或 \texttt{THistoryDay}；重建序列狀態，不重算八週額度 \\
+  \bottomrule
+\end{longtable}
+\normalsize
+
+\subsection{M Model}
+
+\small
+\begin{longtable}{p{2.7cm}p{5.2cm}p{6.4cm}}
+  \toprule
+  數學符號 & C\# 變數 & 建立或使用函數 \\
+  \midrule
+  \endfirsthead
+  \toprule
+  數學符號 & C\# 變數 & 建立或使用函數 \\
+  \midrule
+  \endhead
+  \(x^M_{edls}\) & \texttt{variables.Work[(e,d,l,s)]}，\texttt{BoolVar} & \texttt{CreateVariables} \\
+  \(r^M_{ed}\) & \texttt{variables.Rest[(e,d)]}，\texttt{BoolVar} & \texttt{CreateVariables} \\
+  \(r^{M,1}_{ed}\) & \texttt{variables.SpecialRest}\newline\texttt{[(e,d)]}，\texttt{BoolVar} & \texttt{CreateVariables} \\
+  \(a_{dls}\) & \texttt{variables.External[(d,l,s)]}，\texttt{IntVar} & \texttt{CreateVariables}、\texttt{AddExactCoverage} \\
+  \(y^M_{eds}\) & \texttt{variables.WorksShift}\newline\texttt{[(e,d,s)]}，\texttt{BoolVar} & \texttt{CreateVariables} \\
+  \(w^M_{ed}\) & \texttt{variables.ActualWork}\newline\texttt{[(e,d)]}，\texttt{BoolVar} & 正常班或 \(X\) 為 1 \\
+  \(\rho^M_{ed}\) & \texttt{variables.AnyRest[(e,d)]}，\texttt{BoolVar} & \(R+R1\) \\
+  \(u_{ed}\) & \texttt{variables.}\newline\texttt{SupportsOtherStation[(e,d)]}，\texttt{BoolVar} & 非本站正常班之和 \\
+  \(q^{law}_{ed}\) & 七日滑動視窗，未另建狀態 class & \texttt{AddMaximumSixDays}\newline\texttt{WithoutGeneralRest} \\
+  \(c^{work}_{ed}\) & 函數內 \texttt{IntVar count} & \texttt{WorkStreakViolation} \\
+  \((\lambda_{ed},\ell_{ed})\) & 函數內 \texttt{lastShift/blockLength} & \texttt{SameShiftBlockViolation} \\
+  \(\gamma_{ed}\) & 函數內 \texttt{state} & \texttt{ShiftChangeWithoutRestViolation} \\
+  \(\eta_{ed}\) & 函數內 \texttt{state} & \texttt{NonPreferredRotationViolation} \\
+  \(J^M_1,\ldots,J^M_5\) & \texttt{objectives} 中的 \texttt{LinearExpr Total} & \texttt{BuildObjectives}；權重直接寫在同一函數 \\
+  \bottomrule
+\end{longtable}
+\normalsize
+
+\subsection{T Model and Solver Control}
+
+\footnotesize
+\begin{longtable}{p{2.7cm}p{5.2cm}p{6.4cm}}
+  \toprule
+  數學符號或概念 & C\# 變數 & 建立或使用函數 \\
+  \midrule
+  \endfirsthead
+  \toprule
+  數學符號或概念 & C\# 變數 & 建立或使用函數 \\
+  \midrule
+  \endhead
+  \(x^T_{eds}\) & \texttt{variables.Work[(e,d,s)]}，\texttt{BoolVar} & \texttt{CreateVariables} \\
+  \(r^T_{ed},r^{T,1}_{ed}\) & \texttt{variables.Rest/SpecialRest}\newline\texttt{[(e,d)]} & \texttt{CreateVariables} \\
+  \(w^T_{ed},\rho^T_{ed}\) & \texttt{variables.ActualWork/}\newline\texttt{AnyRest[(e,d)]} & \texttt{CreateVariables} \\
+  \(\delta^{att}_{ds}\) & 函數內 \texttt{IntVar deficit} & \texttt{AttendanceViolation} \\
+  \(\delta^{sp}_{dsq}\) & 函數內 \texttt{BoolVar absent} & \texttt{SpecialtyViolation} \\
+  \(\delta^{ability}_{ds}\) & 函數內 \texttt{IntVar deficit} & \texttt{AbilityViolation} \\
+  \(f_{ed},\delta^{bridge}_{ed}\) & 函數內 \texttt{first/deficit} & \texttt{NightToEarlyRestViolation} \\
+  \(J^T_1,\ldots,J^T_5\) & \texttt{objectives} 中的 \texttt{LinearExpr Total} & \texttt{BuildObjectives}；權重直接寫在同一函數 \\
+  字典序固定 & \texttt{model.Add(objective.Total == optimum)} & \texttt{TSolver.Solve} 或 \texttt{MSolver.Solve} \\
+  總求解時限 & \texttt{SolverOptions.TimeLimit} & 每次 \texttt{Solve} 只使用剩餘秒數 \\
+  主動取消 & \texttt{CancellationToken} & 註冊 \texttt{CpSolver.StopSearch}；取消後拋出 \texttt{OperationCanceledException} \\
+  \bottomrule
+\end{longtable}
+\normalsize
 
 % -----------------------------------------------------------
 %    You don't have to mess with anything below this line.

@@ -1,4 +1,9 @@
 <Solution>
-  <Folder Name="/src/" />
-  <Folder Name="/tests/" />
+  <Folder Name="/src/">
+    <Project Path="src/NtmScheduler.Cli/NtmScheduler.Cli.csproj" />
+    <Project Path="src/NtmScheduler.Solvers/NtmScheduler.Solvers.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/NtmScheduler.Solvers.Tests/NtmScheduler.Solvers.Tests.csproj" />
+  </Folder>
 </Solution>
