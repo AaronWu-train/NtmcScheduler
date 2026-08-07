@@ -17,9 +17,9 @@ public static partial class ScheduleCsv
     private static readonly string[] Headers =
     [
         "ID", "姓名", "所屬", "到職日期", "能力", "T月班別",
-        "上月底區間已計R", "上月底區間已計R1",
+        "月初區間累計R", "月初區間累計R1",
         .. Enumerable.Range(1, 31).Select(day => day.ToString(CultureInfo.InvariantCulture)),
-        "本月底區間已計R", "本月底區間已計R1", "本月正常班次數"
+        "當月R", "當月R1", "月底區間累計R", "月底區間累計R1", "本月班數"
     ];
 
     private static readonly TimeSpan TaipeiOffset = TimeSpan.FromHours(8);
@@ -59,6 +59,9 @@ public static partial class ScheduleCsv
                 employee.OpeningUsage?.SpecialRest.ToString(CultureInfo.InvariantCulture) ?? ""
             };
             values.AddRange(Enumerable.Range(1, 31).Select(day => CellText(schedule, employee, day)));
+            var monthlyUsage = employee.ClosingUsage is null ? null : CountRestUsage(employee.Assignments.Values);
+            values.Add(monthlyUsage?.Rest.ToString(CultureInfo.InvariantCulture) ?? "");
+            values.Add(monthlyUsage?.SpecialRest.ToString(CultureInfo.InvariantCulture) ?? "");
             values.Add(employee.ClosingUsage?.Rest.ToString(CultureInfo.InvariantCulture) ?? "");
             values.Add(employee.ClosingUsage?.SpecialRest.ToString(CultureInfo.InvariantCulture) ?? "");
             values.Add(employee.NormalWorkCount?.ToString(CultureInfo.InvariantCulture) ?? "");
@@ -97,6 +100,8 @@ public static partial class ScheduleCsv
         var field = $"row {rowNumber}";
         var ability = NullableInt(row[4], $"{field} 能力");
         var monthlyShift = NullableShift(row[5], $"{field} T月班別");
+        var monthlyUsage = Usage(row[39], row[40], $"{field} monthly");
+        var closingUsage = Usage(row[41], row[42], $"{field} closing");
         var employee = new EmployeeMonthlySchedule
         {
             EmployeeId = row[0].Trim(),
@@ -107,8 +112,8 @@ public static partial class ScheduleCsv
             MonthlyShift = monthlyShift,
             OpeningUsage = Usage(row[6], row[7], $"{field} opening"),
             Assignments = new Dictionary<DateOnly, ScheduleCell>(),
-            ClosingUsage = Usage(row[39], row[40], $"{field} closing"),
-            NormalWorkCount = NullableInt(row[41], $"{field} 本月正常班次數")
+            ClosingUsage = closingUsage,
+            NormalWorkCount = NullableInt(row[43], $"{field} 本月班數")
         };
 
         var assignments = (Dictionary<DateOnly, ScheduleCell>)employee.Assignments;
@@ -125,8 +130,19 @@ public static partial class ScheduleCsv
             var date = monthStart.AddDays(day - 1);
             assignments[date] = ParseCell(text, date, monthlyShift, $"{field} day {day}");
         }
+        var expectedMonthlyUsage = CountRestUsage(assignments.Values);
+        if (closingUsage is null && monthlyUsage is not null)
+            throw new ScheduleCsvException(field, "Monthly R/R1 must be blank when closing interval totals are blank.");
+        if (closingUsage is not null && monthlyUsage is null)
+            throw new ScheduleCsvException(field, "Monthly R/R1 is required when closing interval totals are filled.");
+        if (monthlyUsage is not null && monthlyUsage != expectedMonthlyUsage)
+            throw new ScheduleCsvException(field, $"Monthly R/R1 must be {expectedMonthlyUsage.Rest} and {expectedMonthlyUsage.SpecialRest} from the daily cells.");
         return employee;
     }
+
+    private static RestUsage CountRestUsage(IEnumerable<ScheduleCell> cells) => new(
+        cells.Count(cell => cell.Kind == AssignmentKind.Rest),
+        cells.Count(cell => cell.Kind == AssignmentKind.SpecialRest));
 
     private static ScheduleCell ParseCell(string text, DateOnly date, Shift? monthlyShift, string field) => text switch
     {
@@ -141,7 +157,13 @@ public static partial class ScheduleCsv
         {
             Kind = AssignmentKind.Work,
             Station = match.Groups[1].Value,
-            Shift = ShiftFromText(match.Groups[2].Value)
+            Shift = MShiftFromText(match.Groups[2].Value)
+        },
+        _ when MWorkShortPattern().Match(text) is { Success: true } match => new()
+        {
+            Kind = AssignmentKind.Work,
+            Station = $"LB{int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture):D2}",
+            Shift = MShiftFromText(match.Groups[2].Value)
         },
         _ => throw new ScheduleCsvException(field, $"Unsupported schedule cell '{text}'.")
     };
@@ -171,7 +193,7 @@ public static partial class ScheduleCsv
             AssignmentKind.Rest => "R",
             AssignmentKind.SpecialRest => "R1",
             AssignmentKind.WorkEvent => $"X[{cell.EventStart:HH\\:mm}-{cell.EventEnd:HH\\:mm}]",
-            AssignmentKind.Work when cell.Station is not null => cell.Station + ShiftText(cell.Shift),
+            AssignmentKind.Work when cell.Station is not null => cell.Station + MShiftText(cell.Shift),
             AssignmentKind.Work => ShiftText(cell.Shift),
             _ => ""
         };
@@ -241,6 +263,8 @@ public static partial class ScheduleCsv
         _ => null
     };
 
+    private static Shift? MShiftFromText(string text) => text == "小" ? Shift.Afternoon : ShiftFromText(text);
+
     private static string ShiftText(Shift? shift) => shift switch
     {
         Shift.Early => "早",
@@ -249,12 +273,17 @@ public static partial class ScheduleCsv
         _ => ""
     };
 
+    private static string MShiftText(Shift? shift) => shift == Shift.Afternoon ? "小" : ShiftText(shift);
+
     private static string Join(IEnumerable<string> values) => string.Join(',', values.Select(Escape));
     private static string Escape(string value) => value.IndexOfAny([',', '"', '\r', '\n']) < 0 ? value : $"\"{value.Replace("\"", "\"\"")}\"";
 
     [GeneratedRegex(@"^X\[(\d{2}:\d{2})-(\d{2}:\d{2})\]$", RegexOptions.CultureInvariant)]
     private static partial Regex EventPattern();
 
-    [GeneratedRegex(@"^(LB(?:0[1-9]|1[0-2]))(早|午|夜)$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^(LB(?:0[1-9]|1[0-2]))(早|午|小|夜)$", RegexOptions.CultureInvariant)]
     private static partial Regex MWorkPattern();
+
+    [GeneratedRegex(@"^([1-9]|1[0-2])(早|午|小|夜)$", RegexOptions.CultureInvariant)]
+    private static partial Regex MWorkShortPattern();
 }

@@ -88,6 +88,32 @@ public sealed class TSolverTests
     }
 
     [TestMethod]
+    public void Csv_VerifiesMonthlyRestTotals()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"ntm-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var schedule = ValidInput().PreviousMonth;
+            var path = Path.Combine(root, "schedule.csv");
+            ScheduleCsv.WriteMonthly(path, schedule);
+            _ = ScheduleCsv.ReadMonthly(path, schedule.MonthStart);
+
+            var lines = File.ReadAllLines(path);
+            var fields = lines[1].Split(',');
+            fields[39] = "999";
+            lines[1] = string.Join(',', fields);
+            File.WriteAllLines(path, lines);
+
+            Assert.ThrowsExactly<ScheduleCsvException>(() => ScheduleCsv.ReadMonthly(path, schedule.MonthStart));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
     public void Csv_RejectsNonexistentDayAndInvalidCell()
     {
         var root = Path.Combine(Path.GetTempPath(), $"ntm-{Guid.NewGuid():N}");

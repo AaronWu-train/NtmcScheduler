@@ -1,4 +1,5 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using NtmScheduler.Cli;
 
 [assembly: DoNotParallelize]
 
@@ -7,6 +8,47 @@ namespace NtmScheduler.Solvers.Tests;
 [TestClass]
 public sealed class MSolverTests
 {
+    [TestMethod]
+    public void Csv_MWorkAliasesNormalizeStationsAndSmallShift()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"ntm-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var month = new DateOnly(2026, 9, 1);
+            var employee = ValidInput().DemandMonth.Employees[0] with
+            {
+                Assignments = new Dictionary<DateOnly, ScheduleCell>
+                {
+                    [month] = new() { Kind = AssignmentKind.Work, Station = "LB01", Shift = Shift.Afternoon },
+                    [month.AddDays(1)] = new() { Kind = AssignmentKind.Work, Station = "LB02", Shift = Shift.Afternoon },
+                    [month.AddDays(2)] = new() { Kind = AssignmentKind.Work, Station = "LB03", Shift = Shift.Afternoon },
+                    [month.AddDays(3)] = new() { Kind = AssignmentKind.Work, Station = "LB04", Shift = Shift.Afternoon },
+                    [month.AddDays(4)] = new() { Kind = AssignmentKind.Work, Station = "LB12", Shift = Shift.Early }
+                }
+            };
+            var inputPath = Path.Combine(root, "input.csv");
+            var outputPath = Path.Combine(root, "output.csv");
+            ScheduleCsv.WriteMonthly(inputPath, new(month, [employee]));
+            File.WriteAllText(inputPath, File.ReadAllText(inputPath)
+                .Replace("LB01小", "1小")
+                .Replace("LB03小", "3午")
+                .Replace("LB04小", "LB04午")
+                .Replace("LB12早", "12早"));
+
+            var parsed = ScheduleCsv.ReadMonthly(inputPath, month);
+            Assert.AreEqual("LB01", parsed.Employees[0].Assignments[month].Station);
+            Assert.IsTrue(parsed.Employees[0].Assignments.Where(pair => pair.Key <= month.AddDays(3)).All(pair => pair.Value.Shift == Shift.Afternoon));
+            Assert.AreEqual("LB12", parsed.Employees[0].Assignments[month.AddDays(4)].Station);
+            ScheduleCsv.WriteMonthly(outputPath, parsed);
+            StringAssert.Contains(File.ReadAllText(outputPath), "LB01小,LB02小,LB03小,LB04小,LB12早");
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
     [TestMethod]
     public void Solve_MonthlySchedules_ReturnsNamedCandidate()
     {

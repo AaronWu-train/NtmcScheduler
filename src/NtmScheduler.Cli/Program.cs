@@ -145,5 +145,5 @@ public static class Program
     }
 
     private static string Default(string value, string fallback) => string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
-    private static string ShiftText(Shift shift) => shift switch { Shift.Early => "早", Shift.Afternoon => "午", Shift.Night => "夜", _ => "" };
+    private static string ShiftText(Shift shift) => shift switch { Shift.Early => "早", Shift.Afternoon => "小", Shift.Night => "夜", _ => "" };
 }
