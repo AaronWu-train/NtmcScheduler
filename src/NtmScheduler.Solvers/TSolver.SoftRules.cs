@@ -231,7 +231,7 @@ public static partial class TSolver
         var selectedDates = dates.ToArray();
         var ranges = new List<LinearExpr>();
         foreach (var group in input.DemandMonth.Employees
-                     .Where(employee => employee.EmploymentStartDate <= input.DemandMonth.MonthStart)
+                     .Where(employee => IsEmployedOn(employee, input.DemandMonth.MonthStart))
                      .GroupBy(employee => employee.MonthlyShift))
         {
             var counts = group.Select(employee =>

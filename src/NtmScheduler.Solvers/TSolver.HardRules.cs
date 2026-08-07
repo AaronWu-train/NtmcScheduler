@@ -139,7 +139,7 @@ public static partial class TSolver
                 .Where(item => item.Cell.Kind == AssignmentKind.Rest)
                 .Select(item => item.Date)
                 .ToHashSet();
-            foreach (var end in dates.Where(date => date >= employee.EmploymentStartDate.AddDays(6)))
+            foreach (var end in dates.Where(date => IsEmployedOn(employee, date.AddDays(-6))))
             {
                 var window = Enumerable.Range(0, 7).Select(offset => end.AddDays(-offset)).ToArray();
                 model.Add(LinearExpr.Sum(window.Where(modeledDates.Contains).Select(date => variables.Rest[(employee.EmployeeId, date)])) + window.Count(historicalRest.Contains) >= 1);

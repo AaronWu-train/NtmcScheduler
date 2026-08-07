@@ -52,7 +52,7 @@ public static partial class ScheduleCsv
                 employee.EmployeeId,
                 employee.Name,
                 employee.Affiliation,
-                employee.EmploymentStartDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                employee.EmploymentStartDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
                 employee.Ability?.ToString(CultureInfo.InvariantCulture) ?? "",
                 ShiftText(employee.MonthlyShift),
                 employee.OpeningUsage?.Rest.ToString(CultureInfo.InvariantCulture) ?? "",
@@ -102,7 +102,7 @@ public static partial class ScheduleCsv
             EmployeeId = row[0].Trim(),
             Name = row[1].Trim(),
             Affiliation = row[2].Trim(),
-            EmploymentStartDate = Date(row[3], $"{field} 到職日期"),
+            EmploymentStartDate = NullableDate(row[3], $"{field} 到職日期"),
             Ability = ability,
             MonthlyShift = monthlyShift,
             OpeningUsage = Usage(row[6], row[7], $"{field} opening"),
@@ -162,7 +162,7 @@ public static partial class ScheduleCsv
     {
         if (day > DateTime.DaysInMonth(schedule.MonthStart.Year, schedule.MonthStart.Month)) return "";
         var date = schedule.MonthStart.AddDays(day - 1);
-        if (date < employee.EmploymentStartDate || !employee.Assignments.TryGetValue(date, out var cell)) return "";
+        if ((employee.EmploymentStartDate is { } start && date < start) || !employee.Assignments.TryGetValue(date, out var cell)) return "";
         return cell.Kind switch
         {
             null when cell.RequestedRest => "R*",
@@ -223,6 +223,9 @@ public static partial class ScheduleCsv
             throw new ScheduleCsvException(field, $"'{text}' must use yyyy-MM-dd.");
         return value;
     }
+
+    private static DateOnly? NullableDate(string text, string field) =>
+        string.IsNullOrWhiteSpace(text) ? null : Date(text, field);
 
     private static Shift? NullableShift(string text, string field)
     {

@@ -344,7 +344,7 @@ public static partial class MSolver
         var selectedDates = dates.ToArray();
         var ranges = new List<LinearExpr>();
         foreach (var group in input.DemandMonth.Employees
-                     .Where(employee => employee.EmploymentStartDate <= input.DemandMonth.MonthStart)
+                     .Where(employee => IsEmployedOn(employee, input.DemandMonth.MonthStart))
                      .GroupBy(employee => StationGroupIndex(employee.Affiliation)))
         {
             var counts = group.Select(employee =>
@@ -372,7 +372,7 @@ public static partial class MSolver
     {
         var ranges = new List<LinearExpr>();
         foreach (var group in input.DemandMonth.Employees
-                     .Where(employee => employee.EmploymentStartDate <= input.DemandMonth.MonthStart)
+                     .Where(employee => IsEmployedOn(employee, input.DemandMonth.MonthStart))
                      .GroupBy(employee => StationGroupIndex(employee.Affiliation)))
         {
             var counts = group.Select(employee =>

@@ -58,7 +58,7 @@ public sealed record EmployeeMonthlySchedule
     /// <summary>Home station for M; professional group for T.</summary>
     public required string Affiliation { get; init; }
 
-    public required DateOnly EmploymentStartDate { get; init; }
+    public DateOnly? EmploymentStartDate { get; init; }
 
     /// <summary>Required for T (1-5); null for M.</summary>
     public int? Ability { get; init; }

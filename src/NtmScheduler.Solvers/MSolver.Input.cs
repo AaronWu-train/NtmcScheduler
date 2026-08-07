@@ -62,8 +62,8 @@ public static partial class MSolver
         foreach (var employee in current.Values)
         {
             var hasHistory = previous.TryGetValue(employee.EmployeeId, out var history);
-            if (employee.EmploymentStartDate < monthStart && !hasHistory)
-                errors.Add(new("PreviousMonth", $"Employee '{employee.EmployeeId}' started before the target month and needs previous-month history."));
+            if (!hasHistory && (employee.EmploymentStartDate is not { } start || start < monthStart))
+                errors.Add(new("PreviousMonth", $"Employee '{employee.EmployeeId}' needs previous-month history unless employment starts in the target month."));
             if (hasHistory && history!.EmploymentStartDate != employee.EmploymentStartDate)
                 errors.Add(new("EmploymentStartDate", $"Employee '{employee.EmployeeId}' has inconsistent employment start dates."));
 
@@ -103,20 +103,20 @@ public static partial class MSolver
             if (string.IsNullOrWhiteSpace(employee.Name)) errors.Add(new($"{prefix}.Employees", $"Employee '{employee.EmployeeId}' name cannot be blank."));
             if (!Stations.Contains(employee.Affiliation)) errors.Add(new($"{prefix}.Employees", $"Employee '{employee.EmployeeId}' affiliation must be an M station."));
             if (employee.Ability is not null || employee.MonthlyShift is not null) errors.Add(new($"{prefix}.Employees", $"M employee '{employee.EmployeeId}' cannot have ability or T monthly shift."));
-            if (employee.EmploymentStartDate > monthEnd) errors.Add(new($"{prefix}.Employees", $"Employee '{employee.EmployeeId}' starts after this schedule month."));
+            if (employee.EmploymentStartDate is { } start && start > monthEnd) errors.Add(new($"{prefix}.Employees", $"Employee '{employee.EmployeeId}' starts after this schedule month."));
 
             foreach (var pair in employee.Assignments)
             {
                 if (pair.Key < schedule.MonthStart || pair.Key > monthEnd)
                     errors.Add(new($"{prefix}.Assignments", $"Assignment {employee.EmployeeId}/{pair.Key:yyyy-MM-dd} is outside the schedule month."));
-                if (pair.Key < employee.EmploymentStartDate)
+                if (employee.EmploymentStartDate is { } employmentStart && pair.Key < employmentStart)
                     errors.Add(new($"{prefix}.Assignments", $"Assignment {employee.EmployeeId}/{pair.Key:yyyy-MM-dd} is before employment starts."));
                 ValidateCell(employee, pair.Key, pair.Value, history, errors, prefix);
             }
 
             if (history)
             {
-                foreach (var date in Enumerable.Range(0, days).Select(schedule.MonthStart.AddDays).Where(date => date >= employee.EmploymentStartDate))
+                foreach (var date in Enumerable.Range(0, days).Select(schedule.MonthStart.AddDays).Where(date => IsEmployedOn(employee, date)))
                 {
                     if (!employee.Assignments.TryGetValue(date, out var cell) || cell.Kind is null)
                         errors.Add(new("PreviousMonth.Assignments", $"Missing resolved history for {employee.EmployeeId}/{date:yyyy-MM-dd}."));
@@ -229,7 +229,8 @@ public static partial class MSolver
 
     // History and R/R1 usage
 
-    private static bool IsEmployedOn(EmployeeMonthlySchedule employee, DateOnly date) => date >= employee.EmploymentStartDate;
+    private static bool IsEmployedOn(EmployeeMonthlySchedule employee, DateOnly date) =>
+        employee.EmploymentStartDate is not { } start || date >= start;
     private static IEnumerable<(DateOnly Date, ScheduleCell Cell)> ResolvedHistoryFor(ScheduleInput input, string employeeId)
     {
         var employee = input.PreviousMonth.Employees.FirstOrDefault(value => value.EmployeeId == employeeId);
@@ -257,7 +258,8 @@ public static partial class MSolver
         if (history is not null && interval.Start < monthStart && interval.End >= monthStart)
             return history.ClosingUsage!;
 
-        var creditEnd = employee.EmploymentStartDate.AddDays(-1);
+        if (employee.EmploymentStartDate is not { } start) return new(0, 0);
+        var creditEnd = start.AddDays(-1);
         if (creditEnd < interval.Start) return new(0, 0);
         return StandardRestCredit(interval, interval.Start, creditEnd < interval.End ? creditEnd : interval.End);
     }

@@ -215,7 +215,7 @@ public static partial class MSolver
                 .Select(x => x.Date)
                 .ToHashSet();
 
-            foreach (var end in dates.Where(date => date >= employee.EmploymentStartDate.AddDays(6)))
+            foreach (var end in dates.Where(date => IsEmployedOn(employee, date.AddDays(-6))))
             {
                 var window = Enumerable.Range(0, 7).Select(offset => end.AddDays(-offset)).ToArray();
                 var fixedRest = window.Count(historicalGeneralRest.Contains);

@@ -15,11 +15,12 @@ public sealed class TSolverTests
         Assert.AreNotEqual(SolveStatus.InvalidInput, result.Status, string.Join(Environment.NewLine, result.Errors));
         Assert.AreNotEqual(SolveStatus.Infeasible, result.Status);
         Assert.IsGreaterThanOrEqualTo(1, result.Candidates.Count);
+        Assert.IsNull(result.Candidates[0].Schedule.Employees[0].EmploymentStartDate);
         var hire = result.Candidates[0].Schedule.Employees.Single(employee => employee.EmployeeId == "T-NEW");
         Assert.AreEqual(new RestUsage(12, 1), hire.OpeningUsage);
         Assert.IsGreaterThanOrEqualTo(2, hire.ClosingUsage!.Rest);
         Assert.IsGreaterThanOrEqualTo(1, hire.ClosingUsage.SpecialRest);
-        Assert.IsTrue(hire.Assignments.Keys.All(date => date >= hire.EmploymentStartDate));
+        Assert.IsTrue(hire.Assignments.Keys.All(date => date >= hire.EmploymentStartDate!.Value));
         CollectionAssert.AreEqual(
             new[] { "RequestedRest", "StaffingQuality", "MonthlyRestDistribution", "WorkPatternQuality", "RestFairness" },
             result.Candidates[0].Objectives.Select(value => value.Name).ToArray());
@@ -37,7 +38,7 @@ public sealed class TSolverTests
         {
             Assignments = new Dictionary<DateOnly, ScheduleCell>(hire.Assignments)
             {
-                [hire.EmploymentStartDate.AddDays(-1)] = new() { Kind = AssignmentKind.Rest }
+                [hire.EmploymentStartDate!.Value.AddDays(-1)] = new() { Kind = AssignmentKind.Rest }
             }
         };
         input = input with
@@ -76,6 +77,7 @@ public sealed class TSolverTests
             var parsed = ScheduleCsv.ReadMonthly(path, schedule.MonthStart);
 
             Assert.AreEqual(employee.Name, parsed.Employees[0].Name);
+            Assert.IsNull(parsed.Employees[0].EmploymentStartDate);
             Assert.AreEqual(new DateOnly(2026, 9, 4), DateOnly.FromDateTime(parsed.Employees[0].Assignments[new(2026, 9, 3)].EventEnd!.Value.Date));
             Assert.AreEqual(0xEF, File.ReadAllBytes(path)[0]);
         }
@@ -161,6 +163,25 @@ public sealed class TSolverTests
         Assert.ThrowsExactly<OperationCanceledException>(() => TSolver.Solve(ValidInput(), cancellationToken: cancellation.Token));
     }
 
+    [TestMethod]
+    public void Solve_BlankAndDatedEmploymentStarts_ReturnInvalidInput()
+    {
+        var input = ValidInput();
+        var first = input.PreviousMonth.Employees[0] with { EmploymentStartDate = new(2020, 1, 1) };
+        input = input with
+        {
+            PreviousMonth = input.PreviousMonth with
+            {
+                Employees = [first, .. input.PreviousMonth.Employees.Skip(1)]
+            }
+        };
+
+        var result = TSolver.Solve(input);
+
+        Assert.AreEqual(SolveStatus.InvalidInput, result.Status);
+        Assert.IsTrue(result.Errors.Any(error => error.Field == "EmploymentStartDate"));
+    }
+
     internal static ScheduleInput ValidInput()
     {
         var month = new DateOnly(2026, 9, 1);
@@ -186,7 +207,7 @@ public sealed class TSolverTests
                     ? new ScheduleCell { Kind = AssignmentKind.Rest }
                     : new ScheduleCell { Kind = AssignmentKind.Work, Shift = priorShift });
             var closing = new RestUsage(12, 1);
-            previous.Add(Row(id, group, ability, priorShift, new(2020, 1, 1), history, null, closing, 26));
+            previous.Add(Row(id, group, ability, priorShift, null, history, null, closing, 26));
             var assignments = new Dictionary<DateOnly, ScheduleCell>();
             if (id == "T-E1")
             {
@@ -195,7 +216,7 @@ public sealed class TSolverTests
             }
             if (id == "T-E2") assignments[month.AddDays(4)] = new() { RequestedRest = true };
             if (id == "T-A1") assignments[month.AddDays(7)] = Event(month.AddDays(7), new(8, 30), new(17, 30));
-            demand.Add(Row(id, group, ability, currentShift, new(2020, 1, 1), assignments, closing, null, null));
+            demand.Add(Row(id, group, ability, currentShift, null, assignments, closing, null, null));
         }
 
         demand.Add(Row("T-NEW", "Signal", 4, Shift.Early, new(2026, 9, 21), new Dictionary<DateOnly, ScheduleCell>(), new(12, 1), null, null));
@@ -218,7 +239,7 @@ public sealed class TSolverTests
         string affiliation,
         int ability,
         Shift shift,
-        DateOnly start,
+        DateOnly? start,
         IReadOnlyDictionary<DateOnly, ScheduleCell> assignments,
         RestUsage? opening,
         RestUsage? closing,

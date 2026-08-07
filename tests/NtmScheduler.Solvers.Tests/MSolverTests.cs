@@ -20,6 +20,7 @@ public sealed class MSolverTests
             result.Candidates[0].Objectives.Select(value => value.Name).ToArray());
         Assert.AreEqual(new DateOnly(2026, 9, 1), result.Candidates[0].Schedule.MonthStart);
         Assert.HasCount(40, result.Candidates[0].Schedule.Employees);
+        Assert.IsNull(result.Candidates[0].Schedule.Employees[0].EmploymentStartDate);
         Assert.IsGreaterThanOrEqualTo(1, result.Candidates[0].Objectives
             .SelectMany(value => value.Components)
             .Single(value => value.Name == "NightRestEarly").Value);
@@ -111,8 +112,8 @@ public sealed class MSolverTests
                 historyAssignments[new(2026, 8, 31)] = new() { Kind = AssignmentKind.Rest };
             }
 
-            previous.Add(Row(id, $"M Employee {id}", homes[group], new(2020, 1, 1), historyAssignments, null, closing, historyAssignments.Count(pair => pair.Value.Kind == AssignmentKind.Work)));
-            demand.Add(Row(id, $"M Employee {id}", homes[group], new(2020, 1, 1), targetAssignments, closing, null, null));
+            previous.Add(Row(id, $"M Employee {id}", homes[group], null, historyAssignments, null, closing, historyAssignments.Count(pair => pair.Value.Kind == AssignmentKind.Work)));
+            demand.Add(Row(id, $"M Employee {id}", homes[group], null, targetAssignments, closing, null, null));
         }
 
         return new(
@@ -139,7 +140,7 @@ public sealed class MSolverTests
         string id,
         string name,
         string affiliation,
-        DateOnly start,
+        DateOnly? start,
         IReadOnlyDictionary<DateOnly, ScheduleCell> assignments,
         RestUsage? opening,
         RestUsage? closing,
