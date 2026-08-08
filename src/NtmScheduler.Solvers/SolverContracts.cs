@@ -14,6 +14,7 @@ public enum AssignmentKind
     Work,
     Rest,        // R
     SpecialRest, // R1
+    LeaveRest,   // R休
     WorkEvent    // X
 }
 
@@ -65,6 +66,9 @@ public sealed record EmployeeMonthlySchedule
 
     /// <summary>Required for T; null for M.</summary>
     public Shift? MonthlyShift { get; init; }
+
+    /// <summary>Exact target-month R休 count. Null means zero; solved and historical schedules leave it null.</summary>
+    public int? RequestedLeaveRestCount { get; init; }
 
     public RestUsage? OpeningUsage { get; init; }
     public required IReadOnlyDictionary<DateOnly, ScheduleCell> Assignments { get; init; }

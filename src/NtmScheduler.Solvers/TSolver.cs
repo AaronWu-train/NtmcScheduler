@@ -117,6 +117,7 @@ public static partial class TSolver
         {
             if (solver.Value(variables.Rest[cell]) == 1) selected.Add(variables.Rest[cell]);
             else if (solver.Value(variables.SpecialRest[cell]) == 1) selected.Add(variables.SpecialRest[cell]);
+            else if (solver.Value(variables.LeaveRest[cell]) == 1) selected.Add(variables.LeaveRest[cell]);
             else
             {
                 var employee = input.DemandMonth.Employees.Single(value => value.EmployeeId == cell.Employee);
@@ -148,6 +149,7 @@ public static partial class TSolver
                 if (source?.Kind == AssignmentKind.WorkEvent) assignments[date] = source;
                 else if (solver.Value(variables.Rest[(employee.EmployeeId, date)]) == 1) assignments[date] = new() { Kind = AssignmentKind.Rest, RequestedRest = requested };
                 else if (solver.Value(variables.SpecialRest[(employee.EmployeeId, date)]) == 1) assignments[date] = new() { Kind = AssignmentKind.SpecialRest, RequestedRest = requested };
+                else if (solver.Value(variables.LeaveRest[(employee.EmployeeId, date)]) == 1) assignments[date] = new() { Kind = AssignmentKind.LeaveRest, RequestedRest = requested };
                 else assignments[date] = new() { Kind = AssignmentKind.Work, Shift = ShiftAssignedOnDate(employee, date, input.DemandMonth.MonthStart), RequestedRest = requested };
             }
 
@@ -164,7 +166,8 @@ public static partial class TSolver
                 Assignments = assignments,
                 OpeningUsage = OpeningRestUsage(input, employee),
                 ClosingUsage = closing,
-                NormalWorkCount = workCount
+                NormalWorkCount = workCount,
+                RequestedLeaveRestCount = null
             });
         }
 

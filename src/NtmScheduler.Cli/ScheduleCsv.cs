@@ -19,7 +19,7 @@ public static partial class ScheduleCsv
         "ID", "姓名", "所屬", "到職日期", "能力", "T月班別",
         "月初區間累計R", "月初區間累計R1",
         .. Enumerable.Range(1, 31).Select(day => day.ToString(CultureInfo.InvariantCulture)),
-        "當月R", "當月R1", "月底區間累計R", "月底區間累計R1", "本月班數"
+        "當月R", "當月R1", "當月指定R休", "月底區間累計R", "月底區間累計R1", "本月班數"
     ];
 
     private static readonly TimeSpan TaipeiOffset = TimeSpan.FromHours(8);
@@ -62,6 +62,9 @@ public static partial class ScheduleCsv
             var monthlyUsage = employee.ClosingUsage is null ? null : CountRestUsage(employee.Assignments.Values);
             values.Add(monthlyUsage?.Rest.ToString(CultureInfo.InvariantCulture) ?? "");
             values.Add(monthlyUsage?.SpecialRest.ToString(CultureInfo.InvariantCulture) ?? "");
+            values.Add((employee.ClosingUsage is null
+                ? employee.RequestedLeaveRestCount
+                : employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.LeaveRest))?.ToString(CultureInfo.InvariantCulture) ?? "");
             values.Add(employee.ClosingUsage?.Rest.ToString(CultureInfo.InvariantCulture) ?? "");
             values.Add(employee.ClosingUsage?.SpecialRest.ToString(CultureInfo.InvariantCulture) ?? "");
             values.Add(employee.NormalWorkCount?.ToString(CultureInfo.InvariantCulture) ?? "");
@@ -101,7 +104,8 @@ public static partial class ScheduleCsv
         var ability = NullableInt(row[4], $"{field} 能力");
         var monthlyShift = NullableShift(row[5], $"{field} T月班別");
         var monthlyUsage = Usage(row[39], row[40], $"{field} monthly");
-        var closingUsage = Usage(row[41], row[42], $"{field} closing");
+        var monthlyLeaveRest = NullableInt(row[41], $"{field} 當月指定R休");
+        var closingUsage = Usage(row[42], row[43], $"{field} closing");
         var employee = new EmployeeMonthlySchedule
         {
             EmployeeId = row[0].Trim(),
@@ -110,10 +114,11 @@ public static partial class ScheduleCsv
             EmploymentStartDate = NullableDate(row[3], $"{field} 到職日期"),
             Ability = ability,
             MonthlyShift = monthlyShift,
+            RequestedLeaveRestCount = closingUsage is null ? monthlyLeaveRest : null,
             OpeningUsage = Usage(row[6], row[7], $"{field} opening"),
             Assignments = new Dictionary<DateOnly, ScheduleCell>(),
             ClosingUsage = closingUsage,
-            NormalWorkCount = NullableInt(row[43], $"{field} 本月班數")
+            NormalWorkCount = NullableInt(row[44], $"{field} 本月班數")
         };
 
         var assignments = (Dictionary<DateOnly, ScheduleCell>)employee.Assignments;
@@ -137,6 +142,9 @@ public static partial class ScheduleCsv
             throw new ScheduleCsvException(field, "Monthly R/R1 is required when closing interval totals are filled.");
         if (monthlyUsage is not null && monthlyUsage != expectedMonthlyUsage)
             throw new ScheduleCsvException(field, $"Monthly R/R1 must be {expectedMonthlyUsage.Rest} and {expectedMonthlyUsage.SpecialRest} from the daily cells.");
+        var expectedMonthlyLeaveRest = assignments.Values.Count(cell => cell.Kind == AssignmentKind.LeaveRest);
+        if (closingUsage is not null && monthlyLeaveRest != expectedMonthlyLeaveRest)
+            throw new ScheduleCsvException(field, $"Monthly R休 must be {expectedMonthlyLeaveRest} from the daily cells.");
         return employee;
     }
 
@@ -148,9 +156,11 @@ public static partial class ScheduleCsv
     {
         "R" => new() { Kind = AssignmentKind.Rest },
         "R1" => new() { Kind = AssignmentKind.SpecialRest },
+        "R休" => new() { Kind = AssignmentKind.LeaveRest },
         "R*" => new() { RequestedRest = true },
         "R*[R]" => new() { Kind = AssignmentKind.Rest, RequestedRest = true },
         "R*[R1]" => new() { Kind = AssignmentKind.SpecialRest, RequestedRest = true },
+        "R*[R休]" => new() { Kind = AssignmentKind.LeaveRest, RequestedRest = true },
         _ when EventPattern().Match(text) is { Success: true } match => EventCell(match, date, field),
         _ when monthlyShift is not null && ShiftFromText(text) is { } shift => new() { Kind = AssignmentKind.Work, Shift = shift },
         _ when MWorkPattern().Match(text) is { Success: true } match => new()
@@ -190,8 +200,10 @@ public static partial class ScheduleCsv
             null when cell.RequestedRest => "R*",
             AssignmentKind.Rest when cell.RequestedRest => "R*[R]",
             AssignmentKind.SpecialRest when cell.RequestedRest => "R*[R1]",
+            AssignmentKind.LeaveRest when cell.RequestedRest => "R*[R休]",
             AssignmentKind.Rest => "R",
             AssignmentKind.SpecialRest => "R1",
+            AssignmentKind.LeaveRest => "R休",
             AssignmentKind.WorkEvent => $"X[{cell.EventStart:HH\\:mm}-{cell.EventEnd:HH\\:mm}]",
             AssignmentKind.Work when cell.Station is not null => cell.Station + MShiftText(cell.Shift),
             AssignmentKind.Work => ShiftText(cell.Shift),

@@ -15,6 +15,13 @@ public sealed class TSolverTests
         Assert.AreNotEqual(SolveStatus.InvalidInput, result.Status, string.Join(Environment.NewLine, result.Errors));
         Assert.AreNotEqual(SolveStatus.Infeasible, result.Status);
         Assert.IsGreaterThanOrEqualTo(1, result.Candidates.Count);
+        var leaveEmployee = result.Candidates[0].Schedule.Employees.Single(employee => employee.EmployeeId == "T-E2");
+        Assert.AreEqual(1, leaveEmployee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.LeaveRest && cell.RequestedRest));
+        Assert.IsNull(leaveEmployee.RequestedLeaveRestCount);
+        Assert.AreEqual(16, leaveEmployee.OpeningUsage!.Rest + leaveEmployee.Assignments
+            .Count(pair => pair.Key <= input.RestIntervals[0].End && pair.Value.Kind == AssignmentKind.Rest));
+        Assert.AreEqual(input.RestIntervals[0].NationalHolidays.Count, leaveEmployee.OpeningUsage.SpecialRest + leaveEmployee.Assignments
+            .Count(pair => pair.Key <= input.RestIntervals[0].End && pair.Value.Kind == AssignmentKind.SpecialRest));
         Assert.IsNull(result.Candidates[0].Schedule.Employees[0].EmploymentStartDate);
         var hire = result.Candidates[0].Schedule.Employees.Single(employee => employee.EmployeeId == "T-NEW");
         Assert.AreEqual(new RestUsage(12, 1), hire.OpeningUsage);
@@ -67,8 +74,9 @@ public sealed class TSolverTests
                 {
                     [new(2026, 9, 3)] = Event(new(2026, 9, 3), new(23, 30), new(7, 0)),
                     [new(2026, 9, 4)] = new() { RequestedRest = true },
-                    [new(2026, 9, 5)] = new() { Kind = AssignmentKind.Rest, RequestedRest = true }
-                }
+                    [new(2026, 9, 5)] = new() { Kind = AssignmentKind.LeaveRest, RequestedRest = true }
+                },
+                RequestedLeaveRestCount = 1
             };
             var schedule = input.DemandMonth with { Employees = [employee] };
             var path = Path.Combine(root, "schedule.csv");
@@ -77,6 +85,8 @@ public sealed class TSolverTests
             var parsed = ScheduleCsv.ReadMonthly(path, schedule.MonthStart);
 
             Assert.AreEqual(employee.Name, parsed.Employees[0].Name);
+            Assert.AreEqual(1, parsed.Employees[0].RequestedLeaveRestCount);
+            Assert.AreEqual(AssignmentKind.LeaveRest, parsed.Employees[0].Assignments[new(2026, 9, 5)].Kind);
             Assert.IsNull(parsed.Employees[0].EmploymentStartDate);
             Assert.AreEqual(new DateOnly(2026, 9, 4), DateOnly.FromDateTime(parsed.Employees[0].Assignments[new(2026, 9, 3)].EventEnd!.Value.Date));
             Assert.AreEqual(0xEF, File.ReadAllBytes(path)[0]);
@@ -97,14 +107,24 @@ public sealed class TSolverTests
             var schedule = ValidInput().PreviousMonth;
             var path = Path.Combine(root, "schedule.csv");
             ScheduleCsv.WriteMonthly(path, schedule);
-            _ = ScheduleCsv.ReadMonthly(path, schedule.MonthStart);
+            var parsed = ScheduleCsv.ReadMonthly(path, schedule.MonthStart);
+
+            Assert.IsNull(parsed.Employees[0].RequestedLeaveRestCount);
+            Assert.AreEqual(AssignmentKind.LeaveRest, parsed.Employees[0].Assignments[new(2026, 8, 12)].Kind);
 
             var lines = File.ReadAllLines(path);
             var fields = lines[1].Split(',');
-            fields[39] = "999";
+            Assert.AreEqual("4", fields[39]);
+            Assert.AreEqual("1", fields[41]);
+            fields[41] = "999";
             lines[1] = string.Join(',', fields);
             File.WriteAllLines(path, lines);
 
+            Assert.ThrowsExactly<ScheduleCsvException>(() => ScheduleCsv.ReadMonthly(path, schedule.MonthStart));
+            fields[41] = "1";
+            fields[39] = "999";
+            lines[1] = string.Join(',', fields);
+            File.WriteAllLines(path, lines);
             Assert.ThrowsExactly<ScheduleCsvException>(() => ScheduleCsv.ReadMonthly(path, schedule.MonthStart));
         }
         finally
@@ -208,6 +228,48 @@ public sealed class TSolverTests
         Assert.IsTrue(result.Errors.Any(error => error.Field == "EmploymentStartDate"));
     }
 
+    [TestMethod]
+    public void Solve_UnmarkedLeaveRest_ReturnsInvalidInput()
+    {
+        var input = ValidInput();
+        var employee = input.DemandMonth.Employees[0];
+        employee = employee with
+        {
+            Assignments = new Dictionary<DateOnly, ScheduleCell>(employee.Assignments)
+            {
+                [new(2026, 9, 3)] = new() { Kind = AssignmentKind.LeaveRest }
+            }
+        };
+        input = input with { DemandMonth = input.DemandMonth with { Employees = [employee, .. input.DemandMonth.Employees.Skip(1)] } };
+
+        Assert.AreEqual(SolveStatus.InvalidInput, TSolver.Solve(input).Status);
+    }
+
+    [TestMethod]
+    public void Solve_SevenDaysWithoutGeneralRest_LeaveRestDoesNotResetWindow()
+    {
+        var input = ValidInput();
+        var employee = input.DemandMonth.Employees.Single(value => value.EmployeeId == "T-E2");
+        employee = employee with
+        {
+            RequestedLeaveRestCount = 1,
+            Assignments = Enumerable.Range(0, 7).ToDictionary(
+                offset => input.DemandMonth.MonthStart.AddDays(offset),
+                offset => offset == 3
+                    ? new ScheduleCell { Kind = AssignmentKind.LeaveRest, RequestedRest = true }
+                    : new ScheduleCell { Kind = AssignmentKind.Work, Shift = Shift.Early })
+        };
+        input = input with
+        {
+            DemandMonth = input.DemandMonth with
+            {
+                Employees = input.DemandMonth.Employees.Select(value => value.EmployeeId == employee.EmployeeId ? employee : value).ToArray()
+            }
+        };
+
+        Assert.AreEqual(SolveStatus.Infeasible, TSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(10) }).Status);
+    }
+
     internal static ScheduleInput ValidInput()
     {
         var month = new DateOnly(2026, 9, 1);
@@ -229,7 +291,9 @@ public sealed class TSolverTests
         {
             var history = Enumerable.Range(0, 31).ToDictionary(
                 day => new DateOnly(2026, 8, 1).AddDays(day),
-                day => day % 6 == 5
+                day => id == "T-E1" && day == 11
+                    ? new ScheduleCell { Kind = AssignmentKind.LeaveRest }
+                    : day % 6 == 5
                     ? new ScheduleCell { Kind = AssignmentKind.Rest }
                     : new ScheduleCell { Kind = AssignmentKind.Work, Shift = priorShift });
             var closing = new RestUsage(12, 1);
@@ -242,7 +306,7 @@ public sealed class TSolverTests
             }
             if (id == "T-E2") assignments[month.AddDays(4)] = new() { RequestedRest = true };
             if (id == "T-A1") assignments[month.AddDays(7)] = Event(month.AddDays(7), new(8, 30), new(17, 30));
-            demand.Add(Row(id, group, ability, currentShift, null, assignments, closing, null, null));
+            demand.Add(Row(id, group, ability, currentShift, null, assignments, closing, null, null, id == "T-E2" ? 1 : null));
         }
 
         demand.Add(Row("T-NEW", "Signal", 4, Shift.Early, new(2026, 9, 21), new Dictionary<DateOnly, ScheduleCell>(), new(12, 1), null, null));
@@ -269,7 +333,8 @@ public sealed class TSolverTests
         IReadOnlyDictionary<DateOnly, ScheduleCell> assignments,
         RestUsage? opening,
         RestUsage? closing,
-        int? workCount) => new()
+        int? workCount,
+        int? requestedLeaveRestCount = null) => new()
         {
             EmployeeId = id,
             Name = $"T Employee {id}",
@@ -280,7 +345,8 @@ public sealed class TSolverTests
             Assignments = assignments,
             OpeningUsage = opening,
             ClosingUsage = closing,
-            NormalWorkCount = workCount
+            NormalWorkCount = workCount,
+            RequestedLeaveRestCount = requestedLeaveRestCount
         };
 
 }

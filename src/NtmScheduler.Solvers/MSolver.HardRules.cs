@@ -14,6 +14,7 @@ public static partial class MSolver
         var worksShift = new Dictionary<(string Employee, DateOnly Date, Shift Shift), BoolVar>();
         var rest = new Dictionary<(string Employee, DateOnly Date), BoolVar>();
         var specialRest = new Dictionary<(string Employee, DateOnly Date), BoolVar>();
+        var leaveRest = new Dictionary<(string Employee, DateOnly Date), BoolVar>();
         var anyRest = new Dictionary<(string Employee, DateOnly Date), BoolVar>();
         var actualWork = new Dictionary<(string Employee, DateOnly Date), BoolVar>();
         var supportsOtherStation = new Dictionary<(string Employee, DateOnly Date), BoolVar>();
@@ -46,12 +47,15 @@ public static partial class MSolver
 
                 rest[(employee.EmployeeId, date)] = model.NewBoolVar($"rest_{employee.EmployeeId}_{date:yyyyMMdd}");
                 specialRest[(employee.EmployeeId, date)] = model.NewBoolVar($"special_rest_{employee.EmployeeId}_{date:yyyyMMdd}");
+                leaveRest[(employee.EmployeeId, date)] = model.NewBoolVar($"leave_rest_{employee.EmployeeId}_{date:yyyyMMdd}");
                 anyRest[(employee.EmployeeId, date)] = model.NewBoolVar($"any_rest_{employee.EmployeeId}_{date:yyyyMMdd}");
                 actualWork[(employee.EmployeeId, date)] = model.NewBoolVar($"actual_work_{employee.EmployeeId}_{date:yyyyMMdd}");
                 supportsOtherStation[(employee.EmployeeId, date)] = model.NewBoolVar($"support_{employee.EmployeeId}_{date:yyyyMMdd}");
 
-                // AnyRest means R or R1. ActualWork means a normal shift or a fixed X event.
-                model.Add(anyRest[(employee.EmployeeId, date)] == rest[(employee.EmployeeId, date)] + specialRest[(employee.EmployeeId, date)]);
+                // AnyRest means R, R1, or R休. ActualWork means a normal shift or a fixed X event.
+                model.Add(anyRest[(employee.EmployeeId, date)] == rest[(employee.EmployeeId, date)] + specialRest[(employee.EmployeeId, date)] + leaveRest[(employee.EmployeeId, date)]);
+                if (employee.Assignments.GetValueOrDefault(date)?.RequestedRest != true)
+                    model.Add(leaveRest[(employee.EmployeeId, date)] == 0);
                 model.Add(actualWork[(employee.EmployeeId, date)] == LinearExpr.Sum(dayWork) + (eventDays.Contains((employee.EmployeeId, date)) ? 1 : 0));
                 model.Add(supportsOtherStation[(employee.EmployeeId, date)] == LinearExpr.Sum(
                     work.Where(x => x.Key.Employee == employee.EmployeeId && x.Key.Date == date && x.Key.Station != employee.Affiliation)
@@ -62,6 +66,7 @@ public static partial class MSolver
                     model.Add(LinearExpr.Sum(dayWork) == 0);
                     model.Add(rest[(employee.EmployeeId, date)] == 0);
                     model.Add(specialRest[(employee.EmployeeId, date)] == 0);
+                    model.Add(leaveRest[(employee.EmployeeId, date)] == 0);
                 }
             }
         }
@@ -77,7 +82,7 @@ public static partial class MSolver
             }
         }
 
-        return new(work, worksShift, rest, specialRest, anyRest, actualWork, supportsOtherStation, external);
+        return new(work, worksShift, rest, specialRest, leaveRest, anyRest, actualWork, supportsOtherStation, external);
     }
 
     // Hard constraints
@@ -85,6 +90,7 @@ public static partial class MSolver
     private static void AddHardConstraints(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
     {
         AddExactlyOneAssignmentPerActiveDay(model, input, dates, variables);
+        RequireExactRequestedLeaveRestCount(model, input, variables);
         FixSuppliedAssignments(model, input, variables);
         RequireExactStationCoverage(model, input, dates, variables);
         ForbidOverlappingOrInsufficientlySeparatedWork(model, input, dates, variables);
@@ -92,7 +98,7 @@ public static partial class MSolver
         EnforceEightWeekRestQuotas(model, input, dates, variables);
     }
 
-    // Hard constraint — each employee/date has exactly one state: normal work, R, R1, or fixed X.
+    // Hard constraint — each employee/date has exactly one state: normal work, R, R1, R休, or fixed X.
     private static void AddExactlyOneAssignmentPerActiveDay(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
     {
         foreach (var employee in input.DemandMonth.Employees)
@@ -109,13 +115,21 @@ public static partial class MSolver
                     normalWorkCount
                     + variables.Rest[(employee.EmployeeId, date)]
                     + variables.SpecialRest[(employee.EmployeeId, date)]
+                    + variables.LeaveRest[(employee.EmployeeId, date)]
                     + fixedWorkEvent
                     == requiredAssignmentCount);
             }
         }
     }
 
-    // Hard constraint — force every supplied normal-work, R, or R1 assignment to its requested value.
+    private static void RequireExactRequestedLeaveRestCount(CpModel model, ScheduleInput input, ModelVariables variables)
+    {
+        var targetDates = TargetMonthDates(input).ToArray();
+        foreach (var employee in input.DemandMonth.Employees)
+            model.Add(LinearExpr.Sum(targetDates.Select(date => variables.LeaveRest[(employee.EmployeeId, date)])) == (employee.RequestedLeaveRestCount ?? 0));
+    }
+
+    // Hard constraint — force every supplied normal-work, R, R1, or R休 assignment to its requested value.
     // Fixed X events are already forced because AddExactlyOneAssignmentPerActiveDay inserts their constant value of one.
     private static void FixSuppliedAssignments(CpModel model, ScheduleInput input, ModelVariables variables)
     {
@@ -133,6 +147,9 @@ public static partial class MSolver
                         break;
                     case AssignmentKind.SpecialRest:
                         model.Add(variables.SpecialRest[(employee.EmployeeId, assignment.Key)] == 1);
+                        break;
+                    case AssignmentKind.LeaveRest:
+                        model.Add(variables.LeaveRest[(employee.EmployeeId, assignment.Key)] == 1);
                         break;
                 }
             }
@@ -271,6 +288,7 @@ public static partial class MSolver
         Dictionary<(string Employee, DateOnly Date, Shift Shift), BoolVar> WorksShift,
         Dictionary<(string Employee, DateOnly Date), BoolVar> Rest,
         Dictionary<(string Employee, DateOnly Date), BoolVar> SpecialRest,
+        Dictionary<(string Employee, DateOnly Date), BoolVar> LeaveRest,
         Dictionary<(string Employee, DateOnly Date), BoolVar> AnyRest,
         Dictionary<(string Employee, DateOnly Date), BoolVar> ActualWork,
         Dictionary<(string Employee, DateOnly Date), BoolVar> SupportsOtherStation,

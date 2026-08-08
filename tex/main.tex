@@ -134,7 +134,7 @@ M、檢修人員 T 與行控人員 S 分別建立排班模型。本節先描述�
 
 給定一個目標月份、人員資料、所屬單位、歷史班表、指定休假、
 其他勤務、八週休假週期、班別時間與每日人力需求，排班系統必須
-決定每位人員每日的工作班別或休假狀態。
+決定每位人員每日的工作班別或休假狀態，包括每人指定數量的 \(R休\)。
 
 排班結果首先必須滿足勞動法規與營運需求等硬性限制，包括：
 
@@ -307,7 +307,9 @@ M 的班別時間固定為：早班 \(06{:}30\)--\(14{:}30\)、午班
 
 令 \(p_{ed}\in\{0,1\}\) 表示人員 \(e\) 是否在日期 \(d\) 提出指定休假
 \(R^*\)。\(R^*\) 只是休假申請標記，不是一種獨立的休假額度；若申請被
-滿足，求解器仍須決定該日實際使用一般 \(R\) 或 \(R1\)。
+滿足，求解器仍須決定該日實際使用一般 \(R\)、\(R1\) 或 \(R休\)。令
+\(k_e\in\mathbb Z_{\geq0}\) 為人員 \(e\) 在目標月份必須使用的精確 \(R休\) 數，
+取自需求列的 \texttt{當月指定R休}；歷史與候選列的同名欄位則記錄日格實際 \(R休\) 數。
 
 令 \(z_{ed}\in\{0,1\}\) 表示日期 \(d\) 是否已有固定勤務 \(X\)。每筆
 \(X\) 另包含實際開始時間、結束時間與說明，並由輸入資料固定，不由求解器
@@ -386,9 +388,9 @@ CSV。設定資料則集中於單一設定檔，軟規則分組與權重集中�
     \xeCJKsetup{CJKecglue={}}
   \item \texttt{LB01早}、\texttt{LB02午}、\texttt{LB06夜}：正常班，無論是否在
     本站工作都明確寫出車站與班別。
-  \item \texttt{R}：一般休假；\texttt{R1}：國定假日額度休假。
-  \item \texttt{R*}：本期休假申請，實際使用 \(R\) 或 \(R1\) 由求解器決定。
-  \item \texttt{R*[R]}、\texttt{R*[R1]}：已滿足的休假申請，方括號內保存其
+  \item \texttt{R}：一般休假；\texttt{R1}：國定假日額度休假；\texttt{R休}：已決定的歷史自選休假。
+  \item \texttt{R*}：本期休假申請，實際使用 \(R\)、\(R1\) 或 \(R休\) 由求解器決定。
+  \item \texttt{R*[R]}、\texttt{R*[R1]}、\texttt{R*[R休]}：已滿足的休假申請，方括號內保存其
     實際消耗的休假類型。此格式用於輸出與歷史資料。
   \item \texttt{X[09:00-17:00|教育訓練]}：同日固定勤務。跨日勤務則在
     儲存格內填入完整起訖日期時間，例如：
@@ -443,8 +445,10 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
   r_{ed}\in\{0,1\},
   \qquad
   r^{1}_{ed}\in\{0,1\},
+  \qquad
+  r^{L}_{ed}\in\{0,1\},
 \]
-分別表示一般 \(R\) 與 \(R1\)。\(R^*\) 不建立獨立狀態變數；其是否被滿足，
+分別表示一般 \(R\)、\(R1\) 與 \(R休\)。\(R^*\) 不建立獨立狀態變數；其是否被滿足，
 由參數 \(p_{ed}\) 與實際休假變數共同判斷。
 
 外派班位變數為 \(a_{dls}\in\mathbb{Z}_{\geq 0}\)。另定義下列衍生變數：
@@ -453,7 +457,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
   \qquad
   w_{ed}=\sum_{s\in\mathcal{S}}y_{eds}+z_{ed},
   \qquad
-  \rho_{ed}=r_{ed}+r^{1}_{ed}.
+  \rho_{ed}=r_{ed}+r^{1}_{ed}+r^{L}_{ed}.
 \]
 其中 \(y_{eds}\) 表示當日正常班別、\(w_{ed}\) 表示實際工作日，\(\rho_{ed}\)
 表示當日為任一種實際休假。
@@ -465,13 +469,22 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 每位人員每天恰好具有一個實際狀態：
 \[
   \sum_{l\in\mathcal{A}_e}\sum_{s\in\mathcal{S}}x_{edls}
-  +r_{ed}+r^{1}_{ed}+z_{ed}=1,
+  +r_{ed}+r^{1}_{ed}+r^{L}_{ed}+z_{ed}=1,
   \qquad
   \forall e\in\mathcal{E},\ d\in\mathcal{D}.
 \]
 因此固定 \(X\) 當日不能再安排正常班或休假。若 \texttt{input.csv} 已填入固定
-正常班、\(R\) 或 \(R1\)，則前處理階段將相應變數固定為 1。\texttt{R*} 只要求
+正常班、\(R\)、\(R1\) 或 \(R休\)，則前處理階段將相應變數固定為 1。\texttt{R*} 只要求
 當日盡量休假，不固定其底層休假類型。
+
+\paragraph{Exact monthly leave-rest count (\texttt{CH06})}
+
+\[
+  r^{L}_{ed}\leq p_{ed},
+  \qquad
+  \sum_{d\in\mathcal D^M}r^{L}_{ed}=k_e.
+\]
+因此 \(R休\) 只能使用目標月的 \(R^*\)，不延伸至月底後七日，也不計入跨月額度。
 
 \paragraph{Legal working stations (\texttt{MH01})}
 
@@ -512,7 +525,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 狀態更新分成兩種情況：
 \begin{itemize}
   \item 若日期 \(d\) 使用一般 \(R\)，則計數歸零：\(q_{ed}=0\)。
-  \item 若日期 \(d\) 為正常班、\(X\) 或 \(R1\)，則
+  \item 若日期 \(d\) 為正常班、\(X\)、\(R1\) 或 \(R休\)，則
     \(q_{ed}=q_{e,d-1}+1\)。
 \end{itemize}
 
@@ -554,7 +567,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
   \qquad
   \overline{R1}_{ec}+\sum_{d\in\mathcal{D}_c}r^{1}_{ed}+F_c\geq H_c.
 \]
-\(R1\) 可以安排在週期內任意日期，不必安排於國定假日當日。
+\(R1\) 可以安排在週期內任意日期，不必安排於國定假日當日。\(R休\) 不計入一般 \(R\) 或 \(R1\) 的八週額度。
 
 當週期尚未結束時，還需確認一般 \(R\) 與 \(R1\) 可在剩餘日期中同時補足。由於
 同一日不能同時使用兩種休假，因此加入聯合可補足性限制
@@ -583,15 +596,15 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 \paragraph{Requested rest (\texttt{CS01})}
 
 對所有滿足 \(p_{ed}=1\) 的人員日期 \((e,d)\)，只要當日實際使用一般
-\(R\) 或 \(R1\)，即視為申請被滿足。因此未滿足指定休假的違反量為
+\(R\)、\(R1\) 或 \(R休\)，即視為申請被滿足。因此未滿足指定休假的違反量為
 \[
   \Phi^{R^*}
   =
   \sum_{\substack{e\in\mathcal{E},\ d\in\mathcal{D}^{M}\\p_{ed}=1}}
-  (1-r_{ed}-r^{1}_{ed}).
+  (1-r_{ed}-r^{1}_{ed}-r^{L}_{ed}).
 \]
 若申請以一般 \(R\) 滿足，輸出為 \texttt{R*[R]}；若以 \(R1\) 滿足，輸出為
-\texttt{R*[R1]}。
+\texttt{R*[R1]}；若以 \(R休\) 滿足，輸出為 \texttt{R*[R休]}。
 
 \paragraph{Monthly general-rest distribution (\texttt{CS02})}
 
@@ -622,7 +635,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 \(f_m(q)=[\max\{0,|q-m|-1\}]^2\)。上述平方懲罰可使用整數查表，
 或以絕對值、最大值與乘法等整數限制建立。兩項月休分布皆為軟性偏好，
 不取代八週週期的精確額度限制。此規則會抑制在單一月份過早使用過多週期額度，
-但因其仍為軟限制，必要時不保證一定保留固定數量至後續月份。
+但因其仍為軟限制，必要時不保證一定保留固定數量至後續月份。\(R休\) 不計入兩項月休分布。
 
 \paragraph{External staffing (\texttt{MS01})}
 
@@ -650,7 +663,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 \paragraph{Continuous work-streak length (\texttt{CS04})}
 此規則避免工作日與休假過度零碎，或工作區段長期貼近六日上限。
 此軟規則中的連續工作區段，是連續曆日皆為正常班或 \(X\) 的最大區段。
-一般 \(R\) 與 \(R1\) 都會結束此區段；這與前述「最多連續六日」硬限制不同，
+一般 \(R\)、\(R1\) 與 \(R休\) 都會結束此區段；這與前述「最多連續六日」硬限制不同，
 因為該硬限制把 \(R1\) 視為未出現一般休假的一日。
 
 定義區段偏離函數
@@ -679,7 +692,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 
 \paragraph{Same-shift block length (\texttt{MS03})}
 此規則避免正常班別切換過於頻繁，以維持較穩定的作息。
-同班別區塊只觀察正常班別。一般 \(R\)、\(R1\) 與 \(X\) 都不切斷區塊，其中
+同班別區塊只觀察正常班別。一般 \(R\)、\(R1\)、\(R休\) 與 \(X\) 都不切斷區塊，其中
 \(X\) 完全略過；只有出現不同正常班別時，原區塊才結束。
 
 令 \(\lambda_{ed}\in\{0,\mathrm{E},\mathrm{A},\mathrm{N}\}\) 表示最近一個有效正常
@@ -727,7 +740,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 後，最近出現的正常班別。更新規則如下：
 
 \begin{itemize}
-  \item 若當日為一般 \(R\) 或 \(R1\)，則 \(\gamma_{ed}=0\)。
+  \item 若當日為一般 \(R\)、\(R1\) 或 \(R休\)，則 \(\gamma_{ed}=0\)。
   \item 若當日為 \(X\)，則 \(\gamma_{ed}=\gamma_{e,d-1}\)。
   \item 若當日為正常班別 \(s\)，則 \(\gamma_{ed}=s\)。若
     \(\gamma_{e,d-1}\notin\{0,s\}\)，則產生一次違反。
@@ -739,7 +752,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 \paragraph{Preferred shift rotation (\texttt{MS07})}
 
 令 \(\eta_{ed}\in\{0,\mathrm{E},\mathrm{A},\mathrm{N}\}\) 表示截至日期 \(d\) 最近出現的
-有效正常班別；一般 \(R\)、\(R1\) 與 \(X\) 均不改變此狀態。偏好轉移集合為
+有效正常班別；一般 \(R\)、\(R1\)、\(R休\) 與 \(X\) 均不改變此狀態。偏好轉移集合為
 \[
   \mathcal{P}
   =
@@ -749,26 +762,28 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 \((\eta_{e,d-1},s)\notin\mathcal{P}\)，則產生一次違反。總違反量記為
 \(\Phi^{rotate}\)。
 
+以下公平性只比較目標月第一日已在職的人員。令
+\[
+  \mathcal E^{full}_g=\{e:g(h_e)=g,\ e\text{ 於目標月第一日已在職}\}.
+\]
+
 \paragraph{Weekday rest fairness (\texttt{CS05})}
 
-對每位人員與八週週期 \(c\)，定義平日休假數
+對每位人員定義目標月份平日休假數
 \[
-  R^{wd}_{ec}
+  R^{wd}_{e}
   =
-  \overline{R}^{wd}_{ec}
-  +
-  \sum_{d\in c\cap\mathcal{D}^{M}\cap\mathcal{D}^{wd}}\rho_{ed}.
+  \sum_{d\in\mathcal{D}^{M}\cap\mathcal{D}^{wd}}\rho_{ed}.
 \]
-其中國定假日即使落在星期一至星期五，也不屬於平日集合。對每個車站群組
-\(g\) 及週期 \(c\)，平日休假公平性違反量為
+其中國定假日即使落在星期一至星期五，也不屬於平日集合。平日休假公平性違反量為
 \[
   \Phi^{weekday}
   =
-  \sum_{g,c}
+  \sum_g
   \left(
-    \max_{e:g(h_e)=g}R^{wd}_{ec}
+    \max_{e\in\mathcal E^{full}_g}R^{wd}_{e}
     -
-    \min_{e:g(h_e)=g}R^{wd}_{ec}
+    \min_{e\in\mathcal E^{full}_g}R^{wd}_{e}
   \right).
 \]
 
@@ -776,45 +791,54 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 
 令
 \[
-  R^{hol}_{ec}
+  R^{hol}_{e}
   =
-  \overline{R}^{hol}_{ec}
-  +
-  \sum_{d\in c\cap\mathcal{D}^{M}\cap\mathcal{D}^{hol}}\rho_{ed}.
+  \sum_{d\in\mathcal{D}^{M}\cap\mathcal{D}^{hol}}\rho_{ed}.
 \]
 假日包含星期六、星期日及所有國定假日。假日休假公平性違反量為
 \[
   \Phi^{holiday}
   =
-  \sum_{g,c}
+  \sum_g
   \left(
-    \max_{e:g(h_e)=g}R^{hol}_{ec}
+    \max_{e\in\mathcal E^{full}_g}R^{hol}_{e}
     -
-    \min_{e:g(h_e)=g}R^{hol}_{ec}
+    \min_{e\in\mathcal E^{full}_g}R^{hol}_{e}
   \right).
 \]
 
 \paragraph{Cross-station support fairness (\texttt{MS08})}
 
-人員 \(e\) 在週期 \(c\) 的跨站支援次數為
+人員 \(e\) 在目標月份的跨站支援次數為
 \[
-  S_{ec}
+  S_e
   =
-  \overline{S}_{ec}
-  +
-  \sum_{d\in c\cap\mathcal{D}^{M}}u_{ed}.
+  \sum_{d\in\mathcal{D}^{M}}u_{ed}.
 \]
-對每個車站群組 \(g\) 及週期 \(c\)，跨站支援公平性違反量為
+跨站支援公平性違反量為
 \[
   \Phi^{support}
   =
-  \sum_{g,c}
+  \sum_g
   \left(
-    \max_{e:g(h_e)=g}S_{ec}
+    \max_{e\in\mathcal E^{full}_g}S_e
     -
-    \min_{e:g(h_e)=g}S_{ec}
+    \min_{e\in\mathcal E^{full}_g}S_e
   \right).
 \]
+
+\paragraph{Shift-count fairness (\texttt{MS09})}
+
+\[
+  C^s_e=\sum_{d\in\mathcal D^M}y_{eds}.
+\]
+對群組 \(g\) 令 \(n_g=|\mathcal E^{full}_g|\)，則
+\[
+  \Phi^{shift,s}
+  =\sum_g\left(n_g\sum_{e\in\mathcal E^{full}_g}(C^s_e)^2
+  -\left(\sum_{e\in\mathcal E^{full}_g}C^s_e\right)^2\right).
+\]
+這是群組內班數變異數的整數等價量；\(X\) 與延伸日不計。
 \subsubsection{Objective Terms}
 
 M 模型目前定義下列軟性違反量：
@@ -833,7 +857,8 @@ M 模型目前定義下列軟性違反量：
     \Phi^{rotate}     &:\text{非偏好輪轉 }(\texttt{MS07}),\\
     \Phi^{weekday}    &:\text{平日休假公平 }(\texttt{CS05}),\\
     \Phi^{holiday}    &:\text{假日休假公平 }(\texttt{CS06}),\\
-    \Phi^{support}    &:\text{跨站支援公平 }(\texttt{MS08}).
+    \Phi^{support}    &:\text{跨站支援公平 }(\texttt{MS08}),\\
+    \Phi^{shift,s}    &:\text{群組內班別數公平 }(\texttt{MS09}).
   \end{aligned}
 \]
 
@@ -876,7 +901,10 @@ M 模型目前定義下列軟性違反量：
   \Phi^{rotate}
   +2\Phi^{weekday}
   +4\Phi^{holiday}
-  +3\Phi^{support}.
+  +3\Phi^{support}
+  +\Phi^{shift,\mathrm E}
+  +\Phi^{shift,\mathrm A}
+  +2\Phi^{shift,\mathrm N}.
 \]
 
 各群組的意義如下：
@@ -949,13 +977,13 @@ M 模型目前定義下列軟性違反量：
 
 在最終軟規則品質固定後，系統可產生最多三份候選班表。候選差異只計算
 \((e,d)\in\mathcal{E}\times\mathcal{D}^{M}\) 中真正由求解器決定的格子。所有由
-\texttt{input.csv} 固定的正常班、\(R\)、\(R1\) 或 \(X\)，以及延伸日期，均不列入
-差異分母。\(R^*\) 只固定休假申請，底層使用 \(R\) 或 \(R1\) 仍由求解器決定，
+\texttt{input.csv} 固定的正常班、\(R\)、\(R1\)、\(R休\) 或 \(X\)，以及延伸日期，均不列入
+差異分母。\(R^*\) 只固定休假申請，底層使用 \(R\)、\(R1\) 或 \(R休\) 仍由求解器決定，
 因此該格仍列入比較。
 
 候選比較依實際排班狀態進行，忽略 \(R^*\) 的顯示標記：\texttt{R} 與
 \texttt{R*[R]} 視為相同結果，\texttt{R1} 與 \texttt{R*[R1]} 視為相同結果；一般
-\(R\) 與 \(R1\) 仍視為不同狀態。若可比較格子數為 \(N_{cell}\)，兩份候選至少
+\(R\)、\(R1\) 與 \(R休\) 仍視為不同狀態。若可比較格子數為 \(N_{cell}\)，兩份候選至少
 須有 \(\lceil0.1N_{cell}\rceil\) 個格子不同，第三份候選需分別與第一、第二份
 達到此門檻。
 
@@ -1046,11 +1074,11 @@ T 的班別時間固定為：早班 \(07{:}00\)--\(15{:}00\)、午班
   \{q\in\mathcal{Q}:\exists e\in\mathcal{E}_{ds},\ \kappa_e=q\}.
 \]
 
-指定休假參數 \(p_{ed}\)、固定勤務參數 \(z_{ed}\)、八週週期國定假日數
+指定休假參數 \(p_{ed}\)、每人精確 \(R休\) 數 \(k_e\)、固定勤務參數 \(z_{ed}\)、八週週期國定假日數
 \(H_c\)，以及歷史累積量 \(\overline{R}_{ec}\)、\(\overline{R1}_{ec}\) 的定義
 與 M 模型相同。目標月份的一般 \(R\) 與 \(R1\) 基準數量同樣分別記為
 \(n\) 與 \(m\)。\(R^*\) 仍只是一個申請與顯示標記；被滿足時，實際休假類型由
-求解器在一般 \(R\) 與 \(R1\) 之間選擇。
+求解器在一般 \(R\)、\(R1\) 與 \(R休\) 之間選擇。
 
 令 \(d_0=\min\mathcal{D}^{M}-1\) 為目標月份前一日，
 \(d_1=\min\mathcal{D}^{M}\) 為目標月份第一日。對每位
@@ -1098,8 +1126,8 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
   x^{T}_{eds}\in\{0,1\},
 \]
 其中 \(x^{T}_{eds}=1\) 表示人員 \(e\) 在日期 \(d\) 正常出勤班別 \(s\)。實際
-休假變數為 \(r^{T}_{ed},r^{T,1}_{ed}\in\{0,1\}\)，分別表示一般 \(R\) 與
-\(R1\)。
+休假變數為 \(r^{T}_{ed},r^{T,1}_{ed},r^{T,L}_{ed}\in\{0,1\}\)，分別表示一般 \(R\)、
+\(R1\) 與 \(R休\)。
 
 另定義正常出勤、工作日與休假指示變數
 \[
@@ -1107,7 +1135,7 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
   \qquad
   w^{T}_{ed}=v_{ed}+z_{ed},
   \qquad
-  \rho^{T}_{ed}=r^{T}_{ed}+r^{T,1}_{ed}.
+  \rho^{T}_{ed}=r^{T}_{ed}+r^{T,1}_{ed}+r^{T,L}_{ed}.
 \]
 其中 \(X\) 算工作日，但不算正常出勤，因此不計入 T 的出勤、專業或能力指標。
 
@@ -1118,12 +1146,20 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
 每位 T 人員每天恰好具有一個實際狀態：
 \[
   \sum_{s\in\mathcal{S}}x^{T}_{eds}
-  +r^{T}_{ed}+r^{T,1}_{ed}+z_{ed}=1,
+  +r^{T}_{ed}+r^{T,1}_{ed}+r^{T,L}_{ed}+z_{ed}=1,
   \qquad
   \forall e\in\mathcal{E}^{T},\ d\in\mathcal{D}.
 \]
 同一人同日同時存在互相衝突的固定事件，應在建模前回報
 \texttt{INVALID\_INPUT}，而不是交由求解器選擇。
+
+\paragraph{Exact monthly leave-rest count (\texttt{CH06})}
+
+\[
+  r^{T,L}_{ed}\leq p_{ed},
+  \qquad
+  \sum_{d\in\mathcal D^M}r^{T,L}_{ed}=k_e.
+\]
 
 \paragraph{Fixed monthly shift (\texttt{TH01})}
 
@@ -1153,7 +1189,7 @@ T 的正常工作只能是該日期的固定班別。對所有 \(s\neq\sigma_{ed
 
 \begin{itemize}
   \item 若 \(r^{T}_{ed}=1\)，則 \(q^{T}_{ed}=0\)。
-  \item 若日期 \(d\) 為正常班、\(X\) 或 \(R1\)，則
+  \item 若日期 \(d\) 為正常班、\(X\)、\(R1\) 或 \(R休\)，則
     \(q^{T}_{ed}=q^{T}_{e,d-1}+1\)。
 \end{itemize}
 
@@ -1189,6 +1225,7 @@ T 的正常工作只能是該日期的固定班別。對所有 \(s\neq\sigma_{ed
   +\sum_{d\in\mathcal{D}_c}(r^{T}_{ed}+r^{T,1}_{ed})+F_c
   \geq16+H_c.
 \]
+\(R休\) 不計入上述任一 R/R1 額度。
 
 \paragraph{Fixed events and historical state (\texttt{CH05})}
 
@@ -1206,9 +1243,9 @@ T 的正常工作只能是該日期的固定班別。對所有 \(s\neq\sigma_{ed
   \Phi^{T,R^*}
   =
   \sum_{\substack{e\in\mathcal{E}^{T},\ d\in\mathcal{D}^{M}\\p_{ed}=1}}
-  (1-r^{T}_{ed}-r^{T,1}_{ed}).
+  (1-r^{T}_{ed}-r^{T,1}_{ed}-r^{T,L}_{ed}).
 \]
-滿足後依實際額度輸出為 \texttt{R*[R]} 或 \texttt{R*[R1]}。
+滿足後依實際額度輸出為 \texttt{R*[R]}、\texttt{R*[R1]} 或 \texttt{R*[R休]}。
 
 \paragraph{Monthly general-rest distribution (\texttt{CS02})}
 
@@ -1325,7 +1362,7 @@ T 的正常工作只能是該日期的固定班別。對所有 \(s\neq\sigma_{ed
 \paragraph{Continuous work-streak length (\texttt{CS04})}
 
 此規則避免工作與休假過度零碎，或長期貼近連續六日上限。T 的連續工作區段是
-連續曆日皆為正常班或 \(X\) 的最大區段；一般 \(R\) 與 \(R1\) 都會結束區段。
+連續曆日皆為正常班或 \(X\) 的最大區段；一般 \(R\)、\(R1\) 與 \(R休\) 都會結束區段。
 沿用 M 模型的區段偏離函數 \(D(L)\)，令已在目標月份內結束的每個工作區段依
 其長度產生懲罰，總違反量記為 \(\Phi^{T,streak}\)。月初承接歷史區段；月底仍
 未結束的區段不在本月作最終長度評分。
@@ -1563,11 +1600,11 @@ T 模型的軟性違反量為
 
 在已完成的軟規則品質固定後，T 模型同樣可產生最多三份候選班表。差異只計算
 目標月份內真正由求解器決定的人員日期格。所有由 \texttt{input.csv} 固定的正常班、
-\(R\)、\(R1\) 或 \(X\)，以及延伸日期，均不列入差異分母。\(R^*\) 的底層休假類型
+\(R\)、\(R1\)、\(R休\) 或 \(X\)，以及延伸日期，均不列入差異分母。\(R^*\) 的底層休假類型
 仍由求解器決定，因此該格仍列入比較。
 
 比較時忽略 \(R^*\) 顯示標記：\texttt{R} 與 \texttt{R*[R]} 視為相同，\texttt{R1}
-與 \texttt{R*[R1]} 視為相同；一般 \(R\) 與 \(R1\) 仍是不同實際狀態。兩份候選的
+與 \texttt{R*[R1]} 視為相同，\texttt{R休} 與 \texttt{R*[R休]} 視為相同；三種休假仍是不同實際狀態。兩份候選的
 最低差異格數為 \(\lceil0.1N_{cell}\rceil\)。
 
 \subsubsection{Infeasibility Handling}

@@ -127,6 +127,7 @@ public static partial class MSolver
         {
             if (solver.Value(variables.Rest[cell]) == 1) selected.Add(variables.Rest[cell]);
             else if (solver.Value(variables.SpecialRest[cell]) == 1) selected.Add(variables.SpecialRest[cell]);
+            else if (solver.Value(variables.LeaveRest[cell]) == 1) selected.Add(variables.LeaveRest[cell]);
             else selected.Add(variables.Work.Single(x => x.Key.Employee == cell.Employee && x.Key.Date == cell.Date && solver.Value(x.Value) == 1).Value);
         }
         return selected.ToArray();
@@ -164,6 +165,10 @@ public static partial class MSolver
                 {
                     assignments[date] = new() { Kind = AssignmentKind.SpecialRest, RequestedRest = requested };
                 }
+                else if (solver.Value(variables.LeaveRest[(employee.EmployeeId, date)]) == 1)
+                {
+                    assignments[date] = new() { Kind = AssignmentKind.LeaveRest, RequestedRest = requested };
+                }
                 else
                 {
                     var work = variables.Work.Single(x => x.Key.Employee == employee.EmployeeId && x.Key.Date == date && solver.Value(x.Value) == 1);
@@ -184,7 +189,8 @@ public static partial class MSolver
                 Assignments = assignments,
                 OpeningUsage = OpeningRestUsage(input, employee),
                 ClosingUsage = closing,
-                NormalWorkCount = workCount
+                NormalWorkCount = workCount,
+                RequestedLeaveRestCount = null
             });
         }
 

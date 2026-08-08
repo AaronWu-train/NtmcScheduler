@@ -57,15 +57,31 @@ public sealed class MSolverTests
         Assert.AreNotEqual(SolveStatus.InvalidInput, result.Status, string.Join(Environment.NewLine, result.Errors));
         Assert.AreNotEqual(SolveStatus.Infeasible, result.Status);
         Assert.IsGreaterThanOrEqualTo(1, result.Candidates.Count);
+        var candidate = result.Candidates[0];
         CollectionAssert.AreEqual(
             new[] { "RequestedRest", "ExternalStaffing", "MonthlyRestDistribution", "ScheduleQuality", "RotationAndFairness" },
-            result.Candidates[0].Objectives.Select(value => value.Name).ToArray());
-        Assert.AreEqual(new DateOnly(2026, 9, 1), result.Candidates[0].Schedule.MonthStart);
-        Assert.HasCount(40, result.Candidates[0].Schedule.Employees);
-        Assert.IsNull(result.Candidates[0].Schedule.Employees[0].EmploymentStartDate);
-        Assert.IsGreaterThanOrEqualTo(1, result.Candidates[0].Objectives
+            candidate.Objectives.Select(value => value.Name).ToArray());
+        Assert.AreEqual(new DateOnly(2026, 9, 1), candidate.Schedule.MonthStart);
+        Assert.HasCount(40, candidate.Schedule.Employees);
+        Assert.IsNull(candidate.Schedule.Employees[0].EmploymentStartDate);
+        var leaveEmployee = candidate.Schedule.Employees.Single(employee => employee.EmployeeId == "M1-01");
+        Assert.AreEqual(1, leaveEmployee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.LeaveRest && cell.RequestedRest));
+        Assert.IsNull(leaveEmployee.RequestedLeaveRestCount);
+        Assert.IsGreaterThanOrEqualTo(1, candidate.Objectives
             .SelectMany(value => value.Components)
             .Single(value => value.Name == "NightRestEarly").Value);
+
+        long ExpectedDispersion(Shift shift) => candidate.Schedule.Employees
+            .GroupBy(employee => (int.Parse(employee.Affiliation[2..]) - 1) / 3)
+            .Sum(group =>
+            {
+                var counts = group.Select(employee => (long)employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Work && cell.Shift == shift)).ToArray();
+                return counts.Length * counts.Sum(count => count * count) - counts.Sum() * counts.Sum();
+            });
+        var fairness = candidate.Objectives.Single(objective => objective.Name == "RotationAndFairness").Components;
+        Assert.AreEqual((ExpectedDispersion(Shift.Early), 1), (fairness.Single(component => component.Name == "EarlyShiftFairness").Value, fairness.Single(component => component.Name == "EarlyShiftFairness").Weight));
+        Assert.AreEqual((ExpectedDispersion(Shift.Afternoon), 1), (fairness.Single(component => component.Name == "AfternoonShiftFairness").Value, fairness.Single(component => component.Name == "AfternoonShiftFairness").Weight));
+        Assert.AreEqual((ExpectedDispersion(Shift.Night), 2), (fairness.Single(component => component.Name == "NightShiftFairness").Value, fairness.Single(component => component.Name == "NightShiftFairness").Weight));
     }
 
     [TestMethod]
@@ -114,6 +130,40 @@ public sealed class MSolverTests
         Assert.AreEqual(SolveStatus.TimeLimit, result.Status);
     }
 
+    [TestMethod]
+    [DataRow(-1)]
+    [DataRow(2)]
+    public void Solve_InvalidRequestedLeaveRestCount_ReturnsInvalidInput(int requestedCount)
+    {
+        var input = ValidInput();
+        var employee = input.DemandMonth.Employees[0] with { RequestedLeaveRestCount = requestedCount };
+        input = input with { DemandMonth = input.DemandMonth with { Employees = [employee, .. input.DemandMonth.Employees.Skip(1)] } };
+
+        var result = MSolver.Solve(input);
+
+        Assert.AreEqual(SolveStatus.InvalidInput, result.Status);
+        Assert.IsTrue(result.Errors.Any(error => error.Field == "DemandMonth.RequestedLeaveRestCount"));
+    }
+
+    [TestMethod]
+    public void Solve_FixedLeaveRestAboveRequestedCount_ReturnsInvalidInput()
+    {
+        var input = ValidInput();
+        var employee = input.DemandMonth.Employees[0];
+        var requestedDate = employee.Assignments.Single(pair => pair.Value.RequestedRest).Key;
+        employee = employee with
+        {
+            RequestedLeaveRestCount = 0,
+            Assignments = new Dictionary<DateOnly, ScheduleCell>(employee.Assignments)
+            {
+                [requestedDate] = new() { Kind = AssignmentKind.LeaveRest, RequestedRest = true }
+            }
+        };
+        input = input with { DemandMonth = input.DemandMonth with { Employees = [employee, .. input.DemandMonth.Employees.Skip(1)] } };
+
+        Assert.AreEqual(SolveStatus.InvalidInput, MSolver.Solve(input).Status);
+    }
+
     internal static ScheduleInput ValidInput()
     {
         var month = new DateOnly(2026, 9, 1);
@@ -132,10 +182,11 @@ public sealed class MSolverTests
             {
                 var date = month.AddDays(day);
                 if (!IsRestDay(day, index)) continue;
+                var requestedLeaveRest = group == 0 && index == 0 && day == 0;
                 targetAssignments[date] = new()
                 {
-                    Kind = AssignmentKind.Rest,
-                    RequestedRest = group == 0 && index == 0 && day == 0
+                    Kind = requestedLeaveRest ? null : AssignmentKind.Rest,
+                    RequestedRest = requestedLeaveRest
                 };
             }
             if (group == 0 && index == 0) targetAssignments[month.AddDays(1)] = Event(month.AddDays(1));
@@ -155,7 +206,7 @@ public sealed class MSolverTests
             }
 
             previous.Add(Row(id, $"M Employee {id}", homes[group], null, historyAssignments, null, closing, historyAssignments.Count(pair => pair.Value.Kind == AssignmentKind.Work)));
-            demand.Add(Row(id, $"M Employee {id}", homes[group], null, targetAssignments, closing, null, null));
+            demand.Add(Row(id, $"M Employee {id}", homes[group], null, targetAssignments, closing, null, null, group == 0 && index == 0 ? 1 : null));
         }
 
         return new(
@@ -186,7 +237,8 @@ public sealed class MSolverTests
         IReadOnlyDictionary<DateOnly, ScheduleCell> assignments,
         RestUsage? opening,
         RestUsage? closing,
-        int? workCount) => new()
+        int? workCount,
+        int? requestedLeaveRestCount = null) => new()
         {
             EmployeeId = id,
             Name = name,
@@ -195,6 +247,7 @@ public sealed class MSolverTests
             Assignments = assignments,
             OpeningUsage = opening,
             ClosingUsage = closing,
-            NormalWorkCount = workCount
+            NormalWorkCount = workCount,
+            RequestedLeaveRestCount = requestedLeaveRestCount
         };
 }

@@ -43,7 +43,7 @@ public static partial class TSolver
         ];
     }
 
-    // Requested rest — count R* cells whose result is neither R nor R1.
+    // Requested rest — count R* cells whose result is not an actual rest.
     private static LinearExpr CountUnfulfilledRequestedRests(ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables) =>
         LinearExpr.Sum(from employee in input.DemandMonth.Employees
             from date in targetDates
@@ -132,7 +132,7 @@ public static partial class TSolver
         return LinearExpr.Sum(penalties);
     }
 
-    // Work streak — score completed actual-work streaks; both R and R1 end a streak.
+    // Work streak — score completed actual-work streaks; R, R1, and R休 end a streak.
     private static LinearExpr MeasureWorkStreakPenalties(
         CpModel model,
         ScheduleInput input,
@@ -182,7 +182,7 @@ public static partial class TSolver
             var history = ResolvedHistoryFor(input, employee.EmployeeId).OrderBy(item => item.Date).ToArray();
             var lastNight = history.LastOrDefault(item => item.Cell.Kind == AssignmentKind.Work && item.Cell.Shift == Shift.Night);
             if (lastNight.Cell is null) continue;
-            var historicalRest = history.Count(item => item.Date > lastNight.Date && item.Cell.Kind is AssignmentKind.Rest or AssignmentKind.SpecialRest);
+            var historicalRest = history.Count(item => item.Date > lastNight.Date && item.Cell.Kind is AssignmentKind.Rest or AssignmentKind.SpecialRest or AssignmentKind.LeaveRest);
             var previousWork = new List<BoolVar>();
             foreach (var date in targetDates.Where(date => IsEmployedOn(employee, date)))
             {
@@ -213,7 +213,7 @@ public static partial class TSolver
         if (transitioning.Length == 0) return LinearExpr.Constant(0);
         var previousDate = input.DemandMonth.MonthStart.AddDays(-1);
         var previousRest = transitioning.Count(employee =>
-            ResolvedHistoryFor(input, employee.EmployeeId).FirstOrDefault(item => item.Date == previousDate).Cell?.Kind is AssignmentKind.Rest or AssignmentKind.SpecialRest);
+            ResolvedHistoryFor(input, employee.EmployeeId).FirstOrDefault(item => item.Date == previousDate).Cell?.Kind is AssignmentKind.Rest or AssignmentKind.SpecialRest or AssignmentKind.LeaveRest);
         var currentRest = LinearExpr.Sum(transitioning.Select(employee => variables.AnyRest[(employee.EmployeeId, targetDates[0])]));
         var difference = model.NewIntVar(0, transitioning.Length, "month_boundary_rest_balance");
         model.AddAbsEquality(difference, previousRest - currentRest);

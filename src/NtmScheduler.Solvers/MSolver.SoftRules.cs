@@ -27,6 +27,9 @@ public static partial class MSolver
         var weekdayFairness = MeasureRestCountRangeByStationGroup(model, input, targetDates.Where(date => !IsWeekendOrNationalHoliday(input, date)), variables, "weekday_fairness");
         var holidayFairness = MeasureRestCountRangeByStationGroup(model, input, targetDates.Where(date => IsWeekendOrNationalHoliday(input, date)), variables, "holiday_fairness");
         var supportFairness = MeasureSupportCountRangeByStationGroup(model, input, targetDates, variables);
+        var earlyShiftFairness = MeasureShiftCountDispersionByStationGroup(model, input, targetDates, variables, Shift.Early);
+        var afternoonShiftFairness = MeasureShiftCountDispersionByStationGroup(model, input, targetDates, variables, Shift.Afternoon);
+        var nightShiftFairness = MeasureShiftCountDispersionByStationGroup(model, input, targetDates, variables, Shift.Night);
 
         return
         [
@@ -47,17 +50,21 @@ public static partial class MSolver
                     ("ShiftChangeWithoutRest", 6, shiftChangeWithoutRest)
                 ]),
             new(5, "RotationAndFairness",
-                rotation + weekdayFairness * 2 + holidayFairness * 4 + supportFairness * 3,
+                rotation + weekdayFairness * 2 + holidayFairness * 4 + supportFairness * 3
+                    + earlyShiftFairness + afternoonShiftFairness + nightShiftFairness * 2,
                 [
                     ("NonPreferredRotation", 1, rotation),
                     ("WeekdayRestFairness", 2, weekdayFairness),
                     ("HolidayRestFairness", 4, holidayFairness),
-                    ("SupportFairness", 3, supportFairness)
+                    ("SupportFairness", 3, supportFairness),
+                    ("EarlyShiftFairness", 1, earlyShiftFairness),
+                    ("AfternoonShiftFairness", 1, afternoonShiftFairness),
+                    ("NightShiftFairness", 2, nightShiftFairness)
                 ])
         ];
     }
 
-    // Requested rest — count R* cells whose result is neither R nor R1.
+    // Requested rest — count R* cells whose result is not an actual rest.
     private static LinearExpr CountUnfulfilledRequestedRests(ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables) =>
         LinearExpr.Sum(from employee in input.DemandMonth.Employees
             from date in targetDates
@@ -102,7 +109,7 @@ public static partial class MSolver
             from date in targetDates
             select variables.SupportsOtherStation[(employee.EmployeeId, date)]);
 
-    // Work streak — score completed actual-work streaks; both R and R1 end a streak.
+    // Work streak — score completed actual-work streaks; R, R1, and R休 end a streak.
     private static LinearExpr MeasureWorkStreakPenalties(
         CpModel model,
         ScheduleInput input,
@@ -143,7 +150,7 @@ public static partial class MSolver
         return LinearExpr.Sum(penalties);
     }
 
-    // Same-shift block — target month only; station is ignored and R/R1/X are skipped.
+    // Same-shift block — target month only; station is ignored and R/R1/R休/X are skipped.
     private static LinearExpr MeasureSameShiftBlockPenalties(
         CpModel model,
         ScheduleInput input,
@@ -277,7 +284,7 @@ public static partial class MSolver
         return LinearExpr.Sum(violations);
     }
 
-    // Preferred rotation — Early -> Afternoon -> Night -> Early; R/R1/X are transparent.
+    // Preferred rotation — Early -> Afternoon -> Night -> Early; R/R1/R休/X are transparent.
     private static LinearExpr CountNonPreferredRotations(
         CpModel model,
         ScheduleInput input,
@@ -391,6 +398,42 @@ public static partial class MSolver
         return LinearExpr.Sum(ranges);
     }
 
+    // Shift fairness — sum each full-month station group's integer variance numerator n*sum(x²)-sum(x)².
+    private static LinearExpr MeasureShiftCountDispersionByStationGroup(
+        CpModel model,
+        ScheduleInput input,
+        IReadOnlyList<DateOnly> targetDates,
+        ModelVariables variables,
+        Shift shift)
+    {
+        var dispersions = new List<LinearExpr>();
+        foreach (var group in input.DemandMonth.Employees
+                     .Where(employee => IsEmployedOn(employee, input.DemandMonth.MonthStart))
+                     .GroupBy(employee => StationGroupIndex(employee.Affiliation)))
+        {
+            var members = group.ToArray();
+            if (members.Length < 2) continue;
+            var counts = members.Select(employee =>
+            {
+                var count = model.NewIntVar(0, targetDates.Count, $"shift_fairness_count_{group.Key}_{shift}_{employee.EmployeeId}");
+                model.Add(count == LinearExpr.Sum(targetDates.Select(date => variables.WorksShift[(employee.EmployeeId, date, shift)])));
+                return count;
+            }).ToArray();
+            var squares = counts.Select((count, index) =>
+            {
+                var square = model.NewIntVar(0, (long)targetDates.Count * targetDates.Count, $"shift_fairness_square_{group.Key}_{shift}_{index}");
+                model.AddMultiplicationEquality(square, count, count);
+                return square;
+            }).ToArray();
+            var total = model.NewIntVar(0, members.Length * targetDates.Count, $"shift_fairness_total_{group.Key}_{shift}");
+            var totalSquare = model.NewIntVar(0, (long)members.Length * members.Length * targetDates.Count * targetDates.Count, $"shift_fairness_total_square_{group.Key}_{shift}");
+            model.Add(total == LinearExpr.Sum(counts));
+            model.AddMultiplicationEquality(totalSquare, total, total);
+            dispersions.Add(LinearExpr.Sum(squares) * members.Length - totalSquare);
+        }
+        return LinearExpr.Sum(dispersions);
+    }
+
     // Returns a fixed historical value before the target month and a decision expression during the modeled month.
     private static LinearExpr WorkShiftIndicator(ScheduleInput input, ModelVariables variables, string employeeId, DateOnly date, Shift shift)
     {
@@ -404,7 +447,7 @@ public static partial class MSolver
     {
         if (date >= input.DemandMonth.MonthStart) return variables.AnyRest[(employeeId, date)];
         var cell = ResolvedHistoryFor(input, employeeId).FirstOrDefault(item => item.Date == date).Cell;
-        return LinearExpr.Constant(cell?.Kind is AssignmentKind.Rest or AssignmentKind.SpecialRest ? 1 : 0);
+        return LinearExpr.Constant(cell?.Kind is AssignmentKind.Rest or AssignmentKind.SpecialRest or AssignmentKind.LeaveRest ? 1 : 0);
     }
 
     // Converts LB01-LB12 into the four fixed three-station comparison groups.

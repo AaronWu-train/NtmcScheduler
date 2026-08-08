@@ -122,11 +122,13 @@ public static partial class MSolver
                         errors.Add(new("PreviousMonth.Assignments", $"Missing resolved history for {employee.EmployeeId}/{date:yyyy-MM-dd}."));
                 }
                 if (employee.ClosingUsage is null) errors.Add(new("PreviousMonth.ClosingUsage", $"Employee '{employee.EmployeeId}' needs closing R/R1 usage."));
+                if (employee.RequestedLeaveRestCount is not null) errors.Add(new("PreviousMonth.RequestedLeaveRestCount", $"Employee '{employee.EmployeeId}' history cannot contain a requested R休 count."));
                 if (employee.NormalWorkCount is null) errors.Add(new("PreviousMonth.NormalWorkCount", $"Employee '{employee.EmployeeId}' needs a normal-work count."));
                 else if (employee.NormalWorkCount < 0) errors.Add(new("PreviousMonth.NormalWorkCount", $"Employee '{employee.EmployeeId}' normal-work count cannot be negative."));
             }
             else
             {
+                ValidateRequestedLeaveRestCount(employee, errors, prefix);
                 if (employee.ClosingUsage is not null || employee.NormalWorkCount is not null)
                     errors.Add(new("DemandMonth", $"Employee '{employee.EmployeeId}' demand row cannot contain solved closing totals."));
             }
@@ -144,7 +146,7 @@ public static partial class MSolver
         if (cell.Kind is null)
         {
             if (!cell.RequestedRest) errors.Add(new($"{prefix}.Assignments", $"Empty typed cell {employee.EmployeeId}/{date:yyyy-MM-dd} must be omitted."));
-            if (history) errors.Add(new($"{prefix}.Assignments", $"Historical R* {employee.EmployeeId}/{date:yyyy-MM-dd} must resolve to R or R1."));
+            if (history) errors.Add(new($"{prefix}.Assignments", $"Historical R* {employee.EmployeeId}/{date:yyyy-MM-dd} must resolve to R, R1, or R休."));
             return;
         }
 
@@ -164,8 +166,20 @@ public static partial class MSolver
             return;
         }
 
+        if (!history && cell.Kind == AssignmentKind.LeaveRest && !cell.RequestedRest)
+            errors.Add(new($"{prefix}.Assignments", $"R休 {employee.EmployeeId}/{date:yyyy-MM-dd} must be marked R*."));
+
         if (cell.Station is not null || cell.Shift is not null || cell.EventStart is not null || cell.EventEnd is not null)
             errors.Add(new($"{prefix}.Assignments", $"Rest {employee.EmployeeId}/{date:yyyy-MM-dd} contains work-only fields."));
+    }
+
+    private static void ValidateRequestedLeaveRestCount(EmployeeMonthlySchedule employee, List<InputError> errors, string prefix)
+    {
+        var requested = employee.RequestedLeaveRestCount ?? 0;
+        var fixedCount = employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.LeaveRest && cell.RequestedRest);
+        var selectableCount = fixedCount + employee.Assignments.Values.Count(cell => cell.Kind is null && cell.RequestedRest);
+        if (requested < 0 || requested < fixedCount || requested > selectableCount)
+            errors.Add(new($"{prefix}.RequestedLeaveRestCount", $"Employee '{employee.EmployeeId}' requested R休 count must be between {fixedCount} and {selectableCount}."));
     }
 
     private static bool HasValidWorkEventInterval(DateOnly date, ScheduleCell cell) =>
@@ -357,7 +371,7 @@ public static partial class MSolver
         Shift? lastShift = null;
         foreach (var item in ResolvedHistoryFor(input, employeeId).OrderBy(item => item.Date))
         {
-            if (item.Cell.Kind is AssignmentKind.Rest or AssignmentKind.SpecialRest) lastShift = null;
+            if (item.Cell.Kind is AssignmentKind.Rest or AssignmentKind.SpecialRest or AssignmentKind.LeaveRest) lastShift = null;
             else if (item.Cell.Kind == AssignmentKind.Work) lastShift = item.Cell.Shift;
         }
         return lastShift;
