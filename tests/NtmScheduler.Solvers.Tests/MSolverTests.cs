@@ -52,7 +52,8 @@ public sealed class MSolverTests
     [TestMethod]
     public void Solve_MonthlySchedules_ReturnsNamedCandidate()
     {
-        var result = MSolver.Solve(ValidInput(), new SolverOptions { TimeLimit = TimeSpan.FromSeconds(45) });
+        var input = ValidInput();
+        var result = MSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(45) });
 
         Assert.AreNotEqual(SolveStatus.InvalidInput, result.Status, string.Join(Environment.NewLine, result.Errors));
         Assert.AreNotEqual(SolveStatus.Infeasible, result.Status);
@@ -82,6 +83,21 @@ public sealed class MSolverTests
         Assert.AreEqual((ExpectedDispersion(Shift.Early), 1), (fairness.Single(component => component.Name == "EarlyShiftFairness").Value, fairness.Single(component => component.Name == "EarlyShiftFairness").Weight));
         Assert.AreEqual((ExpectedDispersion(Shift.Afternoon), 1), (fairness.Single(component => component.Name == "AfternoonShiftFairness").Value, fairness.Single(component => component.Name == "AfternoonShiftFairness").Weight));
         Assert.AreEqual((ExpectedDispersion(Shift.Night), 2), (fairness.Single(component => component.Name == "NightShiftFairness").Value, fairness.Single(component => component.Name == "NightShiftFairness").Weight));
+        SolverAcceptanceAssertions.AssertMHardRules(input, candidate);
+        SolverAcceptanceAssertions.AssertMSoftRules(input, candidate);
+
+        var swappable = (from employee in candidate.Schedule.Employees
+                         from assignment in employee.Assignments
+                         where assignment.Value.Kind == AssignmentKind.Work && assignment.Value.Station != employee.Affiliation
+                         group (employee, assignment) by (assignment.Key, employee.Affiliation, assignment.Value.Shift) into cells
+                         let pair = cells.GroupBy(item => item.assignment.Value.Station).Take(2).Select(item => item.First()).ToArray()
+                         where pair.Length == 2
+                         select pair).First();
+        var freeCells = swappable.Select(item => (item.employee.EmployeeId, Date: item.assignment.Key)).ToHashSet();
+        var alternativeInput = FreezeExcept(input, candidate.Schedule, freeCells);
+        var alternativeResult = MSolver.Solve(alternativeInput, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(20) });
+        Assert.AreEqual(SolveStatus.Optimal, alternativeResult.Status);
+        SolverAcceptanceAssertions.AssertCandidateDifference(alternativeInput, alternativeResult.Candidates.Select(value => value.Schedule).ToArray());
     }
 
     [TestMethod]
@@ -191,6 +207,7 @@ public sealed class MSolverTests
             }
             if (group == 0 && index == 0) targetAssignments[month.AddDays(1)] = Event(month.AddDays(1));
             if (group == 0 && index == 1) targetAssignments[month] = new() { Kind = AssignmentKind.Work, Station = "LB01", Shift = Shift.Early };
+            if (group == 0 && index == 2) targetAssignments[month] = new() { Kind = AssignmentKind.Work, Station = "LB01", Shift = Shift.Afternoon };
 
             var firstIntervalRests = targetAssignments.Count(pair => pair.Key <= firstInterval.End && pair.Value.Kind == AssignmentKind.Rest);
             var closing = new RestUsage(16 - firstIntervalRests, 1);
@@ -199,7 +216,7 @@ public sealed class MSolverTests
                 day => IsRestDay(day, index)
                     ? new ScheduleCell { Kind = AssignmentKind.Rest }
                     : new ScheduleCell { Kind = AssignmentKind.Work, Station = homes[group], Shift = Shift.Early });
-            if (group == 0 && index == 1)
+            if (group == 0 && index is 1 or 2)
             {
                 historyAssignments[new(2026, 8, 30)] = new() { Kind = AssignmentKind.Work, Station = "LB01", Shift = Shift.Night };
                 historyAssignments[new(2026, 8, 31)] = new() { Kind = AssignmentKind.Rest };
@@ -217,6 +234,19 @@ public sealed class MSolverTests
 
     private static bool IsRestDay(int day, int employee) => Mod(day - employee, 10) is 0 or 3 or 6;
     private static int Mod(int value, int divisor) => (value % divisor + divisor) % divisor;
+
+    private static ScheduleInput FreezeExcept(ScheduleInput input, MonthlySchedule candidate, IReadOnlySet<(string Employee, DateOnly Date)> freeCells)
+    {
+        var source = input.DemandMonth.Employees.ToDictionary(employee => employee.EmployeeId);
+        var employees = candidate.Employees.Select(employee => source[employee.EmployeeId] with
+        {
+            Assignments = employee.Assignments.Where(pair => !freeCells.Contains((employee.EmployeeId, pair.Key)) || pair.Value.RequestedRest).ToDictionary(),
+            RequestedLeaveRestCount = employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.LeaveRest),
+            ClosingUsage = null,
+            NormalWorkCount = null
+        }).ToArray();
+        return input with { DemandMonth = input.DemandMonth with { Employees = employees } };
+    }
 
     private static ScheduleCell Event(DateOnly date)
     {

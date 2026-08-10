@@ -34,6 +34,70 @@ public sealed class TSolverTests
         Assert.IsGreaterThanOrEqualTo(1, result.Candidates[0].Objectives
             .SelectMany(value => value.Components)
             .Single(value => value.Name == "NightToEarlyRest").Value);
+        SolverAcceptanceAssertions.AssertTHardRules(input, result.Candidates[0]);
+        SolverAcceptanceAssertions.AssertTSoftRules(input, result.Candidates[0]);
+    }
+
+    [TestMethod]
+    public void Solve_AlternativeCandidatesDifferByTenPercent()
+    {
+        var input = ValidInput();
+        input = input with
+        {
+            PreviousMonth = input.PreviousMonth with { Employees = input.PreviousMonth.Employees.Where(employee => employee.EmployeeId == "T-E2").ToArray() },
+            DemandMonth = input.DemandMonth with { Employees = input.DemandMonth.Employees.Where(employee => employee.EmployeeId == "T-E2").ToArray() }
+        };
+
+        var result = TSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(10) });
+
+        Assert.AreEqual(SolveStatus.Optimal, result.Status);
+        SolverAcceptanceAssertions.AssertCandidateDifference(input, result.Candidates.Select(candidate => candidate.Schedule).ToArray());
+    }
+
+    [TestMethod]
+    [DataRow(Shift.Early, Shift.Afternoon)]
+    [DataRow(Shift.Afternoon, Shift.Night)]
+    [DataRow(Shift.Night, Shift.Early)]
+    public void Solve_ExtensionUsesNextMonthlyShift(Shift current, Shift next)
+    {
+        var employee = ValidInput().DemandMonth.Employees[0] with { MonthlyShift = current };
+        var method = typeof(TSolver).GetMethod("ShiftAssignedOnDate", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+
+        Assert.AreEqual(current, method.Invoke(null, [employee, new DateOnly(2026, 9, 30), new DateOnly(2026, 9, 1)]));
+        Assert.AreEqual(next, method.Invoke(null, [employee, new DateOnly(2026, 10, 1), new DateOnly(2026, 9, 1)]));
+    }
+
+    [TestMethod]
+    public void Solve_TooManyRestsInClosedInterval_ReturnsInfeasible()
+    {
+        var input = OnlyEmployee(ValidInput(), "T-E2");
+        var employee = input.DemandMonth.Employees[0] with
+        {
+            Assignments = Enumerable.Range(0, 5).ToDictionary(offset => input.DemandMonth.MonthStart.AddDays(offset), _ => new ScheduleCell { Kind = AssignmentKind.Rest }),
+            RequestedLeaveRestCount = null
+        };
+        input = input with { DemandMonth = input.DemandMonth with { Employees = [employee] } };
+
+        Assert.AreEqual(SolveStatus.Infeasible, TSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(5) }).Status);
+    }
+
+    [TestMethod]
+    public void Solve_FixedWorkWithoutElevenHourGap_ReturnsInvalidInput()
+    {
+        var input = OnlyEmployee(ValidInput(), "T-E1");
+        var employee = input.DemandMonth.Employees[0] with
+        {
+            Assignments = new Dictionary<DateOnly, ScheduleCell>
+            {
+                [input.DemandMonth.MonthStart] = new() { Kind = AssignmentKind.Work, Shift = Shift.Early }
+            }
+        };
+        input = input with { DemandMonth = input.DemandMonth with { Employees = [employee] } };
+
+        var result = TSolver.Solve(input);
+
+        Assert.AreEqual(SolveStatus.InvalidInput, result.Status);
+        Assert.IsTrue(result.Errors.Any(error => error.Field == "Assignments"));
     }
 
     [TestMethod]
@@ -312,6 +376,12 @@ public sealed class TSolverTests
         demand.Add(Row("T-NEW", "Signal", 4, Shift.Early, new(2026, 9, 21), new Dictionary<DateOnly, ScheduleCell>(), new(12, 1), null, null));
         return new(new(month.AddMonths(-1), previous), new(month, demand), [first, second]);
     }
+
+    private static ScheduleInput OnlyEmployee(ScheduleInput input, string employeeId) => input with
+    {
+        PreviousMonth = input.PreviousMonth with { Employees = input.PreviousMonth.Employees.Where(employee => employee.EmployeeId == employeeId).ToArray() },
+        DemandMonth = input.DemandMonth with { Employees = input.DemandMonth.Employees.Where(employee => employee.EmployeeId == employeeId).ToArray() }
+    };
 
     private static ScheduleCell Event(DateOnly date, TimeOnly start, TimeOnly end)
     {
