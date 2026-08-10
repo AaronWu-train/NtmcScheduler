@@ -1000,10 +1000,9 @@ M 模型目前定義下列軟性違反量：
 
 \subsection{the T problem}
 
-T 人員以「月班組」方式輪動：每位人員在每個月份均明確隸屬早、午或夜班組，
-求解器只決定其每日是否正常出勤、休假或執行固定勤務，不得自行將人員調往其他
-班組。T 模型沒有 M 的車站班位與外派變數；其核心營運目標是維持各班組的出勤、
-專業組成與能力水準。
+T 人員以「月班組」方式輪動：每位人員在每個月份均明確隸屬早、午或夜班組。
+求解器以月班組為高權重偏好，必要時可將正常工作排入其他班別並計分。T 模型沒有
+M 的車站班位與外派變數；其核心營運目標是維持各班組的出勤、專業組成與能力水準。
 
 本節沿用前節的日期集合 \(\mathcal{D}^{M}\)、\(\mathcal{D}^{+}\)、
 \(\mathcal{D}\)、八週週期集合 \(\mathcal{C}\)、班別集合
@@ -1110,8 +1109,8 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
 \end{center}
 
 \texttt{history.csv}、\texttt{input.csv} 與 \texttt{schedule.csv} 使用相同的日期
-儲存格語法。正常出勤直接寫為 \texttt{早}、\texttt{午} 或 \texttt{夜}；其值必須
-符合該日期的固定班組，否則輸入無效。\texttt{R}、\texttt{R1}、\texttt{R*}、
+儲存格語法。正常出勤直接寫為 \texttt{早}、\texttt{午} 或 \texttt{夜}；其值可以
+不同於該日期的固定班組，並計入非月班別軟性違反量。\texttt{R}、\texttt{R1}、\texttt{R*}、
 \texttt{R*[R]}、\texttt{R*[R1]}、\texttt{X[...]} 與空白的意義均與 M 模型相同。
 
 下一月份班組可直接填入對應的 \texttt{shift\_YYYY-MM} 欄，也可由程式依固定輪轉
@@ -1160,15 +1159,6 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
   \qquad
   \sum_{d\in\mathcal D^M}r^{T,L}_{ed}=k_e.
 \]
-
-\paragraph{Fixed monthly shift (\texttt{TH01})}
-
-T 的正常工作只能是該日期的固定班別。對所有 \(s\neq\sigma_{ed}\)，固定
-\[
-  x^{T}_{eds}=0.
-\]
-因此一般工作日只能排入 \(\sigma_{ed}\)，不能為了改善出勤或能力指標將人員跨
-班組調動。延伸日期進入下月時，限制自動改用下月班組。
 
 \paragraph{Minimum eleven-hour rest (\texttt{CH03})}
 
@@ -1290,12 +1280,24 @@ T 的正常工作只能是該日期的固定班別。對所有 \(s\neq\sigma_{ed
 目標月份內的休假分布，不取代八週週期的精確額度限制；必要時仍可超出無懲罰
 區間，但會產生相應代價。
 
+\paragraph{Monthly-shift adherence (\texttt{TS06})}
+
+每個模型日期排入非該日期固定班組的正常工作格計一次違反；\(X\) 不計：
+\[
+  \Phi^{T,nonmonthly}
+  =
+  \sum_{e\in\mathcal{E}^{T}}
+  \sum_{d\in\mathcal{D}}
+  \sum_{\substack{s\in\mathcal{S}\\s\neq\sigma_{ed}}}x^{T}_{eds}.
+\]
+目標月以輸入的月班組為基準；延伸日期改用輪轉後的下月班組。
+
 \paragraph{Shift attendance (\texttt{TS01})}
 
 此規則避免同一班組在單日出勤人數過低。日期 \(d\)、班別 \(s\) 的正常出勤
 人數為
 \[
-  A_{ds}=\sum_{e\in\mathcal{E}_{ds}}x^{T}_{eds}.
+  A_{ds}=\sum_{e\in\mathcal{E}^{T}}x^{T}_{eds}.
 \]
 令缺少人數 \(\delta^{att}_{ds}\in\mathbb{Z}_{\geq0}\) 滿足
 \[
@@ -1318,9 +1320,9 @@ T 的正常工作只能是該日期的固定班別。對所有 \(s\neq\sigma_{ed
 \[
   A^{sp}_{dsq}
   =
-  \sum_{\substack{e\in\mathcal{E}_{ds}\\\kappa_e=q}}x^{T}_{eds}.
+  \sum_{\substack{e\in\mathcal{E}^{T}\\\kappa_e=q}}x^{T}_{eds}.
 \]
-令 \(M^{sp}_{dsq}=|\{e\in\mathcal{E}_{ds}:\kappa_e=q\}|\)，並以
+令 \(M^{sp}_{dsq}=|\{e\in\mathcal{E}^{T}:\kappa_e=q\}|\)，並以
 \(\delta^{sp}_{dsq}\in\{0,1\}\) 表示該專業是否無人正常出勤。加入
 \[
   A^{sp}_{dsq}\geq1-\delta^{sp}_{dsq},
@@ -1341,7 +1343,7 @@ T 的正常工作只能是該日期的固定班別。對所有 \(s\neq\sigma_{ed
 
 正常出勤者的平均能力希望至少為 3。日期 \(d\)、班別 \(s\) 的能力總和為
 \[
-  C_{ds}=\sum_{e\in\mathcal{E}_{ds}}\alpha_e x^{T}_{eds}.
+  C_{ds}=\sum_{e\in\mathcal{E}^{T}}\alpha_e x^{T}_{eds}.
 \]
 定義能力不足量
 \[
@@ -1481,6 +1483,7 @@ T 模型的軟性違反量為
 \[
   \begin{aligned}
     \Phi^{T,R^*}          &: \text{未滿足指定休假 }(\texttt{CS01}),\\
+    \Phi^{T,nonmonthly}   &: \text{非月班別正常工作 }(\texttt{TS06}),\\
     \Phi^{T,month,R}      &: \text{本月一般 }R\text{ 數量偏離 }(\texttt{CS02}),\\
     \Phi^{T,month,R1}     &: \text{本月 }R1\text{ 數量偏離 }(\texttt{CS03}),\\
     \Phi^{T,att}          &: \text{班組出勤不足 }(\texttt{TS01}),\\
@@ -1504,7 +1507,8 @@ T 模型的軟性違反量為
 \[
   J^T_2
   =
-  9\Phi^{T,att}
+  9\Phi^{T,nonmonthly}
+  +9\Phi^{T,att}
   +3\Phi^{T,specialty}
   +\Phi^{T,ability},
 \]
@@ -1556,8 +1560,8 @@ T 模型的軟性違反量為
   \right).
 \]
 
-其中，班組出勤不足直接影響正常運作，因此在 \(J^T_2\) 中具有最高權重；
-專業組別缺席次之。能力不足的原始違反量會隨出勤人數累積，因此使用較低的
+其中，偏離月班別與班組出勤不足在 \(J^T_2\) 中具有最高權重；專業組別缺席次之。
+能力不足的原始違反量會隨出勤人數累積，因此使用較低的
 單位權重。夜班轉早班休假不足直接影響跨月作息，故在 \(J^T_4\) 中給予較高
 權重；假日休假公平的原始尺度通常較小，因此其權重高於平日休假公平。
 
@@ -1584,6 +1588,7 @@ T 模型的軟性違反量為
   未滿足 \(R^*\)（\texttt{CS01}） & 申請人日 & \(0\leq\Phi^{T,R^*}\leq P_T\) & 應維持最高順位，通常不與其他規則直接交換。 \\
   本月一般 \(R\)（\texttt{CS02}） & 超出 \(\pm1\) 後的平方懲罰 & 理論上至 \(N_T\max_q f_n(q)\) & 平方項可能快速放大，不宜直接與純計數規則使用相同權重。 \\
   本月 \(R1\)（\texttt{CS03}） & 超出 \(\pm1\) 後的平方懲罰 & 理論上至 \(N_T\max_q f_m(q)\) & 原始值通常小於一般 \(R\)，但仍需注意平方尺度。 \\
+  非月班別工作（\texttt{TS06}） & 人日 & 上限為 \(N_T|\mathcal{D}|\) & 高權重，但仍可與同組營運品質交換。 \\
   班組出勤不足（\texttt{TS01}） & 缺少人數 & 上限為 \(\sum_{d,s}B_{ds}\)，約不超過 \(DN_T/2\) & 是人數缺口，單位意義直接。 \\
   專業組別缺席（\texttt{TS02}） & 班別--日期--專業 & 上限為 \(\sum_{d,s}|\mathcal{Q}_{ds}|\leq3DQ_{\max}\) & 專業種類愈多，原始值愈大。 \\
   能力不足（\texttt{TS03}） & 能力分數 & \(0\leq\Phi^{T,ability}\leq2DN_T\) & 與人數型違反量尺度不同，宜獨立分組或縮小權重。 \\
@@ -1609,7 +1614,7 @@ T 模型的軟性違反量為
 
 \subsubsection{Infeasibility Handling}
 
-T 沒有 M 的班位覆蓋與外派變數，因此不建立 Shortage Analysis。若固定班組、
+T 沒有 M 的班位覆蓋與外派變數，因此不建立 Shortage Analysis。若固定指派、
 固定事件、十一小時、連續六日或八週額度等硬限制互相衝突，系統回傳
 \texttt{INFEASIBLE}，不得放寬硬限制產生可發布候選。
 

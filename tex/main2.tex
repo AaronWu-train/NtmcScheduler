@@ -175,7 +175,7 @@ M 模型的輸入包括：
   \item M 人員及其所屬車站；
   \item 指定休假 \(R^*\)、每人目標月精確 \(R休\) 數、固定勤務 \(X\) 與其他固定指派；
   \item 八週週期的一般 \(R\) 與 \(R1\) 額度；
-  \item 目標月份的一般 \(R\) 與 \(R1\) 基準數量；
+  \item 依每人在職日期推導的目標月份一般 \(R\) 與 \(R1\) 基準數量；
   \item 月初前連續七個日曆日的歷史班表；
   \item 建模開始前各人員、各八週週期已使用的 R 與 R1 數量；
   \item 國定假日集合。星期六與星期日由日期本身決定。
@@ -246,8 +246,15 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 對每個八週週期 \(c\)，令 \(G_c\) 為一般 \(R\) 額度，令 \(H_c\) 為 \(R1\)
 額度；目前一般額度通常為 \(G_c=16\)。令
 \(\overline{R}_{ec}\)、\(\overline{R1}_{ec}\) 分別為建模區間開始前，週期
-\(c\) 已使用的一般 \(R\) 與 \(R1\) 數量。令 \(n\)、\(m\) 分別為目標月份
-的一般 \(R\) 與 \(R1\) 基準數量。
+\(c\) 已使用的一般 \(R\) 與 \(R1\) 數量。令 \(\mathcal D^{\mathrm{act}}_e\)
+為人員 \(e\) 到職後的目標月份日期，並令
+\[
+  n_e=\left|\{d\in\mathcal D^{\mathrm{act}}_e:d\text{ 為星期六或星期日}\}\right|,
+  \qquad
+  m_e=\left|\{d\in\mathcal D^{\mathrm{act}}_e:d\text{ 為國定假日}\}\right|.
+\]
+其中 \(n_e\) 是依當月實際月曆計算的一般 \(R\) 基準，不固定為 8；\(m_e\)
+為 \(R1\) 基準。
 
 月初前連續七日的歷史班表用來重建法規連續日數、尚未結束的實際工作區段、
 尚未結束的同班別區塊與最近一次有效正常班別。八週 R/R1 已使用數量由獨立
@@ -456,12 +463,12 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 \[
   \Phi^{M,month,R}
   =
-  \sum_{e\in\mathcal{E}^{M}}f_n\!\left(Q^{M,R}_e\right),
+  \sum_{e\in\mathcal{E}^{M}}f_{n_e}\!\left(Q^{M,R}_e\right),
 \]
 \[
   \Phi^{M,month,R1}
   =
-  \sum_{e\in\mathcal{E}^{M}}f_m\!\left(Q^{M,R1}_e\right).
+  \sum_{e\in\mathcal{E}^{M}}f_{m_e}\!\left(Q^{M,R1}_e\right).
 \]
 偏離基準 0 或 1 日不懲罰；偏離 2、3、4 日時，懲罰依序為 1、4、9。
 此為月內分布偏好，不取代 \texttt{CH04} 的八週精確額度；\(R休\) 不計入兩個月內數量。
@@ -707,15 +714,16 @@ T 模型的輸入包括：
   \item T 人員、專業組別、能力分數及建模日期的固定班組；
   \item 指定休假 \(R^*\)、每人目標月精確 \(R休\) 數、固定勤務 \(X\) 與其他固定指派；
   \item 八週週期的一般 \(R\) 與 \(R1\) 額度；
-  \item 目標月份的一般 \(R\) 與 \(R1\) 基準數量；
+  \item 依每人在職日期推導的目標月份一般 \(R\) 與 \(R1\) 基準數量；
   \item 月初前連續七個日曆日的歷史班表與跨月夜轉早休假數；
   \item 建模開始前各人員、各八週週期已使用的 R 與 R1 數量；
   \item 國定假日集合。
 \end{itemize}
 
 模型輸出每位 T 人員在目標月份內的正常出勤、\(R\)、\(R1\)、\(R休\) 或 \(X\)。正常
-出勤班別必須等於該日期的固定班組。滿足 \(R^*\) 時，仍記錄底層實際使用的是
-\(R\)、\(R1\) 或 \(R休\)。延伸日期不列入正式輸出。
+出勤記錄實際班別；不同於該日期固定班組時產生軟性違反量。滿足 \(R^*\) 時，仍記錄
+底層實際使用的是 \(R\)、\(R1\) 或 \(R休\)。上月歷史同樣記錄逐日實際班別；延伸日期
+不列入正式輸出。
 
 \subsubsection{Sets and Indices}
 
@@ -765,7 +773,7 @@ T 模型的輸入包括：
 \]
 
 指定休假參數 \(p_{ed}\)、每人精確 \(R休\) 數 \(k_e\)、固定勤務參數 \(z_{ed}\)、八週額度
-\(G_c,H_c\)、月休基準 \(n,m\) 與歷史額度
+\(G_c,H_c\)、逐人月休基準 \(n_e,m_e\) 與歷史額度
 \(\overline{R}_{ec},\overline{R1}_{ec}\) 的意義與 M 模型相同。
 
 令 \(d_0=\min\mathcal{D}^{\mathrm{tar}}-1\) 為目標月份前一日，令
@@ -825,13 +833,6 @@ T 模型的輸入包括：
   \qquad
   \sum_{d\in\mathcal{D}^{\mathrm{tar}}}r^{T,L}_{ed}=k_e.
 \]
-
-\paragraph{Fixed monthly shift (\texttt{TH01})}
-T 的正常出勤只能使用該日期固定班組。對所有 \(s\neq\sigma_{ed}\)，要求
-\[
-  x^{T}_{eds}=0.
-\]
-因此模型不能為了改善出勤、專業或能力而將人員跨班組調動。
 
 \paragraph{Minimum eleven-hour rest (\texttt{CH03})}
 令 \(\mathcal{I}^{T}\) 為所有實際休息時間少於十一小時的 T 正常班組合。對任一
@@ -922,20 +923,32 @@ T 的正常出勤只能使用該日期固定班組。對所有 \(s\neq\sigma_{ed
 \[
   \Phi^{T,month,R}
   =
-  \sum_{e\in\mathcal{E}^{T}}f_n\!\left(Q^{T,R}_e\right),
+  \sum_{e\in\mathcal{E}^{T}}f_{n_e}\!\left(Q^{T,R}_e\right),
 \]
 \[
   \Phi^{T,month,R1}
   =
-  \sum_{e\in\mathcal{E}^{T}}f_m\!\left(Q^{T,R1}_e\right).
+  \sum_{e\in\mathcal{E}^{T}}f_{m_e}\!\left(Q^{T,R1}_e\right).
 \]
+
+\paragraph{Monthly-shift adherence (\texttt{TS06})}
+每個模型日期排入非該日期固定班組的正常工作格計一次違反；\(X\) 不計。令
+\[
+  \Phi^{T,nonmonthly}
+  =
+  \sum_{e\in\mathcal{E}^{T}}
+  \sum_{d\in\mathcal{D}}
+  \sum_{\substack{s\in\mathcal{S}\\s\neq\sigma_{ed}}}x^{T}_{eds}.
+\]
+目標月以輸入的月班組為基準；延伸日期以早 \(\rightarrow\) 午 \(\rightarrow\) 夜
+\(\rightarrow\) 早輪轉後的下月班組為基準。
 
 \paragraph{Shift attendance (\texttt{TS01})}
 日期 \(d\)、班別 \(s\) 的正常出勤人數為
 \[
   A_{ds}
   =
-  \sum_{e\in\mathcal{E}_{ds}}x^{T}_{eds}.
+  \sum_{e\in\mathcal{E}^{T}}x^{T}_{eds}.
 \]
 要求
 \[
@@ -956,13 +969,13 @@ T 的正常出勤只能使用該日期固定班組。對所有 \(s\neq\sigma_{ed
 \[
   A^{sp}_{dsq}
   =
-  \sum_{\substack{e\in\mathcal{E}_{ds}\\\kappa_e=q}}x^{T}_{eds},
+  \sum_{\substack{e\in\mathcal{E}^{T}\\\kappa_e=q}}x^{T}_{eds},
 \]
 並令
 \[
   M^{sp}_{dsq}
   =
-  \left|\{e\in\mathcal{E}_{ds}:\kappa_e=q\}\right|.
+  \left|\{e\in\mathcal{E}^{T}:\kappa_e=q\}\right|.
 \]
 以 \(\delta^{sp}_{dsq}=1\) 表示該專業無人正常出勤：
 \[
@@ -985,7 +998,7 @@ T 的正常出勤只能使用該日期固定班組。對所有 \(s\neq\sigma_{ed
 \[
   C_{ds}
   =
-  \sum_{e\in\mathcal{E}_{ds}}\alpha_e x^{T}_{eds}.
+  \sum_{e\in\mathcal{E}^{T}}\alpha_e x^{T}_{eds}.
 \]
 正常出勤者的平均能力希望至少為 3，因此
 \[
@@ -1114,7 +1127,8 @@ T 模型定義五個目標群組：
 \[
   J^T_2
   =
-  9\Phi^{T,att}
+  9\Phi^{T,nonmonthly}
+  +9\Phi^{T,att}
   +3\Phi^{T,specialty}
   +\Phi^{T,ability},
 \]
@@ -1186,12 +1200,12 @@ T 模型定義五個目標群組：
   \(\mathcal E^T\) & \texttt{TInput.Employees} & \texttt{IReadOnlyList<TEmployee>} \\
   \(\mathcal C,G_c,H_c\) & \texttt{RestCycles} & \texttt{RestCycle.Id/Start/End/}\newline\texttt{RequiredRest/RequiredSpecialRest} \\
   \(\overline R_{ec},\overline{R1}_{ec}\) & \texttt{UsageBeforeMonth} & \texttt{EmployeeCycleUsage.}\newline\texttt{RestUsed/SpecialRestUsed} \\
-  \(n,m\) & \texttt{MonthlyRestTarget}, \texttt{MonthlySpecialRestTarget} & \texttt{MInput} 或 \texttt{TInput} \\
+  \(n_e,m_e\) & \texttt{ExpectedMonthlyRestCount(input, employee, special)} & 到職後目標月的六日數／國定假日數 \\
   \(h_e\) & \texttt{MEmployee.HomeStation} & \texttt{MContracts.cs} \\
   \(p_{ed}\) & \texttt{RequestedRests} & \texttt{RequestedRest(EmployeeId, Date)} \\
   \(k_e\) & \texttt{RequestedLeaveRestCount} & 需求列 \texttt{當月指定R休}；空白為 0 \\
   \(z_{ed}\) & \texttt{WorkEvents} & 有相同人員與日期的 \texttt{WorkEvent} 即為 1 \\
-  \(\sigma_{ed}\) & \texttt{TInput.FixedShifts} & \texttt{TFixedShift(EmployeeId, Date, Shift)} \\
+  \(\sigma_{ed}\) & \texttt{EmployeeMonthlySchedule.}\allowbreak\texttt{MonthlyShift} & \texttt{MonthlyShiftOnDate}\allowbreak\texttt{(employee, date, monthStart)} \\
   \(\kappa_e,\alpha_e\) & \texttt{TEmployee.Specialty/Ability} & \texttt{TContracts.cs} \\
   \(\beta_e\) & \texttt{NightToEarlyHistory.}\newline\texttt{RestDaysAfterLastNight} & 只供前月夜班轉目標月早班者 \\
   月初七日歷史 & \texttt{PreviousSevenDays} & \texttt{MHistoryDay} 或 \texttt{THistoryDay}；重建序列狀態，不重算八週額度 \\
