@@ -24,7 +24,7 @@ public static partial class ScheduleCsv
 
     private static readonly TimeSpan TaipeiOffset = TimeSpan.FromHours(8);
 
-    public static MonthlySchedule ReadMonthly(string path, DateOnly monthStart, NonStandardShiftTable? nonStandardShifts = null)
+    public static MonthlySchedule ReadMonthly(string path, DateOnly monthStart, NonStandardShiftTable? nonStandardShifts = null, bool historical = false)
     {
         if (monthStart.Day != 1) throw new ScheduleCsvException(nameof(monthStart), "Month must start on day one.");
         var rows = ReadRows(path);
@@ -38,7 +38,7 @@ public static partial class ScheduleCsv
             var row = rows[rowNumber];
             if (row.Length != Headers.Length) throw new ScheduleCsvException($"{path}:{rowNumber + 1}", $"Expected {Headers.Length} fields but found {row.Length}.");
             if (row.All(string.IsNullOrWhiteSpace)) continue;
-            employees.Add(ParseEmployee(row, rowNumber + 1, monthStart, nonStandardShiftLookup));
+            employees.Add(ParseEmployee(row, rowNumber + 1, monthStart, nonStandardShiftLookup, historical));
         }
         return new(monthStart, employees);
     }
@@ -133,7 +133,8 @@ public static partial class ScheduleCsv
         string[] row,
         int rowNumber,
         DateOnly monthStart,
-        IReadOnlyDictionary<string, NonStandardShift> nonStandardShifts)
+        IReadOnlyDictionary<string, NonStandardShift> nonStandardShifts,
+        bool historical)
     {
         var field = $"row {rowNumber}";
         var ability = NullableInt(row[4], $"{field} 能力");
@@ -168,7 +169,7 @@ public static partial class ScheduleCsv
             }
             if (text.Length == 0) continue;
             var date = monthStart.AddDays(day - 1);
-            assignments[date] = ParseCell(text, date, monthlyShift, nonStandardShifts, $"{field} day {day}");
+            assignments[date] = ParseCell(text, date, monthlyShift, nonStandardShifts, historical, $"{field} day {day}");
         }
         var expectedMonthlyUsage = CountRestUsage(assignments.Values);
         if (closingUsage is null && monthlyUsage is not null)
@@ -192,11 +193,15 @@ public static partial class ScheduleCsv
         DateOnly date,
         Shift? monthlyShift,
         IReadOnlyDictionary<string, NonStandardShift> nonStandardShifts,
+        bool historical,
         string field) => text switch
     {
         "R" => new() { Kind = AssignmentKind.Rest },
         "R1" => new() { Kind = AssignmentKind.SpecialRest },
         "R休" => new() { Kind = AssignmentKind.LeaveRest },
+        "R*" when historical => new() { Kind = AssignmentKind.Rest, RequestedRest = true },
+        "R1*" when historical => new() { Kind = AssignmentKind.SpecialRest, RequestedRest = true },
+        "R休*" when historical => new() { Kind = AssignmentKind.LeaveRest, RequestedRest = true },
         "R*" => new() { RequestedRest = true },
         "R*[R]" => new() { Kind = AssignmentKind.Rest, RequestedRest = true },
         "R*[R1]" => new() { Kind = AssignmentKind.SpecialRest, RequestedRest = true },

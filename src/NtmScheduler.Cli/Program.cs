@@ -28,7 +28,7 @@ public static class Program
 
             var previous = string.IsNullOrWhiteSpace(previousPath)
                 ? new MonthlySchedule(month.AddMonths(-1), [])
-                : ScheduleCsv.ReadMonthly(previousPath, month.AddMonths(-1), nonStandardShifts);
+                : ScheduleCsv.ReadMonthly(previousPath, month.AddMonths(-1), nonStandardShifts, historical: true);
             var demand = ScheduleCsv.ReadMonthly(demandPath, month, nonStandardShifts);
             var input = new ScheduleInput(previous, demand, ScheduleCsv.ReadRestIntervals(intervalsPath), nonStandardShifts);
             var isT = DetectT(demand);

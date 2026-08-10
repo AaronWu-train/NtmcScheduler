@@ -150,10 +150,54 @@ public sealed class TSolverTests
 
             Assert.AreEqual(employee.Name, parsed.Employees[0].Name);
             Assert.AreEqual(1, parsed.Employees[0].RequestedLeaveRestCount);
+            Assert.IsNull(parsed.Employees[0].Assignments[new(2026, 9, 4)].Kind);
             Assert.AreEqual(AssignmentKind.LeaveRest, parsed.Employees[0].Assignments[new(2026, 9, 5)].Kind);
             Assert.IsNull(parsed.Employees[0].EmploymentStartDate);
             Assert.AreEqual(new DateOnly(2026, 9, 4), DateOnly.FromDateTime(parsed.Employees[0].Assignments[new(2026, 9, 3)].EventEnd!.Value.Date));
             Assert.AreEqual(0xEF, File.ReadAllBytes(path)[0]);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public void Csv_HistoricalRestAliasesNormalizeToResolvedRequestedRest()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"ntm-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var month = new DateOnly(2026, 8, 1);
+            var employee = ValidInput().PreviousMonth.Employees[0] with
+            {
+                Assignments = new Dictionary<DateOnly, ScheduleCell>
+                {
+                    [month] = new() { Kind = AssignmentKind.Rest, RequestedRest = true },
+                    [month.AddDays(1)] = new() { Kind = AssignmentKind.SpecialRest, RequestedRest = true },
+                    [month.AddDays(2)] = new() { Kind = AssignmentKind.LeaveRest, RequestedRest = true }
+                },
+                ClosingUsage = new(1, 1),
+                NormalWorkCount = 0
+            };
+            var inputPath = Path.Combine(root, "input.csv");
+            var outputPath = Path.Combine(root, "output.csv");
+            ScheduleCsv.WriteMonthly(inputPath, new(month, [employee]));
+            File.WriteAllText(inputPath, File.ReadAllText(inputPath)
+                .Replace("R*[R]", "R*", StringComparison.Ordinal)
+                .Replace("R*[R1]", "R1*", StringComparison.Ordinal)
+                .Replace("R*[R休]", "R休*", StringComparison.Ordinal));
+
+            var parsed = ScheduleCsv.ReadMonthly(inputPath, month, historical: true);
+            var assignments = parsed.Employees[0].Assignments;
+            Assert.AreEqual(AssignmentKind.Rest, assignments[month].Kind);
+            Assert.AreEqual(AssignmentKind.SpecialRest, assignments[month.AddDays(1)].Kind);
+            Assert.AreEqual(AssignmentKind.LeaveRest, assignments[month.AddDays(2)].Kind);
+            Assert.IsTrue(assignments.Values.All(cell => cell.RequestedRest));
+
+            ScheduleCsv.WriteMonthly(outputPath, parsed);
+            StringAssert.Contains(File.ReadAllText(outputPath), "R*[R],R*[R1],R*[R休]");
         }
         finally
         {
