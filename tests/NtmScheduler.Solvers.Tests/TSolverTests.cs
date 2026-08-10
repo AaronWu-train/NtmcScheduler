@@ -55,6 +55,21 @@ public sealed class TSolverTests
     }
 
     [TestMethod]
+    public void Solve_LeaveRestLimitAboveRequestedDates_ReportsUnusedAmount()
+    {
+        var input = ValidInput();
+        var employees = input.DemandMonth.Employees.Select(employee =>
+            employee.EmployeeId == "T-E2" ? employee with { RequestedLeaveRestCount = 2 } : employee).ToArray();
+        input = input with { DemandMonth = input.DemandMonth with { Employees = employees } };
+
+        var result = TSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(30) });
+
+        Assert.IsGreaterThanOrEqualTo(1, result.Candidates.Count, string.Join(Environment.NewLine, result.Errors));
+        Assert.AreEqual(1, result.Candidates[0].Objectives.SelectMany(group => group.Components)
+            .Single(component => component.Name == "UnusedLeaveRest").Value);
+    }
+
+    [TestMethod]
     [DataRow(Shift.Early, Shift.Afternoon)]
     [DataRow(Shift.Afternoon, Shift.Night)]
     [DataRow(Shift.Night, Shift.Early)]

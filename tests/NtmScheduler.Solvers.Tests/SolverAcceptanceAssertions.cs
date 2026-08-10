@@ -27,7 +27,10 @@ internal static class SolverAcceptanceAssertions
             var employeeCount = assigned.Count(item => item.Key == date && item.Cell.Kind == AssignmentKind.Work && item.Cell.Station == station && item.Cell.Shift == shift);
             var externalCount = candidate.ExternalAssignments.Where(item => item.Date == date && item.Station == station && item.Shift == shift).Sum(item => item.Count);
             var required = shift is Shift.Early or Shift.Afternoon || shift == Shift.Night && station is "LB01" or "LB06" or "LB08" or "LB12" ? 1 : 0;
-            Assert.AreEqual(required, employeeCount + externalCount, $"Coverage mismatch for {date:yyyy-MM-dd}/{station}/{shift}.");
+            if (required > 0)
+                Assert.IsGreaterThanOrEqualTo(required, employeeCount + externalCount, $"Coverage shortfall for {date:yyyy-MM-dd}/{station}/{shift}.");
+            else
+                Assert.AreEqual(0, employeeCount + externalCount, $"Zero-demand position staffed for {date:yyyy-MM-dd}/{station}/{shift}.");
         }
 
         Assert.IsTrue(candidate.ExternalAssignments.All(item => item.Station is "LB02" or "LB04" or "LB11"));
@@ -42,7 +45,7 @@ internal static class SolverAcceptanceAssertions
     {
         AssertObjectiveStructure(candidate.Objectives,
         [
-            (1, "RequestedRest", [("RequestedRest", 1)]),
+            (1, "RequestedRest", [("RequestedRest", 3), ("UnusedLeaveRest", 1)]),
             (2, "ExternalStaffing", [("ExternalStaffing", 1)]),
             (3, "MonthlyRestDistribution", [("MonthlyRest", 4), ("MonthlySpecialRest", 8)]),
             (4, "ScheduleQuality", [("NonHomeStation", 8), ("WorkStreak", 3), ("SameShiftBlock", 2), ("NightRestEarly", 12), ("NightRestAfternoon", 8), ("ShiftChangeWithoutRest", 6)]),
@@ -50,6 +53,7 @@ internal static class SolverAcceptanceAssertions
         ]);
 
         Expect(candidate.Objectives, "RequestedRest", RequestedRestViolations(input, candidate.Schedule));
+        Expect(candidate.Objectives, "UnusedLeaveRest", UnusedLeaveRest(input, candidate.Schedule));
         Expect(candidate.Objectives, "ExternalStaffing", candidate.ExternalAssignments.Sum(item => item.Count));
         Expect(candidate.Objectives, "MonthlyRest", MonthlyRestPenalty(input, candidate.Schedule, AssignmentKind.Rest));
         Expect(candidate.Objectives, "MonthlySpecialRest", MonthlyRestPenalty(input, candidate.Schedule, AssignmentKind.SpecialRest));
@@ -81,7 +85,7 @@ internal static class SolverAcceptanceAssertions
     {
         AssertObjectiveStructure(candidate.Objectives,
         [
-            (1, "RequestedRest", [("RequestedRest", 1)]),
+            (1, "RequestedRest", [("RequestedRest", 3), ("UnusedLeaveRest", 1)]),
             (2, "StaffingQuality", [("NonMonthlyShift", 9), ("Attendance", 9), ("Specialty", 3), ("Ability", 1)]),
             (3, "MonthlyRestDistribution", [("MonthlyRest", 1), ("MonthlySpecialRest", 1)]),
             (4, "WorkPatternQuality", [("WorkStreak", 3), ("NightToEarlyRest", 12), ("MonthBoundaryRestBalance", 5)]),
@@ -89,6 +93,7 @@ internal static class SolverAcceptanceAssertions
         ]);
 
         Expect(candidate.Objectives, "RequestedRest", RequestedRestViolations(input, candidate.Schedule));
+        Expect(candidate.Objectives, "UnusedLeaveRest", UnusedLeaveRest(input, candidate.Schedule));
         Assert.IsGreaterThanOrEqualTo(Component(candidate.Objectives, "NonMonthlyShift").Value, TNonMonthlyShift(input, candidate.Schedule));
         Expect(candidate.Objectives, "Attendance", TAttendance(input, candidate.Schedule));
         Expect(candidate.Objectives, "Specialty", TSpecialty(input, candidate.Schedule));
@@ -138,7 +143,7 @@ internal static class SolverAcceptanceAssertions
                 AssertCell(fixedCell.Value, employee.Assignments[fixedCell.Key], $"Fixed cell changed for {employee.EmployeeId}/{fixedCell.Key:yyyy-MM-dd}.");
 
             var leaveDates = employee.Assignments.Where(pair => pair.Value.Kind == AssignmentKind.LeaveRest).ToArray();
-            Assert.HasCount(source.RequestedLeaveRestCount ?? 0, leaveDates, $"Wrong R休 count for {employee.EmployeeId}.");
+            Assert.IsLessThanOrEqualTo(source.RequestedLeaveRestCount ?? 0, leaveDates.Length, $"R休 limit exceeded for {employee.EmployeeId}.");
             Assert.IsTrue(leaveDates.All(pair => source.Assignments.GetValueOrDefault(pair.Key)?.RequestedRest == true), $"R休 must use R* for {employee.EmployeeId}.");
 
             AssertSevenDayRestWindows(input, source, employee);
@@ -206,6 +211,13 @@ internal static class SolverAcceptanceAssertions
     {
         var candidates = schedule.Employees.ToDictionary(employee => employee.EmployeeId);
         return input.DemandMonth.Employees.Sum(employee => employee.Assignments.Count(pair => pair.Value.RequestedRest && !IsRest(candidates[employee.EmployeeId].Assignments[pair.Key])));
+    }
+
+    private static long UnusedLeaveRest(ScheduleInput input, MonthlySchedule schedule)
+    {
+        var candidates = schedule.Employees.ToDictionary(employee => employee.EmployeeId);
+        return input.DemandMonth.Employees.Sum(employee =>
+            (employee.RequestedLeaveRestCount ?? 0) - candidates[employee.EmployeeId].Assignments.Values.Count(cell => cell.Kind == AssignmentKind.LeaveRest));
     }
 
     private static long MonthlyRestPenalty(ScheduleInput input, MonthlySchedule schedule, AssignmentKind kind)

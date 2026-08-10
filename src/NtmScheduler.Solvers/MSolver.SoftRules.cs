@@ -14,6 +14,7 @@ public static partial class MSolver
         ModelVariables variables)
     {
         var requestedRest = CountUnfulfilledRequestedRests(input, targetDates, variables);
+        var unusedLeaveRest = MeasureUnusedLeaveRests(model, input, targetDates, variables);
         var externalStaffing = CountExternalStaffing(targetDates, variables);
         var monthlyRest = MeasureMonthlyRestDeviation(model, input, targetDates, variables.Rest, false, "monthly_rest");
         var monthlySpecialRest = MeasureMonthlyRestDeviation(model, input, targetDates, variables.SpecialRest, true, "monthly_special_rest");
@@ -33,7 +34,8 @@ public static partial class MSolver
 
         return
         [
-            new(1, "RequestedRest", requestedRest, [("RequestedRest", 1, requestedRest)]),
+            new(1, "RequestedRest", requestedRest * 3 + unusedLeaveRest,
+                [("RequestedRest", 3, requestedRest), ("UnusedLeaveRest", 1, unusedLeaveRest)]),
             new(2, "ExternalStaffing", externalStaffing, [("ExternalStaffing", 1, externalStaffing)]),
             new(3, "MonthlyRestDistribution",
                 monthlyRest * 4 + monthlySpecialRest * 8,
@@ -70,6 +72,20 @@ public static partial class MSolver
             from date in targetDates
             where employee.Assignments.GetValueOrDefault(date)?.RequestedRest == true
             select 1 - variables.AnyRest[(employee.EmployeeId, date)]);
+
+    // Unused R休 — count the difference between each employee's limit and actual target-month use.
+    private static LinearExpr MeasureUnusedLeaveRests(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
+    {
+        var unused = new List<IntVar>();
+        foreach (var employee in input.DemandMonth.Employees)
+        {
+            var limit = employee.RequestedLeaveRestCount ?? 0;
+            var value = model.NewIntVar(0, limit, $"unused_leave_rest_{employee.EmployeeId}");
+            model.Add(LinearExpr.Sum(targetDates.Select(date => variables.LeaveRest[(employee.EmployeeId, date)])) + value == limit);
+            unused.Add(value);
+        }
+        return LinearExpr.Sum(unused);
+    }
 
     // External staffing — minimize target-month external headcount.
     private static LinearExpr CountExternalStaffing(IReadOnlyList<DateOnly> targetDates, ModelVariables variables) =>

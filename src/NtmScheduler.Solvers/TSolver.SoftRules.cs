@@ -14,6 +14,7 @@ public static partial class TSolver
         ModelVariables variables)
     {
         var requestedRest = CountUnfulfilledRequestedRests(input, targetDates, variables);
+        var unusedLeaveRest = MeasureUnusedLeaveRests(model, input, targetDates, variables);
         var nonMonthlyShift = CountNonMonthlyShiftAssignments(input, modelDates, variables);
         var attendance = MeasureAttendanceShortfall(model, input, targetDates, variables);
         var specialty = CountMissingSpecialties(model, input, targetDates, variables);
@@ -28,7 +29,8 @@ public static partial class TSolver
 
         return
         [
-            new(1, "RequestedRest", requestedRest, [("RequestedRest", 1, requestedRest)]),
+            new(1, "RequestedRest", requestedRest * 3 + unusedLeaveRest,
+                [("RequestedRest", 3, requestedRest), ("UnusedLeaveRest", 1, unusedLeaveRest)]),
             new(2, "StaffingQuality",
                 nonMonthlyShift * 9 + attendance * 9 + specialty * 3 + ability,
                 [("NonMonthlyShift", 9, nonMonthlyShift), ("Attendance", 9, attendance), ("Specialty", 3, specialty), ("Ability", 1, ability)]),
@@ -50,6 +52,20 @@ public static partial class TSolver
             from date in targetDates
             where employee.Assignments.GetValueOrDefault(date)?.RequestedRest == true
             select 1 - variables.AnyRest[(employee.EmployeeId, date)]);
+
+    // Unused R休 — count the difference between each employee's limit and actual target-month use.
+    private static LinearExpr MeasureUnusedLeaveRests(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
+    {
+        var unused = new List<IntVar>();
+        foreach (var employee in input.DemandMonth.Employees)
+        {
+            var limit = employee.RequestedLeaveRestCount ?? 0;
+            var value = model.NewIntVar(0, limit, $"unused_leave_rest_{employee.EmployeeId}");
+            model.Add(LinearExpr.Sum(targetDates.Select(date => variables.LeaveRest[(employee.EmployeeId, date)])) + value == limit);
+            unused.Add(value);
+        }
+        return LinearExpr.Sum(unused);
+    }
 
     // Monthly-shift adherence — count normal-work cells outside the target or rotated extension shift.
     private static LinearExpr CountNonMonthlyShiftAssignments(ScheduleInput input, IReadOnlyList<DateOnly> modelDates, ModelVariables variables) =>

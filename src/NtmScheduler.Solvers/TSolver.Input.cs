@@ -180,9 +180,8 @@ public static partial class TSolver
     {
         var requested = employee.RequestedLeaveRestCount ?? 0;
         var fixedCount = employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.LeaveRest && cell.RequestedRest);
-        var selectableCount = fixedCount + employee.Assignments.Values.Count(cell => cell.Kind is null && cell.RequestedRest);
-        if (requested < 0 || requested < fixedCount || requested > selectableCount)
-            errors.Add(new($"{prefix}.RequestedLeaveRestCount", $"Employee '{employee.EmployeeId}' requested R休 count must be between {fixedCount} and {selectableCount}."));
+        if (requested < fixedCount)
+            errors.Add(new($"{prefix}.RequestedLeaveRestCount", $"Employee '{employee.EmployeeId}' requested R休 limit must be at least {fixedCount}."));
     }
 
     private static bool HasValidWorkEventInterval(DateOnly date, ScheduleCell cell) =>

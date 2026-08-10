@@ -50,7 +50,7 @@ public static partial class TSolver
     private static void AddHardConstraints(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
     {
         AddExactlyOneAssignmentPerActiveDay(model, input, dates, variables);
-        RequireExactRequestedLeaveRestCount(model, input, variables);
+        LimitRequestedLeaveRestCount(model, input, variables);
         FixSuppliedAssignments(model, input, variables);
         ForbidOverlappingOrInsufficientlySeparatedWork(model, input, dates, variables);
         RequireGeneralRestInEverySevenDayWindow(model, input, dates, variables);
@@ -76,11 +76,12 @@ public static partial class TSolver
         }
     }
 
-    private static void RequireExactRequestedLeaveRestCount(CpModel model, ScheduleInput input, ModelVariables variables)
+    // Hard constraint — do not exceed each employee's target-month R休 limit; null means zero.
+    private static void LimitRequestedLeaveRestCount(CpModel model, ScheduleInput input, ModelVariables variables)
     {
         var targetDates = TargetMonthDates(input).ToArray();
         foreach (var employee in input.DemandMonth.Employees)
-            model.Add(LinearExpr.Sum(targetDates.Select(date => variables.LeaveRest[(employee.EmployeeId, date)])) == (employee.RequestedLeaveRestCount ?? 0));
+            model.Add(LinearExpr.Sum(targetDates.Select(date => variables.LeaveRest[(employee.EmployeeId, date)])) <= (employee.RequestedLeaveRestCount ?? 0));
     }
 
     // Hard constraint — force every supplied normal-work, R, R1, or R休 cell. X is fixed by the daily equation.

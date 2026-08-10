@@ -10,6 +10,10 @@ C# 不使用 J1–J5 或 Rule ID；輸出 `Priority + 有意義名稱`。
 
 `R*` 最後不是 R、R1 或 R休，違反量 +1。
 
+### 未使用 R休
+
+每人的 `當月指定R休` 是可使用上限；實際 R休 每少於上限 1 日，違反量 +1。
+
 ### 本月休假分配
 
 每人目標不由輸入手動設定：
@@ -33,7 +37,7 @@ C# 不使用 J1–J5 或 Rule ID；輸出 `Priority + 有意義名稱`。
 
 | Priority | 名稱 | 組內項目與權重 |
 |---:|---|---|
-| 1 | `RequestedRest` | RequestedRest ×1 |
+| 1 | `RequestedRest` | RequestedRest ×3；UnusedLeaveRest ×1 |
 | 2 | `ExternalStaffing` | ExternalStaffing ×1 |
 | 3 | `MonthlyRestDistribution` | MonthlyRest ×4；MonthlySpecialRest ×8 |
 | 4 | `ScheduleQuality` | NonHomeStation ×8；WorkStreak ×3；SameShiftBlock ×2；NightRestEarly ×12；NightRestAfternoon ×8；ShiftChangeWithoutRest ×6 |
@@ -55,7 +59,7 @@ C# 不使用 J1–J5 或 Rule ID；輸出 `Priority + 有意義名稱`。
 
 | Priority | 名稱 | 組內項目與權重 |
 |---:|---|---|
-| 1 | `RequestedRest` | RequestedRest ×1 |
+| 1 | `RequestedRest` | RequestedRest ×3；UnusedLeaveRest ×1 |
 | 2 | `StaffingQuality` | NonMonthlyShift ×9；Attendance ×9；Specialty ×3；Ability ×1 |
 | 3 | `MonthlyRestDistribution` | MonthlyRest ×1；MonthlySpecialRest ×1 |
 | 4 | `WorkPatternQuality` | WorkStreak ×3；NightToEarlyRest ×12；MonthBoundaryRestBalance ×5 |

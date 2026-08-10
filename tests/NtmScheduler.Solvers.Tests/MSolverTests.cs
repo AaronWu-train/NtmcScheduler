@@ -147,12 +147,10 @@ public sealed class MSolverTests
     }
 
     [TestMethod]
-    [DataRow(-1)]
-    [DataRow(2)]
-    public void Solve_InvalidRequestedLeaveRestCount_ReturnsInvalidInput(int requestedCount)
+    public void Solve_NegativeRequestedLeaveRestLimit_ReturnsInvalidInput()
     {
         var input = ValidInput();
-        var employee = input.DemandMonth.Employees[0] with { RequestedLeaveRestCount = requestedCount };
+        var employee = input.DemandMonth.Employees[0] with { RequestedLeaveRestCount = -1 };
         input = input with { DemandMonth = input.DemandMonth with { Employees = [employee, .. input.DemandMonth.Employees.Skip(1)] } };
 
         var result = MSolver.Solve(input);
@@ -178,6 +176,32 @@ public sealed class MSolverTests
         input = input with { DemandMonth = input.DemandMonth with { Employees = [employee, .. input.DemandMonth.Employees.Skip(1)] } };
 
         Assert.AreEqual(SolveStatus.InvalidInput, MSolver.Solve(input).Status);
+    }
+
+    [TestMethod]
+    public void Solve_TwoEmployeesInSameRequiredPosition_IsFeasible()
+    {
+        var input = ValidInput();
+        var date = input.DemandMonth.MonthStart;
+        var employees = input.DemandMonth.Employees.Select(employee =>
+            employee.EmployeeId == "M1-03"
+                ? employee with
+                {
+                    Assignments = new Dictionary<DateOnly, ScheduleCell>(employee.Assignments)
+                    {
+                        [date] = new() { Kind = AssignmentKind.Work, Station = "LB01", Shift = Shift.Early }
+                    }
+                }
+                : employee).ToArray();
+        input = input with { DemandMonth = input.DemandMonth with { Employees = employees } };
+
+        var result = MSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(30) });
+
+        Assert.IsGreaterThanOrEqualTo(1, result.Candidates.Count);
+        Assert.AreEqual(2, result.Candidates[0].Schedule.Employees.Count(employee =>
+            employee.Assignments[date].Kind == AssignmentKind.Work &&
+            employee.Assignments[date].Station == "LB01" &&
+            employee.Assignments[date].Shift == Shift.Early));
     }
 
     internal static ScheduleInput ValidInput()

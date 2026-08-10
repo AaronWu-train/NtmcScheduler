@@ -173,7 +173,7 @@ M 模型的輸入包括：
 \begin{itemize}
   \item 目標月份與固定延伸天數 \(K\)；
   \item M 人員及其所屬車站；
-  \item 指定休假 \(R^*\)、每人目標月精確 \(R休\) 數、固定勤務 \(X\) 與其他固定指派；
+  \item 指定休假 \(R^*\)、每人目標月 \(R休\) 使用上限、固定勤務 \(X\) 與其他固定指派；
   \item 八週週期的一般 \(R\) 與 \(R1\) 額度；
   \item 依每人在職日期推導的目標月份一般 \(R\) 與 \(R1\) 基準數量；
   \item 月初前連續七個日曆日的歷史班表；
@@ -239,7 +239,7 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 令 \(p_{ed}\in\{0,1\}\) 表示人員 \(e\) 是否在日期 \(d\) 提出指定休假
 \(R^*\)。\(R^*\) 不是獨立休假類型；若申請被滿足，該日仍須實際使用
 \(R\)、\(R1\) 或 \(R休\)。令 \(k_e\in\mathbb{Z}_{\geq0}\) 為人員 \(e\)
-在目標月份必須使用的精確 \(R休\) 數，取自需求列的 \texttt{當月指定R休}；
+在目標月份可使用的 \(R休\) 上限，取自需求列的 \texttt{當月指定R休}；
 歷史與候選列的同名欄位則記錄日格實際 \(R休\) 數。令 \(z_{ed}\in\{0,1\}\) 表示該日是否具有固定勤務 \(X\)，
 且每筆 \(X\) 具有固定的實際開始與結束時間。
 
@@ -328,11 +328,11 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 固定正常班、固定 \(R\)、固定 \(R1\)、固定 \(R休\) 與固定 \(X\) 直接固定對應變數。
 \(R^*\) 只表示休假偏好，不固定底層休假類型。
 
-\paragraph{Exact monthly leave-rest count (\texttt{CH06})}
+\paragraph{Monthly leave-rest limit (\texttt{CH06})}
 \[
   r^{M,L}_{ed}\leq p_{ed},
   \qquad
-  \sum_{d\in\mathcal{D}^{\mathrm{tar}}}r^{M,L}_{ed}=k_e.
+  \sum_{d\in\mathcal{D}^{\mathrm{tar}}}r^{M,L}_{ed}\leq k_e.
 \]
 因此 \(R休\) 只能使用目標月的 \(R^*\)，延伸日不安排 \(R休\)，亦不形成跨月額度。
 
@@ -344,9 +344,14 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 因此人員只能在本站或同群組車站工作。
 
 \paragraph{Coverage (\texttt{MH02})}
-每個必要班位必須完全補足：
+每個必要班位必須至少補足，需求為 0 的站班組合仍禁止排人：
 \[
-  \sum_{e\in\mathcal{E}^{M}}x^{M}_{edls}+a_{dls}=b_{dls},
+  \begin{cases}
+    \displaystyle\sum_{e\in\mathcal{E}^{M}}x^{M}_{edls}+a_{dls}\geq b_{dls},
+    & b_{dls}>0,\\
+    \displaystyle\sum_{e\in\mathcal{E}^{M}}x^{M}_{edls}+a_{dls}=0,
+    & b_{dls}=0,
+  \end{cases}
   \qquad
   \forall d\in\mathcal{D},\ l\in\mathcal{L},\ s\in\mathcal{S}.
 \]
@@ -446,6 +451,13 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
   =
   \sum_{\substack{e\in\mathcal{E}^{M},\ d\in\mathcal{D}^{\mathrm{tar}}\\p_{ed}=1}}
   \left(1-r^{M}_{ed}-r^{M,1}_{ed}-r^{M,L}_{ed}\right).
+\]
+
+未使用的 \(R休\) 上限違反量為
+\[
+  \Phi^{M,unusedL}
+  =\sum_{e\in\mathcal{E}^{M}}
+  \left(k_e-\sum_{d\in\mathcal{D}^{\mathrm{tar}}}r^{M,L}_{ed}\right).
 \]
 
 \paragraph{Monthly rest distribution (\texttt{CS02}, \texttt{CS03})}
@@ -665,7 +677,7 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 
 M 模型定義五個目標群組：
 \[
-  J^M_1=\Phi^{M,R^*},
+  J^M_1=3\Phi^{M,R^*}+\Phi^{M,unusedL},
 \]
 \[
   J^M_2=\Phi^{M,ext},
@@ -712,7 +724,7 @@ T 模型的輸入包括：
 \begin{itemize}
   \item 目標月份與固定延伸天數 \(K\)；
   \item T 人員、專業組別、能力分數及建模日期的固定班組；
-  \item 指定休假 \(R^*\)、每人目標月精確 \(R休\) 數、固定勤務 \(X\) 與其他固定指派；
+  \item 指定休假 \(R^*\)、每人目標月 \(R休\) 使用上限、固定勤務 \(X\) 與其他固定指派；
   \item 八週週期的一般 \(R\) 與 \(R1\) 額度；
   \item 依每人在職日期推導的目標月份一般 \(R\) 與 \(R1\) 基準數量；
   \item 月初前連續七個日曆日的歷史班表與跨月夜轉早休假數；
@@ -772,7 +784,7 @@ T 模型的輸入包括：
   \{q\in\mathcal{Q}:\exists e\in\mathcal{E}_{ds},\ \kappa_e=q\}.
 \]
 
-指定休假參數 \(p_{ed}\)、每人精確 \(R休\) 數 \(k_e\)、固定勤務參數 \(z_{ed}\)、八週額度
+指定休假參數 \(p_{ed}\)、每人 \(R休\) 使用上限 \(k_e\)、固定勤務參數 \(z_{ed}\)、八週額度
 \(G_c,H_c\)、逐人月休基準 \(n_e,m_e\) 與歷史額度
 \(\overline{R}_{ec},\overline{R1}_{ec}\) 的意義與 M 模型相同。
 
@@ -827,11 +839,11 @@ T 模型的輸入包括：
 \]
 固定正常班、固定 \(R\)、固定 \(R1\)、固定 \(R休\) 與固定 \(X\) 直接固定對應變數。
 
-\paragraph{Exact monthly leave-rest count (\texttt{CH06})}
+\paragraph{Monthly leave-rest limit (\texttt{CH06})}
 \[
   r^{T,L}_{ed}\leq p_{ed},
   \qquad
-  \sum_{d\in\mathcal{D}^{\mathrm{tar}}}r^{T,L}_{ed}=k_e.
+  \sum_{d\in\mathcal{D}^{\mathrm{tar}}}r^{T,L}_{ed}\leq k_e.
 \]
 
 \paragraph{Minimum eleven-hour rest (\texttt{CH03})}
@@ -906,6 +918,13 @@ T 模型的輸入包括：
   =
   \sum_{\substack{e\in\mathcal{E}^{T},\ d\in\mathcal{D}^{\mathrm{tar}}\\p_{ed}=1}}
   \left(1-r^{T}_{ed}-r^{T,1}_{ed}-r^{T,L}_{ed}\right).
+\]
+
+未使用的 \(R休\) 上限違反量為
+\[
+  \Phi^{T,unusedL}
+  =\sum_{e\in\mathcal{E}^{T}}
+  \left(k_e-\sum_{d\in\mathcal{D}^{\mathrm{tar}}}r^{T,L}_{ed}\right).
 \]
 
 \paragraph{Monthly rest distribution (\texttt{CS02}, \texttt{CS03})}
@@ -1122,7 +1141,7 @@ T 的實際工作區段同樣由連續正常班或 \(X\) 組成，\(R\) 與 \(R1
 
 T 模型定義五個目標群組：
 \[
-  J^T_1=\Phi^{T,R^*},
+  J^T_1=3\Phi^{T,R^*}+\Phi^{T,unusedL},
 \]
 \[
   J^T_2
@@ -1229,7 +1248,7 @@ T 模型定義五個目標群組：
   \(r^M_{ed}\) & \texttt{variables.Rest[(e,d)]}，\texttt{BoolVar} & \texttt{CreateVariables} \\
   \(r^{M,1}_{ed}\) & \texttt{variables.SpecialRest}\newline\texttt{[(e,d)]}，\texttt{BoolVar} & \texttt{CreateVariables} \\
   \(r^{M,L}_{ed}\) & \texttt{variables.LeaveRest}\newline\texttt{[(e,d)]}，\texttt{BoolVar} & \texttt{CreateVariables} \\
-  \(a_{dls}\) & \texttt{variables.External[(d,l,s)]}，\texttt{IntVar} & \texttt{CreateVariables}、\texttt{AddExactCoverage} \\
+  \(a_{dls}\) & \texttt{variables.External[(d,l,s)]}，\texttt{IntVar} & \texttt{CreateDecisionVariables}、\texttt{RequireMinimumStationCoverage} \\
   \(y^M_{eds}\) & \texttt{variables.WorksShift}\newline\texttt{[(e,d,s)]}，\texttt{BoolVar} & \texttt{CreateVariables} \\
   \(w^M_{ed}\) & \texttt{variables.ActualWork}\newline\texttt{[(e,d)]}，\texttt{BoolVar} & 正常班或 \(X\) 為 1 \\
   \(\rho^M_{ed}\) & \texttt{variables.AnyRest[(e,d)]}，\texttt{BoolVar} & \(R+R1+R休\) \\

@@ -90,9 +90,9 @@ public static partial class MSolver
     private static void AddHardConstraints(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
     {
         AddExactlyOneAssignmentPerActiveDay(model, input, dates, variables);
-        RequireExactRequestedLeaveRestCount(model, input, variables);
+        LimitRequestedLeaveRestCount(model, input, variables);
         FixSuppliedAssignments(model, input, variables);
-        RequireExactStationCoverage(model, input, dates, variables);
+        RequireMinimumStationCoverage(model, input, dates, variables);
         ForbidOverlappingOrInsufficientlySeparatedWork(model, input, dates, variables);
         RequireGeneralRestInEverySevenDayWindow(model, input, dates, variables);
         EnforceEightWeekRestQuotas(model, input, dates, variables);
@@ -122,11 +122,12 @@ public static partial class MSolver
         }
     }
 
-    private static void RequireExactRequestedLeaveRestCount(CpModel model, ScheduleInput input, ModelVariables variables)
+    // Hard constraint — do not exceed each employee's target-month R休 limit; null means zero.
+    private static void LimitRequestedLeaveRestCount(CpModel model, ScheduleInput input, ModelVariables variables)
     {
         var targetDates = TargetMonthDates(input).ToArray();
         foreach (var employee in input.DemandMonth.Employees)
-            model.Add(LinearExpr.Sum(targetDates.Select(date => variables.LeaveRest[(employee.EmployeeId, date)])) == (employee.RequestedLeaveRestCount ?? 0));
+            model.Add(LinearExpr.Sum(targetDates.Select(date => variables.LeaveRest[(employee.EmployeeId, date)])) <= (employee.RequestedLeaveRestCount ?? 0));
     }
 
     // Hard constraint — force every supplied normal-work, R, R1, or R休 assignment to its requested value.
@@ -156,8 +157,8 @@ public static partial class MSolver
         }
     }
 
-    // Hard constraint — fill every required station/shift position exactly, using external headcount where allowed.
-    private static void RequireExactStationCoverage(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
+    // Hard constraint — meet each positive station/shift minimum; zero-demand positions remain forbidden.
+    private static void RequireMinimumStationCoverage(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
     {
         foreach (var date in dates)
         {
@@ -173,7 +174,8 @@ public static partial class MSolver
                     {
                         coverage += external;
                     }
-                    model.Add(coverage == RequiredHeadcount(station, shift));
+                    var required = RequiredHeadcount(station, shift);
+                    model.Add(required > 0 ? coverage >= required : coverage == 0);
                 }
             }
         }
