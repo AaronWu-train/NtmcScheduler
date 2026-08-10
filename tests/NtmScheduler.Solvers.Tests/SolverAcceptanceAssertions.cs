@@ -46,10 +46,8 @@ internal static class SolverAcceptanceAssertions
         AssertObjectiveStructure(candidate.Objectives,
         [
             (1, "RequestedRest", [("RequestedRest", 3), ("UnusedLeaveRest", 1)]),
-            (2, "ExternalStaffing", [("ExternalStaffing", 1)]),
-            (3, "MonthlyRestDistribution", [("MonthlyRest", 4), ("MonthlySpecialRest", 8)]),
-            (4, "ScheduleQuality", [("NonHomeStation", 8), ("WorkStreak", 3), ("SameShiftBlock", 2), ("NightRestEarly", 12), ("NightRestAfternoon", 8), ("ShiftChangeWithoutRest", 6)]),
-            (5, "RotationAndFairness", [("NonPreferredRotation", 1), ("WeekdayRestFairness", 2), ("HolidayRestFairness", 4), ("SupportFairness", 3), ("EarlyShiftFairness", 1), ("AfternoonShiftFairness", 1), ("NightShiftFairness", 2)])
+            (4, "ScheduleQuality", [("ExternalStaffing", 24), ("MonthlyRest", 24), ("MonthlySpecialRest", 12), ("NonHomeStation", 2), ("WorkStreak", 4), ("MixedShiftWorkStreak", 15), ("NightRestEarly", 30), ("NightRestAfternoon", 20), ("ShiftChangeWithoutRest", 7), ("NonPreferredRotation", 7)]),
+            (5, "Fairness", [("WeekdayRestFairness", 2), ("HolidayRestFairness", 4), ("SupportFairness", 3), ("EarlyShiftFairness", 1), ("AfternoonShiftFairness", 1), ("NightShiftFairness", 2)])
         ]);
 
         Expect(candidate.Objectives, "RequestedRest", RequestedRestViolations(input, candidate.Schedule));
@@ -62,7 +60,9 @@ internal static class SolverAcceptanceAssertions
         var completedStreakPenalty = CompletedWorkStreakPenalty(input, candidate.Schedule);
         Assert.IsGreaterThanOrEqualTo(completedStreakPenalty, Component(candidate.Objectives, "WorkStreak").Value);
         Assert.IsGreaterThan(0, completedStreakPenalty);
-        Expect(candidate.Objectives, "SameShiftBlock", SameShiftBlockPenalty(candidate.Schedule));
+        var observableMixedShiftWorkStreaks = ObservableMixedShiftWorkStreaks(input, candidate.Schedule);
+        Assert.IsGreaterThan(0, Component(candidate.Objectives, "MixedShiftWorkStreak").Value);
+        Assert.IsGreaterThan(0, observableMixedShiftWorkStreaks);
 
         var earlyPatterns = ObservableNightRestPatterns(input, candidate.Schedule, Shift.Early);
         var afternoonPatterns = ObservableNightRestPatterns(input, candidate.Schedule, Shift.Afternoon);
@@ -254,9 +254,31 @@ internal static class SolverAcceptanceAssertions
         return total;
     }
 
-    private static long SameShiftBlockPenalty(MonthlySchedule schedule) => schedule.Employees.Sum(employee =>
-        Runs(employee.Assignments.OrderBy(pair => pair.Key).Where(pair => pair.Value.Kind == AssignmentKind.Work).Select(pair => pair.Value.Shift!.Value))
-            .Sum(run => (long)BlockPenalty(run.Count)));
+    private static long ObservableMixedShiftWorkStreaks(ScheduleInput input, MonthlySchedule schedule)
+    {
+        var total = 0L;
+        foreach (var employee in schedule.Employees)
+        {
+            var history = History(input, employee.EmployeeId).Reverse().TakeWhile(IsWork).ToArray();
+            var shifts = history.Where(cell => cell.Kind == AssignmentKind.Work).Select(cell => cell.Shift!.Value).ToHashSet();
+            var dates = employee.Assignments.Keys.Order().ToArray();
+            for (var index = 0; index + 1 < dates.Length; index++)
+            {
+                var cell = employee.Assignments[dates[index]];
+                if (IsWork(cell))
+                {
+                    if (cell.Kind == AssignmentKind.Work) shifts.Add(cell.Shift!.Value);
+                    if (!IsWork(employee.Assignments[dates[index + 1]]))
+                    {
+                        if (shifts.Count > 1) total++;
+                        shifts.Clear();
+                    }
+                }
+                else shifts.Clear();
+            }
+        }
+        return total;
+    }
 
     private static long ObservableNightRestPatterns(ScheduleInput input, MonthlySchedule schedule, Shift finalShift)
     {
@@ -411,25 +433,6 @@ internal static class SolverAcceptanceAssertions
             var counts = group.Select(employee => count(candidates[employee.EmployeeId])).ToArray();
             return counts.Length < 2 ? 0 : counts.Max() - counts.Min();
         });
-    }
-
-    private static IEnumerable<(Shift Shift, int Count)> Runs(IEnumerable<Shift> shifts)
-    {
-        using var values = shifts.GetEnumerator();
-        if (!values.MoveNext()) yield break;
-        var shift = values.Current;
-        var count = 1;
-        while (values.MoveNext())
-        {
-            if (values.Current == shift) count++;
-            else
-            {
-                yield return (shift, count);
-                shift = values.Current;
-                count = 1;
-            }
-        }
-        yield return (shift, count);
     }
 
     private static IEnumerable<ScheduleCell> History(ScheduleInput input, string employeeId) =>

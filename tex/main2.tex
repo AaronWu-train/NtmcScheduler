@@ -257,7 +257,7 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 為 \(R1\) 基準。
 
 月初前連續七日的歷史班表用來重建法規連續日數、尚未結束的實際工作區段、
-尚未結束的同班別區塊與最近一次有效正常班別。八週 R/R1 已使用數量由獨立
+該工作區段最近一次正常班型與是否已混合班型。八週 R/R1 已使用數量由獨立
 輸入提供，不從七日歷史推算；公平性不使用歷史累積值。
 
 \subsubsection{Variables}
@@ -304,7 +304,7 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
   \midrule
   \(q^{law}_{ed}\) & 自最近一次一般 \(R\) 後經過的排班日數；只有一般 \(R\) 歸零，\(R1\) 與 \(R休\) 仍增加 & \texttt{CH02} 法規性最多連續六日 \\
   \(c^{work}_{ed}\) & 連續實際工作日數；正常班與 \(X\) 增加，\(R\)、\(R1\) 或 \(R休\) 歸零 & \texttt{CS04} 工作與休假區段長度 \\
-  \((\lambda_{ed},\ell_{ed})\) & 最近有效正常班別及其連續出現次數；\(R\)、\(R1\)、\(R休\)、\(X\) 都略過，遇到不同正常班才結束 & \texttt{MS03} 同班別區塊 \\
+  \((\beta_{ed},\mu_{ed})\) & 目前實際工作區段內最近正常班型及是否已出現多種班型；休假歸零，\(X\) 保留狀態 & \texttt{MS03} 工作區段班型一致性 \\
   \(\gamma_{ed}\) & 最近一次實際休假後出現的最近正常班別；\(R\)、\(R1\)、\(R休\) 清除，\(X\) 略過 & \texttt{MS06} 換班前是否有休假 \\
   \(\eta_{ed}\) & 全序列中最近一次有效正常班別；\(R\)、\(R1\)、\(R休\)、\(X\) 都略過 & \texttt{MS07} 班別輪轉方向 \\
   \bottomrule
@@ -441,7 +441,7 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 
 \paragraph{固定指派與歷史邊界（\texttt{CH05}）}
 所有固定指派均不得由模型改寫。歷史班表決定建模區間第一日前的
-\(q^{law}\)、\(c^{work}\)、\((\lambda,\ell)\)、\(\gamma\)、\(\eta\) 及週期
+\(q^{law}\)、\(c^{work}\)、\((\beta,\mu)\)、\(\gamma\)、\(\eta\) 及週期
 累積值，這些值作為第一日狀態轉移的固定前置狀態。
 
 \subsubsection{\texorpdfstring{$J^M_1$}{J1}：指定休假}
@@ -463,7 +463,7 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
   \left(k_e-\sum_{d\in\mathcal{D}^{\mathrm{tar}}}r^{M,L}_{ed}\right).
 \]
 
-\subsubsection{\texorpdfstring{$J^M_2$}{J2}：外援人力}
+\subsubsection{\texorpdfstring{$J^M_4$}{J4}：綜合排班品質}
 
 \paragraph{外援人力（\texttt{MS01}）}
 \[
@@ -473,8 +473,6 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
   \sum_{l\in\mathcal{L}^{ext}}
   \sum_{s\in\mathcal{S}}a_{dls}.
 \]
-
-\subsubsection{\texorpdfstring{$J^M_3$}{J3}：每月休假分布}
 
 \paragraph{每月休假分布（\texttt{CS02}、\texttt{CS03}）}
 令
@@ -500,8 +498,6 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 \]
 偏離基準 0、1、2、3 日時，懲罰依序為 0、1、4、9。
 此為月內分布偏好，不取代 \texttt{CH04} 的八週精確額度；\(R休\) 不計入兩個月內數量。
-
-\subsubsection{\texorpdfstring{$J^M_4$}{J4}：排班品質}
 
 \paragraph{非所屬站指派（\texttt{MS02}）}
 \[
@@ -537,19 +533,20 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
   D(|B|).
 \]
 
-\paragraph{同班別區塊長度（\texttt{MS03}）}
-此規則控制同一正常班別維持多久，用來減少生理時段頻繁切換。建立正常班別
-序列時，\(R\)、\(R1\)、\(R休\) 與 \(X\) 全部略過；只有下一個有效正常班別不同時，
-原區塊才結束。令 \(\mathcal{B}^{shift}_e\) 為相同正常班別的最大區塊集合，
-並承接月初未結束區塊，則
+\paragraph{工作區段班型一致性（\texttt{MS03}）}
+此規則沿用 \texttt{CS04} 的實際工作區段 \(\mathcal{B}^{work}_e\) 與跨月承接。
+對每個區段 \(B\)，令其中出現的正常班型集合為
 \[
-  \Phi^{M,block}
-  =
-  \sum_{e\in\mathcal{E}^{M}}
-  \sum_{B\in\mathcal{B}^{shift}_e:\ B\text{ 於目標月份內結束}}
-  D(|B|).
+  \mathcal S_B
+  =\{s\in\mathcal S:\exists d\in B,\ y^M_{eds}=1\}.
 \]
-第一個正常班只建立第一個區塊，不產生前置區塊懲罰。
+若 \(|\mathcal S_B|\geq2\)，令 \(\mu_B=1\)，否則 \(\mu_B=0\)。\(X\) 保留在
+工作區段內，但不加入 \(\mathcal S_B\)。只對結束日在目標月份內的區段計分：
+\[
+  \Phi^{M,mixed}
+  =\sum_{e\in\mathcal E^M}
+  \sum_{B\in\mathcal B^{work}_e:\ \max B\in\mathcal D^{\mathrm{tar}}}\mu_B.
+\]
 
 \paragraph{夜班--休假--早班型態（\texttt{MS04}）}
 對所有完全位於目標月份內的三日視窗，令
@@ -589,10 +586,8 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 \]
 因此 \(\mathrm{E}\rightarrow X\rightarrow\mathrm{A}\) 仍屬未經休假換班；
 \(\mathrm{E}\rightarrow R\rightarrow\mathrm{A}\) 則不違反。此規則與
-\texttt{MS03} 不同：\texttt{MS03} 衡量同班別區塊長度，\texttt{MS06} 只判斷
-換班前有沒有休假。
-
-\subsubsection{\texorpdfstring{$J^M_5$}{J5}：輪轉與公平}
+\texttt{MS03} 不同：\texttt{MS03} 判斷同一工作區段內是否混合班型，\texttt{MS06}
+只判斷換班前有沒有休假。
 
 \paragraph{偏好班別輪轉（\texttt{MS07}）}
 令偏好轉移集合為
@@ -607,6 +602,8 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
   \Phi^{M,rotate}.
 \]
 此規則只判斷換班方向，與換班前是否休假無關。
+
+\subsubsection{\texorpdfstring{$J^M_5$}{J5}：公平性}
 
 以下公平性只比較目標月第一日已在職的人員。令
 \[
@@ -687,35 +684,29 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 
 \subsubsection{字典序目標}
 
-M 模型定義五個目標群組：
+M 模型定義三個目標群組：
 \[
   J^M_1=3\Phi^{M,R^*}+\Phi^{M,unusedL},
 \]
 \[
-  J^M_2=\Phi^{M,ext},
-\]
-\[
-  J^M_3
-  =
-  4\Phi^{M,month,R}
-  +8\Phi^{M,month,R1},
-\]
-\[
   \begin{aligned}
     J^M_4={}&
-    8\Phi^{M,home}
-    +3\Phi^{M,streak}
-    +2\Phi^{M,block}\\
-    &+12\Phi^{M,NE}
-    +8\Phi^{M,NA}
-    +6\Phi^{M,restswitch},
+    24\Phi^{M,ext}
+    +24\Phi^{M,month,R}
+    +12\Phi^{M,month,R1}
+    +2\Phi^{M,home}\\
+    &+4\Phi^{M,streak}
+    +15\Phi^{M,mixed}
+    +30\Phi^{M,NE}\\
+    &+20\Phi^{M,NA}
+    +7\Phi^{M,restswitch}
+    +7\Phi^{M,rotate},
   \end{aligned}
 \]
 \[
   J^M_5
   =
-  \Phi^{M,rotate}
-  +2\Phi^{M,weekday}
+  2\Phi^{M,weekday}
   +4\Phi^{M,holiday}
   +3\Phi^{M,support}
   +\Phi^{M,shift,\mathrm E}
@@ -725,7 +716,7 @@ M 模型定義五個目標群組：
 完整目標為
 \[
   \operatorname{lexmin}
-  \left(J^M_1,J^M_2,J^M_3,J^M_4,J^M_5\right).
+  \left(J^M_1,J^M_4,J^M_5\right).
 \]
 
 \subsection{The T Problem}
@@ -1280,10 +1271,10 @@ T 模型定義五個目標群組：
   \(u_{ed}\) & \texttt{variables.}\newline\texttt{SupportsOtherStation[(e,d)]}，\texttt{BoolVar} & 非本站正常班之和 \\
   \(q^{law}_{ed}\) & 七日滑動視窗，未另建狀態 class & \texttt{AddMaximumSixDays}\newline\texttt{WithoutGeneralRest} \\
   \(c^{work}_{ed}\) & 函數內 \texttt{IntVar count} & \texttt{WorkStreakViolation} \\
-  \((\lambda_{ed},\ell_{ed})\) & 函數內 \texttt{lastShift/blockLength} & \texttt{SameShiftBlockViolation} \\
+  \((\beta_{ed},\mu_{ed})\) & 函數內 \texttt{lastShift/mixed} & \texttt{CountMixedShiftWorkStreaks} \\
   \(\gamma_{ed}\) & 函數內 \texttt{state} & \texttt{ShiftChangeWithoutRestViolation} \\
   \(\eta_{ed}\) & 函數內 \texttt{state} & \texttt{NonPreferredRotationViolation} \\
-  \(J^M_1,\ldots,J^M_5\) & \texttt{objectives} 中的 \texttt{LinearExpr Total} & \texttt{BuildObjectives}；權重直接寫在同一函數 \\
+  \(J^M_1,J^M_4,J^M_5\) & \texttt{objectives} 中的 \texttt{LinearExpr Total} & \texttt{BuildObjectiveGroups}；權重直接寫在同一函數 \\
   \bottomrule
 \end{longtable}
 \normalsize

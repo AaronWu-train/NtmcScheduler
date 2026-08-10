@@ -20,7 +20,7 @@ public static partial class MSolver
         var monthlySpecialRest = MeasureMonthlyRestDeviation(model, input, targetDates, variables.SpecialRest, true, "monthly_special_rest");
         var nonHomeStation = CountCrossStationAssignments(input, targetDates, variables);
         var workStreak = MeasureWorkStreakPenalties(model, input, targetDates, modelDates, variables);
-        var sameShiftBlock = MeasureSameShiftBlockPenalties(model, input, targetDates, variables);
+        var mixedShiftWorkStreak = CountMixedShiftWorkStreaks(model, input, targetDates, modelDates, variables);
         var nightRestEarly = CountNightRestShiftPatterns(model, input, variables, Shift.Early, "night_rest_early");
         var nightRestAfternoon = CountNightRestShiftPatterns(model, input, variables, Shift.Afternoon, "night_rest_afternoon");
         var shiftChangeWithoutRest = CountShiftChangesWithoutRest(model, input, modelDates, variables);
@@ -36,26 +36,26 @@ public static partial class MSolver
         [
             new(1, "RequestedRest", requestedRest * 3 + unusedLeaveRest,
                 [("RequestedRest", 3, requestedRest), ("UnusedLeaveRest", 1, unusedLeaveRest)]),
-            new(2, "ExternalStaffing", externalStaffing, [("ExternalStaffing", 1, externalStaffing)]),
-            new(3, "MonthlyRestDistribution",
-                monthlyRest * 4 + monthlySpecialRest * 8,
-                [("MonthlyRest", 4, monthlyRest), ("MonthlySpecialRest", 8, monthlySpecialRest)]),
             new(4, "ScheduleQuality",
-                nonHomeStation * 8 + workStreak * 3 + sameShiftBlock * 2 + nightRestEarly * 12
-                    + nightRestAfternoon * 8 + shiftChangeWithoutRest * 6,
+                externalStaffing * 24 + monthlyRest * 24 + monthlySpecialRest * 12 + nonHomeStation * 2
+                    + workStreak * 4 + mixedShiftWorkStreak * 15 + nightRestEarly * 30
+                    + nightRestAfternoon * 20 + shiftChangeWithoutRest * 7 + rotation * 7,
                 [
-                    ("NonHomeStation", 8, nonHomeStation),
-                    ("WorkStreak", 3, workStreak),
-                    ("SameShiftBlock", 2, sameShiftBlock),
-                    ("NightRestEarly", 12, nightRestEarly),
-                    ("NightRestAfternoon", 8, nightRestAfternoon),
-                    ("ShiftChangeWithoutRest", 6, shiftChangeWithoutRest)
+                    ("ExternalStaffing", 24, externalStaffing),
+                    ("MonthlyRest", 24, monthlyRest),
+                    ("MonthlySpecialRest", 12, monthlySpecialRest),
+                    ("NonHomeStation", 2, nonHomeStation),
+                    ("WorkStreak", 4, workStreak),
+                    ("MixedShiftWorkStreak", 15, mixedShiftWorkStreak),
+                    ("NightRestEarly", 30, nightRestEarly),
+                    ("NightRestAfternoon", 20, nightRestAfternoon),
+                    ("ShiftChangeWithoutRest", 7, shiftChangeWithoutRest),
+                    ("NonPreferredRotation", 7, rotation)
                 ]),
-            new(5, "RotationAndFairness",
-                rotation + weekdayFairness * 2 + holidayFairness * 4 + supportFairness * 3
+            new(5, "Fairness",
+                weekdayFairness * 2 + holidayFairness * 4 + supportFairness * 3
                     + earlyShiftFairness + afternoonShiftFairness + nightShiftFairness * 2,
                 [
-                    ("NonPreferredRotation", 1, rotation),
                     ("WeekdayRestFairness", 2, weekdayFairness),
                     ("HolidayRestFairness", 4, holidayFairness),
                     ("SupportFairness", 3, supportFairness),
@@ -154,7 +154,7 @@ public static partial class MSolver
                     var maximumLength = modelDates.Count + 31;
                     var rawPenalty = model.NewIntVar(0, 2L * maximumLength, $"work_streak_penalty_{employee.EmployeeId}_{date:yyyyMMdd}_raw");
                     var penalty = model.NewIntVar(0, 2L * maximumLength, $"work_streak_penalty_{employee.EmployeeId}_{date:yyyyMMdd}");
-                    model.AddElement(count, Enumerable.Range(0, maximumLength + 1).Select(BlockLengthPenaltyValue), rawPenalty);
+                    model.AddElement(count, Enumerable.Range(0, maximumLength + 1).Select(WorkStreakPenaltyValue), rawPenalty);
                     model.AddMultiplicationEquality(penalty, rawPenalty, streakEnds);
                     penalties.Add(penalty);
                 }
@@ -164,59 +164,72 @@ public static partial class MSolver
         return LinearExpr.Sum(penalties);
     }
 
-    // 同班別區塊——只看目標月並忽略車站，班別序列略過 R/R1/R休/X。
-    private static LinearExpr MeasureSameShiftBlockPenalties(
+    // 工作區段班型一致性——每個已結束的實際工作區段若包含多種正常班型，計一次違反。
+    private static LinearExpr CountMixedShiftWorkStreaks(
         CpModel model,
         ScheduleInput input,
         IReadOnlyList<DateOnly> targetDates,
+        IReadOnlyList<DateOnly> modelDates,
         ModelVariables variables)
     {
-        var penalties = new List<LinearExpr>();
+        var target = targetDates.ToHashSet();
+        var penalties = new List<BoolVar>();
         foreach (var employee in input.DemandMonth.Employees)
         {
-            LinearExpr previousShift = LinearExpr.Constant(0);
-            LinearExpr previousLength = LinearExpr.Constant(0);
-            foreach (var date in targetDates.Where(date => IsEmployedOn(employee, date)))
+            var history = HistoricalWorkStreakShiftState(input, employee.EmployeeId);
+            LinearExpr previousShift = LinearExpr.Constant(ShiftStateCode(history.LastShift));
+            LinearExpr previousMixed = LinearExpr.Constant(history.Mixed ? 1 : 0);
+            for (var index = 0; index < modelDates.Count; index++)
             {
-                var hasNormal = model.NewBoolVar($"same_shift_has_work_{employee.EmployeeId}_{date:yyyyMMdd}");
+                var date = modelDates[index];
+                var hasNormal = model.NewBoolVar($"streak_shift_has_work_{employee.EmployeeId}_{date:yyyyMMdd}");
                 model.Add(hasNormal == LinearExpr.Sum(Shifts.Select(shift => variables.WorksShift[(employee.EmployeeId, date, shift)])));
-                var lastShift = model.NewIntVar(0, 3, $"same_shift_last_{employee.EmployeeId}_{date:yyyyMMdd}");
-                var blockLength = model.NewIntVar(0, targetDates.Count, $"same_shift_length_{employee.EmployeeId}_{date:yyyyMMdd}");
-                model.Add(lastShift == previousShift).OnlyEnforceIf(hasNormal.Not());
-                model.Add(blockLength == previousLength).OnlyEnforceIf(hasNormal.Not());
+                var lastShift = model.NewIntVar(0, 3, $"streak_shift_last_{employee.EmployeeId}_{date:yyyyMMdd}");
+                var mixed = model.NewBoolVar($"streak_shift_mixed_{employee.EmployeeId}_{date:yyyyMMdd}");
 
-                foreach (var shift in Shifts)
+                if (employee.Assignments.GetValueOrDefault(date)?.Kind == AssignmentKind.WorkEvent)
                 {
-                    var normal = variables.WorksShift[(employee.EmployeeId, date, shift)];
-                    var same = model.NewBoolVar($"same_shift_previous_{employee.EmployeeId}_{date:yyyyMMdd}_{shift}");
-                    model.Add(previousShift == ShiftStateCode(shift)).OnlyEnforceIf(same);
-                    model.Add(previousShift != ShiftStateCode(shift)).OnlyEnforceIf(same.Not());
+                    model.Add(lastShift == previousShift);
+                    model.Add(mixed == previousMixed);
+                }
+                else
+                {
+                    model.Add(lastShift == 0).OnlyEnforceIf(hasNormal.Not());
+                    model.Add(mixed == 0).OnlyEnforceIf(hasNormal.Not());
 
-                    var continues = model.NewBoolVar($"same_shift_continues_{employee.EmployeeId}_{date:yyyyMMdd}_{shift}");
-                    model.Add(continues <= normal);
-                    model.Add(continues <= same);
-                    model.Add(continues >= normal + same - 1);
-
-                    var starts = model.NewBoolVar($"same_shift_starts_{employee.EmployeeId}_{date:yyyyMMdd}_{shift}");
-                    model.Add(starts + continues == normal);
-                    model.Add(lastShift == ShiftStateCode(shift)).OnlyEnforceIf(normal);
-                    model.Add(blockLength == previousLength + 1).OnlyEnforceIf(continues);
-                    model.Add(blockLength == 1).OnlyEnforceIf(starts);
-
-                    var rawPenalty = model.NewIntVar(0, 2L * targetDates.Count, $"same_shift_penalty_{employee.EmployeeId}_{date:yyyyMMdd}_{shift}_raw");
-                    var penalty = model.NewIntVar(0, 2L * targetDates.Count, $"same_shift_penalty_{employee.EmployeeId}_{date:yyyyMMdd}_{shift}");
-                    model.AddElement(previousLength, Enumerable.Range(0, targetDates.Count + 1).Select(BlockLengthPenaltyValue), rawPenalty);
-                    model.AddMultiplicationEquality(penalty, rawPenalty, starts);
-                    penalties.Add(penalty);
+                    foreach (var shift in Shifts)
+                    {
+                        var normal = variables.WorksShift[(employee.EmployeeId, date, shift)];
+                        var same = model.NewBoolVar($"streak_shift_same_{employee.EmployeeId}_{date:yyyyMMdd}_{shift}");
+                        model.Add(previousShift == ShiftStateCode(shift)).OnlyEnforceIf(same);
+                        model.Add(previousShift != ShiftStateCode(shift)).OnlyEnforceIf(same.Not());
+                        var none = model.NewBoolVar($"streak_shift_none_{employee.EmployeeId}_{date:yyyyMMdd}_{shift}");
+                        model.Add(previousShift == 0).OnlyEnforceIf(none);
+                        model.Add(previousShift != 0).OnlyEnforceIf(none.Not());
+                        var changed = model.NewBoolVar($"streak_shift_changed_{employee.EmployeeId}_{date:yyyyMMdd}_{shift}");
+                        model.Add(changed <= normal);
+                        model.Add(changed + same <= 1);
+                        model.Add(changed + none <= 1);
+                        model.Add(changed >= normal - same - none);
+                        model.Add(lastShift == ShiftStateCode(shift)).OnlyEnforceIf(normal);
+                        model.Add(mixed >= changed);
+                        model.Add(mixed >= previousMixed + normal - 1);
+                        model.Add(mixed <= previousMixed + changed).OnlyEnforceIf(normal);
+                    }
                 }
 
+                if (target.Contains(date) && index + 1 < modelDates.Count)
+                {
+                    var nextWork = variables.ActualWork[(employee.EmployeeId, modelDates[index + 1])];
+                    var penalty = model.NewBoolVar($"mixed_shift_streak_{employee.EmployeeId}_{date:yyyyMMdd}");
+                    model.Add(penalty <= mixed);
+                    model.Add(penalty + nextWork <= 1);
+                    model.Add(penalty >= mixed - nextWork);
+                    penalties.Add(penalty);
+                }
                 previousShift = lastShift;
-                previousLength = blockLength;
+                previousMixed = mixed;
             }
-
-            var finalPenalty = model.NewIntVar(0, 2L * targetDates.Count, $"same_shift_final_{employee.EmployeeId}");
-            model.AddElement(previousLength, Enumerable.Range(0, targetDates.Count + 1).Select(BlockLengthPenaltyValue), finalPenalty);
-            penalties.Add(finalPenalty);
         }
         return LinearExpr.Sum(penalties);
     }
@@ -480,8 +493,8 @@ public static partial class MSolver
         _ => 0
     };
 
-    // Shared piecewise penalty for completed work-streak and same-shift-block lengths.
-    private static int BlockLengthPenaltyValue(int length) => length switch
+    // 已結束工作區段的分段長度懲罰。
+    private static int WorkStreakPenaltyValue(int length) => length switch
     {
         0 => 0,
         1 => 4,

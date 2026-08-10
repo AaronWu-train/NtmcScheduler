@@ -367,6 +367,17 @@ public static partial class MSolver
         return count;
     }
 
+    private static (Shift? LastShift, bool Mixed) HistoricalWorkStreakShiftState(ScheduleInput input, string employeeId)
+    {
+        var shifts = ResolvedHistoryFor(input, employeeId)
+            .OrderByDescending(item => item.Date)
+            .TakeWhile(item => item.Cell.Kind is AssignmentKind.Work or AssignmentKind.WorkEvent)
+            .Where(item => item.Cell.Kind == AssignmentKind.Work && item.Cell.Shift is not null)
+            .Select(item => item.Cell.Shift!.Value)
+            .ToArray();
+        return (shifts.Length == 0 ? null : shifts[0], shifts.Distinct().Skip(1).Any());
+    }
+
     private static Shift? HistoricalLastShiftSinceRest(ScheduleInput input, string employeeId)
     {
         Shift? lastShift = null;
