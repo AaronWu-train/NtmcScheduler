@@ -101,6 +101,27 @@ public sealed class TSolverTests
     }
 
     [TestMethod]
+    public void MonthlyRestTargetCountsActualWeekendDays()
+    {
+        var month = new DateOnly(2026, 8, 1);
+        (Type Solver, ScheduleInput Input)[] cases =
+        [
+            (typeof(MSolver), MSolverTests.ValidInput()),
+            (typeof(TSolver), ValidInput())
+        ];
+
+        foreach (var (solver, original) in cases)
+        {
+            var input = original with { DemandMonth = original.DemandMonth with { MonthStart = month } };
+            var employee = input.DemandMonth.Employees[0] with { EmploymentStartDate = null };
+            var method = solver.GetMethod("ExpectedMonthlyRestCount", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+
+            Assert.AreEqual(10, method.Invoke(null, [input, employee, false]));
+            Assert.AreEqual(4, method.Invoke(null, [input, employee with { EmploymentStartDate = new(2026, 8, 21) }, false]));
+        }
+    }
+
+    [TestMethod]
     public void Solve_MidmonthHireBeforeStartCells_ReturnInvalidInput()
     {
         var input = ValidInput();
