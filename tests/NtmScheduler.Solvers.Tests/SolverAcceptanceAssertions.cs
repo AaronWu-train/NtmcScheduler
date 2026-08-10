@@ -482,6 +482,6 @@ internal static class SolverAcceptanceAssertions
     private static bool IsNationalHoliday(ScheduleInput input, DateOnly date) => input.RestIntervals.Any(interval => interval.NationalHolidays.Contains(date));
     private static bool IsHoliday(ScheduleInput input, DateOnly date) => date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday || IsNationalHoliday(input, date);
     private static int StationGroup(string station) => (int.Parse(station[2..]) - 1) / 3;
-    private static int BlockPenalty(int length) => length switch { 1 => 4, 2 => 3, 3 => 1, 4 => 0, 5 => 2, _ when length >= 6 => 5, _ => 0 };
+    private static int BlockPenalty(int length) => length switch { 1 => 4, 2 => 2, 3 or 4 => 0, 5 => 1, _ when length >= 6 => 2 * (length - 4), _ => 0 };
     private static (AssignmentKind? Kind, string? Station, Shift? Shift) Signature(ScheduleCell cell) => (cell.Kind, cell.Station, cell.Shift);
 }

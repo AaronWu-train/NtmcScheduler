@@ -289,11 +289,11 @@ public static partial class TSolver
     {
         0 => 0,
         1 => 4,
-        2 => 3,
-        3 => 1,
+        2 => 2,
+        3 => 0,
         4 => 0,
-        5 => 2,
-        _ when length >= 6 => 5,
+        5 => 1,
+        _ when length >= 6 => 2 * (length - 4),
         _ => 0
     };
 
