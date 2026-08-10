@@ -46,14 +46,14 @@ public static partial class TSolver
         ];
     }
 
-    // Requested rest — count R* cells whose result is not an actual rest.
+    // 指定休假滿足——計算結果不是實際休假的 R* 格數。
     private static LinearExpr CountUnfulfilledRequestedRests(ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables) =>
         LinearExpr.Sum(from employee in input.DemandMonth.Employees
             from date in targetDates
             where employee.Assignments.GetValueOrDefault(date)?.RequestedRest == true
             select 1 - variables.AnyRest[(employee.EmployeeId, date)]);
 
-    // Unused R休 — count the difference between each employee's limit and actual target-month use.
+    // 未使用 R休 額度——計算每人上限與目標月實際使用數的差額。
     private static LinearExpr MeasureUnusedLeaveRests(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
     {
         var unused = new List<IntVar>();
@@ -67,7 +67,7 @@ public static partial class TSolver
         return LinearExpr.Sum(unused);
     }
 
-    // Monthly-shift adherence — count normal-work cells outside the target or rotated extension shift.
+    // 月班別一致性——計算不符合目標月班別或延伸日輪轉班別的正常工作格。
     private static LinearExpr CountNonMonthlyShiftAssignments(ScheduleInput input, IReadOnlyList<DateOnly> modelDates, ModelVariables variables) =>
         LinearExpr.Sum(from employee in input.DemandMonth.Employees
             from date in modelDates
@@ -75,7 +75,7 @@ public static partial class TSolver
             where shift != MonthlyShiftOnDate(employee, date, input.DemandMonth.MonthStart)
             select variables.Work[(employee.EmployeeId, date, shift)]);
 
-    // Attendance — compare the monthly group's target with everyone actually working that shift.
+    // 班組出勤人數——比較月班組目標與該班實際出勤的所有人員。
     private static LinearExpr MeasureAttendanceShortfall(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
     {
         var deficits = new List<IntVar>();
@@ -93,7 +93,7 @@ public static partial class TSolver
         return LinearExpr.Sum(deficits);
     }
 
-    // Specialty — a transfer can cover a specialty required by the receiving monthly group.
+    // 專業人員出勤——跨班人員可補足實際工作班組需要的專業。
     private static LinearExpr CountMissingSpecialties(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
     {
         var missing = new List<BoolVar>();
@@ -114,24 +114,29 @@ public static partial class TSolver
         return LinearExpr.Sum(missing);
     }
 
-    // Ability — score everyone actually working the shift, including transfers.
+    // 高能力人員配置——每個實際班別希望至少兩位能力 4–5 人員，包含跨班人員。
     private static LinearExpr MeasureAbilityShortfall(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
     {
         var deficits = new List<IntVar>();
         foreach (var date in targetDates)
         foreach (var shift in Shifts)
         {
-            var workers = input.DemandMonth.Employees.Where(employee => IsEmployedOn(employee, date)).ToArray();
-            var attendance = LinearExpr.Sum(workers.Select(employee => variables.Work[(employee.EmployeeId, date, shift)]));
-            var ability = LinearExpr.Sum(workers.Select(employee => variables.Work[(employee.EmployeeId, date, shift)] * employee.Ability!.Value));
-            var deficit = model.NewIntVar(0, workers.Length * 2L, $"ability_deficit_{date:yyyyMMdd}_{shift}");
-            model.AddMaxEquality(deficit, [3 * attendance - ability, LinearExpr.Constant(0)]);
-            deficits.Add(deficit);
+            var highAbilityAttendance = LinearExpr.Sum(input.DemandMonth.Employees
+                .Where(employee => IsEmployedOn(employee, date) && employee.Ability >= 4)
+                .Select(employee => variables.Work[(employee.EmployeeId, date, shift)]));
+            var deficit = model.NewIntVar(0, 2, $"ability_deficit_{date:yyyyMMdd}_{shift}");
+            model.AddMaxEquality(deficit, [2 - highAbilityAttendance, LinearExpr.Constant(0)]);
+            var noHighAbility = model.NewBoolVar($"no_high_ability_{date:yyyyMMdd}_{shift}");
+            model.Add(highAbilityAttendance == 0).OnlyEnforceIf(noHighAbility);
+            model.Add(highAbilityAttendance >= 1).OnlyEnforceIf(noHighAbility.Not());
+            var penalty = model.NewIntVar(0, 10, $"ability_penalty_{date:yyyyMMdd}_{shift}");
+            model.Add(penalty == deficit + 8 * noHighAbility);
+            deficits.Add(penalty);
         }
         return LinearExpr.Sum(deficits);
     }
 
-    // Monthly rest distribution — derive each employee's R/R1 target from active weekends/holidays.
+    // 每月休假分布——依到職後的週末與國定假日推導每人的 R/R1 目標。
     private static LinearExpr MeasureMonthlyRestDeviation(
         CpModel model,
         ScheduleInput input,
@@ -148,18 +153,16 @@ public static partial class TSolver
             var maximum = Math.Max(activeDates.Length, target);
             var count = model.NewIntVar(0, activeDates.Length, $"{name}_count_{employee.EmployeeId}");
             var deviation = model.NewIntVar(0, maximum, $"{name}_deviation_{employee.EmployeeId}");
-            var excess = model.NewIntVar(0, maximum, $"{name}_excess_{employee.EmployeeId}");
             var penalty = model.NewIntVar(0, (long)maximum * maximum, $"{name}_penalty_{employee.EmployeeId}");
             model.Add(count == LinearExpr.Sum(activeDates.Select(date => rests[(employee.EmployeeId, date)])));
             model.AddAbsEquality(deviation, count - target);
-            model.AddMaxEquality(excess, [deviation - 1, LinearExpr.Constant(0)]);
-            model.AddMultiplicationEquality(penalty, excess, excess);
+            model.AddMultiplicationEquality(penalty, deviation, deviation);
             penalties.Add(penalty);
         }
         return LinearExpr.Sum(penalties);
     }
 
-    // Work streak — score completed actual-work streaks; R, R1, and R休 end a streak.
+    // 連續工作區段——計算已結束的實際工作區段；R、R1、R休會結束區段。
     private static LinearExpr MeasureWorkStreakPenalties(
         CpModel model,
         ScheduleInput input,
@@ -200,7 +203,7 @@ public static partial class TSolver
         return LinearExpr.Sum(penalties);
     }
 
-    // Night-to-early transition — derive rest after the last actual historical night; no night means no penalty.
+    // 跨月夜轉早休假——從歷史最後一個實際夜班計算休假；沒有夜班就不懲罰。
     private static LinearExpr MeasureNightToEarlyRestShortfall(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
     {
         var deficits = new List<IntVar>();
@@ -231,7 +234,7 @@ public static partial class TSolver
         return LinearExpr.Sum(deficits);
     }
 
-    // Month-boundary balance — compare rest on the two dates around a real night-to-early transition.
+    // 月交界休假平衡——比較實際夜轉早前後兩個月交界日的休假人數。
     private static LinearExpr MeasureMonthBoundaryRestDifference(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
     {
         var transitioning = input.DemandMonth.Employees.Where(employee =>
@@ -247,7 +250,7 @@ public static partial class TSolver
         return difference;
     }
 
-    // Rest fairness — compare only full-month employees inside the same T monthly shift.
+    // 休假公平——只比較同一 T 月班別內全月在職的人員。
     private static LinearExpr MeasureRestCountRangeByMonthlyShift(
         CpModel model,
         ScheduleInput input,
@@ -286,10 +289,12 @@ public static partial class TSolver
     {
         0 => 0,
         1 => 4,
-        2 => 2,
+        2 => 3,
         3 => 1,
-        4 or 5 => 0,
-        _ => 2 * (length - 5)
+        4 => 0,
+        5 => 2,
+        _ when length >= 6 => 5,
+        _ => 0
     };
 
     private sealed record ObjectiveGroup(

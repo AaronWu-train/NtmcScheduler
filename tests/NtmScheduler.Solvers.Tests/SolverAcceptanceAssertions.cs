@@ -228,8 +228,8 @@ internal static class SolverAcceptanceAssertions
             var active = TargetDates(input).Where(date => IsActive(demand[employee.EmployeeId], date)).ToArray();
             var target = kind == AssignmentKind.Rest ? active.Count(date => date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) : active.Count(date => IsNationalHoliday(input, date));
             var actual = employee.Assignments.Values.Count(cell => cell.Kind == kind);
-            var excess = Math.Max(Math.Abs(actual - target) - 1, 0);
-            return (long)excess * excess;
+            var deviation = Math.Abs(actual - target);
+            return (long)deviation * deviation;
         });
     }
 
@@ -360,10 +360,10 @@ internal static class SolverAcceptanceAssertions
         var candidates = schedule.Employees.ToDictionary(employee => employee.EmployeeId);
         return TargetDates(input).Sum(date => Shifts.Sum(shift =>
         {
-            var working = input.DemandMonth.Employees.Where(employee => IsActive(employee, date)
+            var highAbilityAttendance = input.DemandMonth.Employees.Count(employee => employee.Ability >= 4 && IsActive(employee, date)
                 && candidates[employee.EmployeeId].Assignments.GetValueOrDefault(date) is { Kind: AssignmentKind.Work, Shift: var actual }
-                && actual == shift).ToArray();
-            return Math.Max(3 * working.Length - working.Sum(employee => employee.Ability!.Value), 0);
+                && actual == shift);
+            return highAbilityAttendance switch { 0 => 10, 1 => 1, _ => 0 };
         }));
     }
 
@@ -479,6 +479,6 @@ internal static class SolverAcceptanceAssertions
     private static bool IsNationalHoliday(ScheduleInput input, DateOnly date) => input.RestIntervals.Any(interval => interval.NationalHolidays.Contains(date));
     private static bool IsHoliday(ScheduleInput input, DateOnly date) => date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday || IsNationalHoliday(input, date);
     private static int StationGroup(string station) => (int.Parse(station[2..]) - 1) / 3;
-    private static int BlockPenalty(int length) => length switch { 1 => 4, 2 => 2, 3 => 1, 4 or 5 => 0, _ when length >= 6 => 2 * (length - 5), _ => 0 };
+    private static int BlockPenalty(int length) => length switch { 1 => 4, 2 => 3, 3 => 1, 4 => 0, 5 => 2, _ when length >= 6 => 5, _ => 0 };
     private static (AssignmentKind? Kind, string? Station, Shift? Shift) Signature(ScheduleCell cell) => (cell.Kind, cell.Station, cell.Shift);
 }

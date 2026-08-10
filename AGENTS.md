@@ -30,7 +30,7 @@
 | [docs/02-glossary.md](docs/02-glossary.md) | 名詞、班表代號、區段／區塊定義、排班區間與時間邊界 |
 | [docs/03-data-and-validation.md](docs/03-data-and-validation.md) | 輸入資料、CSV 格式、X 事件規則、歷史資料、INVALID_INPUT 清單 |
 | [docs/04-hard-rules.md](docs/04-hard-rules.md) | P0 硬性規則（違反即非法班表）與發布前檢查 |
-| [docs/05-soft-rules.md](docs/05-soft-rules.md) | P1–P4 軟規則、違反量定義、預設順序、逐條最佳化 |
+| [docs/05-soft-rules.md](docs/05-soft-rules.md) | Priority 1–5 固定群組、違反量定義與權重 |
 | [docs/06-solver-and-output.md](docs/06-solver-and-output.md) | 求解流程、狀態、候選差異、缺班分析、輸出檔格式 |
 | [docs/07-architecture.md](docs/07-architecture.md) | 專案結構、相依規則、資料實體、背景工作、固定設定 |
 | [docs/08-frontend.md](docs/08-frontend.md) | 前端功能需求、互動寬表班表管理器 |

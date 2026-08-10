@@ -9,11 +9,13 @@ src/
 │   ├── MContracts.cs
 │   ├── MSolver.cs
 │   ├── MSolver.Input.cs
-│   ├── MSolver.Rules.cs
+│   ├── MSolver.HardRules.cs
+│   ├── MSolver.SoftRules.cs
 │   ├── TContracts.cs
 │   ├── TSolver.cs
 │   ├── TSolver.Input.cs
-│   └── TSolver.Rules.cs
+│   ├── TSolver.HardRules.cs
+│   └── TSolver.SoftRules.cs
 └── NtmScheduler.Cli/
     ├── Program.cs
     └── ScheduleCsv.cs
@@ -25,9 +27,10 @@ src/
 
 - `SolverContracts.cs`：共用的 `ScheduleInput`、月班表、日格、區間、選項、狀態與 Objective 輸出。無建模函數。
 - `MContracts.cs` / `TContracts.cs`：候選與求解結果；M 另有外派輸出。
-- `MSolver.cs` / `TSolver.cs`：公開 `Solve`、字典序 CP-SAT 呼叫、候選差異與結果讀取。
+- `MSolver.cs` / `TSolver.cs`：公開 `Solve`、固定 Priority 群組的字典序 CP-SAT 呼叫、候選差異與結果讀取。
 - `*.Input.cs`：快照複製、月份／人員／日格／區間驗證、歷史查詢與 R/R1 累積推導。
-- `*.Rules.cs`：OR-Tools 變數、硬限制、軟違反量與權重。每條規則函數前用英文註解標明作用。
+- `*.HardRules.cs`：OR-Tools 變數與不可關閉的硬限制。
+- `*.SoftRules.cs`：軟違反量、J1–J5 固定群組及權重。
 
 M 與 T 不共用任何建模邏輯。每個 solver 只有一個 private `Variables` record 收納 OR-Tools 變數，不建 `Variables/Constraints/Objectives/Candidates` class 層。
 

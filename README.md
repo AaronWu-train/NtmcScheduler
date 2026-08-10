@@ -1,34 +1,14 @@
 # NtmScheduler
 
-新北捷運人員排班系統。依人員資料、指定休假（R*）、公務事件（X）與歷史班表，以 OR-Tools CP-SAT 產生最多三份月班表候選；使用者選一份成為「目前班表」，可在寬表中隨時修改，每次修改自動保存並重新檢查規則。
+新北捷運人員排班系統。依人員資料、指定休假（R*）、公務事件（X）與歷史班表，以 OR-Tools CP-SAT 產生最多三份月班表候選。
 
-目前支援站務（M）與檢測（T）兩個單位。
+目前 repository 已完成站務（M）、檢測（T）的 Solver 與 CLI；Blazor、資料庫及目前班表管理仍是後續目標架構。
 
 ## 環境需求
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
 
-## 快速開始
-
-```bash
-dotnet run --project src/NtmScheduler.Web --launch-profile http
-```
-
-瀏覽器開啟 http://localhost:5109。
-
-開發環境使用 SQLite，首次啟動會自動建立／遷移 `ntm.db`。
-
-### 載入範例並完成一次排班
-
-1. 開啟首頁，點「**載入範例資料**」（會寫入 12 站站務人員、約 30 名檢測人員、R*／X、歷史班表、8 週週期）。
-2. 確認目標月為 `2026-08`，準備狀態顯示可建立 Run。
-3. 前往「求解 Run」→ 選單位（M 或 T）→「建立 Run」。
-4. 等待求解完成 →「候選比較」→「選為目前班表」。
-5. 在寬表點格子修改；修改會自動保存並重新驗證。
-
-一般流程**不需要**上傳 CSV。CSV 僅作選用的批次工具（人員、寬表匯入／匯出）。
-
-## CLI：直接測試 Solver
+## 快速開始：CLI
 
 CLI 不使用 Web 或資料庫，讀取上月班表、本月需求、八週區間與非常態班型 CSV 後，直接呼叫 M 或 T Solver。需先安裝 .NET 10 SDK。
 
@@ -64,7 +44,7 @@ non-standard-shifts.csv
 4. 八週區間 CSV；留空使用目前目錄的 `rest-intervals.csv`。
 5. 非常態班型 CSV；留空使用目前目錄的 `non-standard-shifts.csv`。
 
-CLI 會依本月需求的「能力」與「T月班別」欄自動判斷單位：兩欄全部留空為 M，兩欄全部填寫為 T，不可混用。求解結果會顯示狀態、候選數量與各優先序分數，並在目前目錄輸出 `candidate-1.csv` 至 `candidate-3.csv`；M 有外派時另輸出 `candidate-N-external.csv`。既有候選檔只會詢問一次是否覆寫，`Ctrl+C` 可取消求解。
+CLI 會依本月需求的「能力」與「T月班別」欄自動判斷單位：兩欄全部留空為 M，兩欄全部填寫為 T，不可混用。求解結果會顯示狀態、候選數量與各 Priority 分數，並在目前目錄輸出 `candidate-N.csv`；M 有外派時另輸出同編號的 `candidate-N-external.csv`。若編號已有主檔或外派檔，整批改用下一段連續可用編號，不詢問也不覆寫。`Ctrl+C` 可取消求解。
 
 Exit code：有候選為 `0`；輸入錯誤、無解或沒有候選為 `1`；取消為 `130`。
 
@@ -87,7 +67,7 @@ ID,姓名,所屬,到職日期,能力,T月班別,月初區間累計R,月初區間
 | 月初區間累計R／R1 | 本月 1 日開始前，在月初所屬八週區間內的累計數量；兩欄必須一起填或一起留空 |
 | 1–31 | 每日需求或已排結果，格式見下表；不存在的日期與到職日前必須留空 |
 | 當月R／R1 | 由 1–31 日格自動計算並核對；`previous.csv` 必填，`demand.csv` 必須留空 |
-| 當月指定R休 | `demand.csv` 填精確需求數，空白視為 0；歷史與候選填由日格重算的實際 R休數 |
+| 當月指定R休 | `demand.csv` 填可使用上限，空白視為 0；歷史與候選填由日格重算的實際 R休數 |
 | 月底區間累計R／R1 | 截至本月最後一日，在月底所屬八週區間內的累計數量；`previous.csv` 必填，`demand.csv` 必須留空 |
 | 本月班數 | `previous.csv` 必填；`demand.csv` 必須留空 |
 
@@ -150,38 +130,21 @@ dotnet test NtmScheduler.slnx
 
 | 想找什麼 | 路徑 |
 |---|---|
-| 程式進入點 | `src/NtmScheduler.Web/Program.cs` |
-| Blazor 畫面 | `src/NtmScheduler.Web/Components/Pages/` |
-| 資料庫 | `src/NtmScheduler.Infrastructure/Data/` |
-| M 排班模型 | `src/NtmScheduler.Solvers/M/MModelBuilder.cs` |
-| T 排班模型 | `src/NtmScheduler.Solvers/T/TModelBuilder.cs` |
-| 硬規則 | `src/NtmScheduler.Core/Evaluation/Rules/HardRules.cs` |
-| 軟規則（評估） | `.../Rules/MSoftRules.cs`、`TSoftRules.cs`、`GeneralSoftRules.cs` |
-| 軟規則目錄（順序／說明） | `src/NtmScheduler.Core/Evaluation/RuleCatalog.cs` |
-| CSV | `src/NtmScheduler.Infrastructure/Csv/` |
-| 範例資料 | `src/NtmScheduler.Core/SampleData/DemoDataset.cs` |
-
-更完整的導覽見 [`docs/12-code-tour.md`](docs/12-code-tour.md)。  
-軟規則如何修改見 [`docs/13-soft-rules-guide.md`](docs/13-soft-rules-guide.md)。  
-本次重構紀錄見 [`docs/14-refactoring-notes.md`](docs/14-refactoring-notes.md)。
+| CLI 進入點 | `src/NtmScheduler.Cli/Program.cs` |
+| CSV 邊界 | `src/NtmScheduler.Cli/ScheduleCsv.cs` |
+| M 求解流程 | `src/NtmScheduler.Solvers/MSolver.cs` |
+| M 硬／軟規則 | `src/NtmScheduler.Solvers/MSolver.HardRules.cs`、`MSolver.SoftRules.cs` |
+| T 求解流程 | `src/NtmScheduler.Solvers/TSolver.cs` |
+| T 硬／軟規則 | `src/NtmScheduler.Solvers/TSolver.HardRules.cs`、`TSolver.SoftRules.cs` |
+| 共用 contracts | `src/NtmScheduler.Solvers/SolverContracts.cs` |
+| Solver 與 CLI 導覽 | `docs/11-implementation-plan.md` |
+| 軟規則總表 | `docs/05-soft-rules.md` |
 
 ## 技術棧
 
-- ASP.NET Core Blazor（Interactive Server）、.NET 10
-- Google OR-Tools CP-SAT（M／T 分開建模，軟規則逐條字典序最佳化）
-- EF Core + SQLite（開發）；正式環境 DB 未定，故避免 provider 專屬語法
-
-## 流程（無 Publish／Draft）
-
-```
-輸入（人員、R*、X、歷史、週期）
-  → 建立 Run（背景求解）
-  → 最多 3 份候選
-  → 選一份成為「目前班表」
-  → 寬表人工修改（自動存檔 + 重新驗證）
-```
-
-可選：建立快照／還原。沒有審核、沒有發布鎖定。
+- 目前實作：.NET 10 Solver class library＋CLI
+- Google OR-Tools CP-SAT（M／T 分開建模，依固定 Priority 群組做字典序最佳化）
+- 目標產品：ASP.NET Core Blazor（Interactive Server）＋EF Core；詳見 `docs/07-architecture.md`
 
 ## 文件
 

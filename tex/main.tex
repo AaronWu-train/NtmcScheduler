@@ -464,7 +464,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 
 \subsubsection{Hard Constraints}
 
-\paragraph{Daily unique assignment (\texttt{CH01})}
+\paragraph{每日唯一指派（\texttt{CH01}）}
 
 每位人員每天恰好具有一個實際狀態：
 \[
@@ -477,7 +477,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 正常班、\(R\)、\(R1\) 或 \(R休\)，則前處理階段將相應變數固定為 1。\texttt{R*} 只要求
 當日盡量休假，不固定其底層休假類型。
 
-\paragraph{Exact monthly leave-rest count (\texttt{CH06})}
+\paragraph{每月 R休 上限（\texttt{CH06}）}
 
 \[
   r^{L}_{ed}\leq p_{ed},
@@ -486,12 +486,12 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 \]
 因此 \(R休\) 只能使用目標月的 \(R^*\)，不延伸至月底後七日，也不計入跨月額度。
 
-\paragraph{Legal working stations (\texttt{MH01})}
+\paragraph{合法工作站點（\texttt{MH01}）}
 
 若車站 \(l\notin\mathcal{A}_e\)，則 \(x_{edls}=0\)。因此人員只能在本人所屬
 車站或同群組車站工作，不得跨群組。
 
-\paragraph{Coverage and external-staffing restriction (\texttt{MH02}, \texttt{MH03})}
+\paragraph{班位覆蓋與外援限制（\texttt{MH02}、\texttt{MH03}）}
 
 嚴格可行解必須完全補足所有必要班位：
 \[
@@ -502,7 +502,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 對所有 \(l\notin\mathcal{L}^{ext}\)，固定 \(a_{dls}=0\)。外派只補足班位，
 不代表一名虛構的 M 人員。
 
-\paragraph{Minimum eleven-hour rest (\texttt{CH03})}
+\paragraph{最少十一小時休息（\texttt{CH03}）}
 
 令 \(\mathcal{I}\) 為所有休息時間少於十一小時的工作區間組合。對任一組不相容
 的正常班別 \(((d,s),(d',s'))\in\mathcal{I}\)，加入
@@ -516,7 +516,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 而不是將不合法資料送入求解器。例如 M 午班於 \(22{:}20\) 結束，而隔日早班於
 \(06{:}30\) 開始，間隔僅八小時十分，因此不得同時選取。
 
-\paragraph{At most six consecutive days without a general rest (\texttt{CH02})}
+\paragraph{連續七日至少一日一般 R（\texttt{CH02}）}
 
 定義 \(q_{ed}\in\{0,1,\ldots,6\}\) 表示人員 \(e\) 在日期 \(d\) 結束後，自
 最近一次一般 \(R\) 以來連續經過的排班日數。\(R^*\) 只是一個顯示與申請標記，
@@ -534,7 +534,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 \(\mathrm{E},\mathrm{E},\mathrm{E},R1,\mathrm{A},\mathrm{A},\mathrm{A}\) 的計數為
 \(1,2,3,4,5,6,7\)，故此排列不合法。月初初始值由歷史班表計算。
 
-\paragraph{Eight-week general rest quota (\texttt{CH04})}
+\paragraph{八週一般 R 額度（\texttt{CH04}）}
 
 對每個週期 \(c\)，令 \(\mathcal{D}_c=c\cap\mathcal{D}\)，並令
 \[
@@ -554,7 +554,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 \]
 第一式避免超用，第二式確保剩餘日期仍足以補足 16 個一般 \(R\)。
 
-\paragraph{Eight-week national-holiday rest quota (\texttt{CH04})}
+\paragraph{八週 R1 額度（\texttt{CH04}）}
 
 每個八週週期中的 \(R1\) 數量必須等於該週期國定假日數量 \(H_c\)。若本次模型
 已涵蓋週期結束日，則
@@ -578,7 +578,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 \]
 單獨檢查兩種額度的可補足性不足以保證此條件成立。
 
-\paragraph{Fixed events and historical state (\texttt{CH05})}
+\paragraph{固定事件與歷史狀態（\texttt{CH05}）}
 
 所有固定 \(X\) 與 \texttt{input.csv} 中的固定指派均不得由求解器改寫。
 \texttt{history.csv} 不直接成為本期決策變數，而是在建模前轉換為下列初始狀態：
@@ -593,7 +593,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 
 \subsubsection{Soft Constraints}
 
-\paragraph{Requested rest (\texttt{CS01})}
+\paragraph{指定休假滿足（\texttt{CS01}）}
 
 對所有滿足 \(p_{ed}=1\) 的人員日期 \((e,d)\)，只要當日實際使用一般
 \(R\)、\(R1\) 或 \(R休\)，即視為申請被滿足。因此未滿足指定休假的違反量為
@@ -606,38 +606,36 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 若申請以一般 \(R\) 滿足，輸出為 \texttt{R*[R]}；若以 \(R1\) 滿足，輸出為
 \texttt{R*[R1]}；若以 \(R休\) 滿足，輸出為 \texttt{R*[R休]}。
 
-\paragraph{Monthly general-rest distribution (\texttt{CS02})}
+\paragraph{每月一般 R 分布（\texttt{CS02}）}
 
 每位人員在目標月份內實際使用的一般休假數為
 \(Q^R_e=\sum_{d\in\mathcal{D}^{M}}r_{ed}\)。以月曆基準 \(n\) 為中心，
-\([n-1,n+1]\) 內不產生懲罰。定義超出容許區間的偏離量
+定義與基準的絕對偏離量
 \[
-  \Delta^R_e=\max\{0,|Q^R_e-n|-1\},
+  \Delta^R_e=|Q^R_e-n|,
 \]
 並令
 \[
   \Phi^{month,R}=\sum_{e\in\mathcal{E}}(\Delta^R_e)^2.
 \]
-因此偏離基準 0 或 1 日時懲罰為 0；偏離 2、3、4 日時，懲罰依序為
-1、4、9。以下將此離散函數記為
-\(f_n(q)=[\max\{0,|q-n|-1\}]^2\)。
+因此偏離基準 0、1、2、3 日時，懲罰依序為 0、1、4、9。以下將此離散函數記為
+\(f_n(q)=|q-n|^2\)。
 
-\paragraph{Monthly national-holiday-rest distribution (\texttt{CS03})}
+\paragraph{每月 R1 分布（\texttt{CS03}）}
 
-同理，令 \(Q^{R1}_e=\sum_{d\in\mathcal{D}^{M}}r^{1}_{ed}\)。以 \(m\) 為基準，
-\([m-1,m+1]\) 內不產生懲罰，並定義
+同理，令 \(Q^{R1}_e=\sum_{d\in\mathcal{D}^{M}}r^{1}_{ed}\)。以 \(m\) 為基準，定義
 \[
-  \Delta^{R1}_e=\max\{0,|Q^{R1}_e-m|-1\},
+  \Delta^{R1}_e=|Q^{R1}_e-m|,
   \qquad
   \Phi^{month,R1}=\sum_{e\in\mathcal{E}}(\Delta^{R1}_e)^2.
 \]
 以下將對應的離散函數記為
-\(f_m(q)=[\max\{0,|q-m|-1\}]^2\)。上述平方懲罰可使用整數查表，
+\(f_m(q)=|q-m|^2\)。上述平方懲罰可使用整數查表，
 或以絕對值、最大值與乘法等整數限制建立。兩項月休分布皆為軟性偏好，
 不取代八週週期的精確額度限制。此規則會抑制在單一月份過早使用過多週期額度，
 但因其仍為軟限制，必要時不保證一定保留固定數量至後續月份。\(R休\) 不計入兩項月休分布。
 
-\paragraph{External staffing (\texttt{MS01})}
+\paragraph{外援人力（\texttt{MS01}）}
 
 外派班位違反量為
 \[
@@ -648,7 +646,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
   \sum_{s\in\mathcal{S}}a_{dls}.
 \]
 
-\paragraph{Non-home-station assignments (\texttt{MS02})}
+\paragraph{非所屬站指派（\texttt{MS02}）}
 
 定義人員 \(e\) 在日期 \(d\) 是否跨站支援為
 \[
@@ -660,7 +658,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 非本站工作違反量為
 \(\Phi^{home}=\sum_{e\in\mathcal{E}}\sum_{d\in\mathcal{D}^{M}}u_{ed}\)。
 
-\paragraph{Continuous work-streak length (\texttt{CS04})}
+\paragraph{連續工作區段長度（\texttt{CS04}）}
 此規則避免工作日與休假過度零碎，或工作區段長期貼近六日上限。
 此軟規則中的連續工作區段，是連續曆日皆為正常班或 \(X\) 的最大區段。
 一般 \(R\)、\(R1\) 與 \(R休\) 都會結束此區段；這與前述「最多連續六日」硬限制不同，
@@ -672,13 +670,14 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
   =
   \begin{cases}
     4, & L=1,\\
-    2, & L=2,\\
+    3, & L=2,\\
     1, & L=3,\\
-    0, & 4\leq L\leq 5,\\
-    2(L-5), & L\geq 6.
+    0, & L=4,\\
+    2, & L=5,\\
+    5, & L\geq 6.
   \end{cases}
 \]
-因此長度 1、2、3、4--5、6 的懲罰分別為 4、2、1、0、2。
+因此長度 1、2、3、4、5、6 以上的懲罰分別為 4、3、1、0、2、5。
 
 令 \(c^{work}_{ed}\) 表示截至日期 \(d\) 的連續工作區段長度。其更新方式為：
 \begin{itemize}
@@ -690,7 +689,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 月初承接歷史區段長度。只有在目標月份內結束的區段才計入本月目標；月底仍
 未結束的區段不在本月作最終長度評分。總違反量記為 \(\Phi^{streak}\)。
 
-\paragraph{Same-shift block length (\texttt{MS03})}
+\paragraph{同班別區塊長度（\texttt{MS03}）}
 此規則避免正常班別切換過於頻繁，以維持較穩定的作息。
 同班別區塊只觀察正常班別。一般 \(R\)、\(R1\)、\(R休\) 與 \(X\) 都不切斷區塊，其中
 \(X\) 完全略過；只有出現不同正常班別時，原區塊才結束。
@@ -714,7 +713,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 月初承接歷史中的上一班別與累積次數。月底仍未結束的區塊不在本月作最終
 長度評分。總違反量記為 \(\Phi^{block}\)。
 
-\paragraph{Night--rest--early pattern (\texttt{MS04})}
+\paragraph{夜班--休假--早班型態（\texttt{MS04}）}
 
 對所有完全位於目標月份內的三日視窗，令 \(\pi^{NE}_{ed}=1\) 若且唯若日期
 \(d\) 為夜班、日期 \(d+1\) 為任一種實際休假、日期 \(d+2\) 為早班。其條件為
@@ -728,13 +727,13 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 此布林乘積以標準 AND 線性化限制建立，總違反量為
 \(\Phi^{NE}=\sum_{e,d}\pi^{NE}_{ed}\)。
 
-\paragraph{Night--rest--afternoon pattern (\texttt{MS05})}
+\paragraph{夜班--休假--午班型態（\texttt{MS05}）}
 
 同理，令 \(\pi^{NA}_{ed}=1\) 若且唯若日期 \(d\) 為夜班、日期 \(d+1\) 為任一
 種實際休假、日期 \(d+2\) 為午班。總違反量為
 \(\Phi^{NA}=\sum_{e,d}\pi^{NA}_{ed}\)。
 
-\paragraph{Shift change without rest (\texttt{MS06})}
+\paragraph{未休假直接換班（\texttt{MS06}）}
 
 令 \(\gamma_{ed}\in\{0,\mathrm{E},\mathrm{A},\mathrm{N}\}\) 表示自最近一次實際休假
 後，最近出現的正常班別。更新規則如下：
@@ -749,7 +748,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 因此 \(\mathrm{E}\rightarrow X\rightarrow\mathrm{A}\) 仍視為未經休假換班。總違反量
 記為 \(\Phi^{restswitch}\)。
 
-\paragraph{Preferred shift rotation (\texttt{MS07})}
+\paragraph{偏好班別輪轉（\texttt{MS07}）}
 
 令 \(\eta_{ed}\in\{0,\mathrm{E},\mathrm{A},\mathrm{N}\}\) 表示截至日期 \(d\) 最近出現的
 有效正常班別；一般 \(R\)、\(R1\)、\(R休\) 與 \(X\) 均不改變此狀態。偏好轉移集合為
@@ -767,7 +766,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
   \mathcal E^{full}_g=\{e:g(h_e)=g,\ e\text{ 於目標月第一日已在職}\}.
 \]
 
-\paragraph{Weekday rest fairness (\texttt{CS05})}
+\paragraph{平日休假公平（\texttt{CS05}）}
 
 對每位人員定義目標月份平日休假數
 \[
@@ -787,7 +786,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
   \right).
 \]
 
-\paragraph{Holiday rest fairness (\texttt{CS06})}
+\paragraph{假日休假公平（\texttt{CS06}）}
 
 令
 \[
@@ -807,7 +806,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
   \right).
 \]
 
-\paragraph{Cross-station support fairness (\texttt{MS08})}
+\paragraph{跨站支援公平（\texttt{MS08}）}
 
 人員 \(e\) 在目標月份的跨站支援次數為
 \[
@@ -827,7 +826,7 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
   \right).
 \]
 
-\paragraph{Shift-count fairness (\texttt{MS09})}
+\paragraph{班別次數公平（\texttt{MS09}）}
 
 \[
   C^s_e=\sum_{d\in\mathcal D^M}y_{eds}.
@@ -952,12 +951,12 @@ M 模型目前定義下列軟性違反量：
   \midrule
   \endhead
   未滿足 \(R^*\)（\texttt{CS01}） & 申請人日 & \(0\leq\Phi^{R^*}\leq P\) & 通常為 0 至數十；可直接與申請數比較。 \\
-  本月一般 \(R\)（\texttt{CS02}） & 超出 \(\pm1\) 後的平方懲罰 & 理論上至 \(N\max_q f_n(q)\) & 合法班表通常為 0 至數十；極端值可達數千以上，平方項可能主導同組目標。 \\
-  本月 \(R1\)（\texttt{CS03}） & 超出 \(\pm1\) 後的平方懲罰 & 理論上至 \(N\max_q f_m(q)\) & 通常小於一般 \(R\)，但仍應避免與純計數規則直接使用相同權重。 \\
+  本月一般 \(R\)（\texttt{CS02}） & 與目標差額的平方懲罰 & 理論上至 \(N\max_q f_n(q)\) & 合法班表通常為 0 至數十；極端值可達數千以上，平方項可能主導同組目標。 \\
+  本月 \(R1\)（\texttt{CS03}） & 與目標差額的平方懲罰 & 理論上至 \(N\max_q f_m(q)\) & 通常小於一般 \(R\)，但仍應避免與純計數規則直接使用相同權重。 \\
   外派班位（\texttt{MS01}） & 班位數 & \(0\leq\Phi^{ext}\leq 6D\) & 上限約為 180--186。 \\
   非本站工作（\texttt{MS02}） & 人日 & \(0\leq\Phi^{home}\leq ND\) & 上限約為 1080--1488。 \\
-  連續工作區段（\texttt{CS04}） & 區段偏離值 & 約不超過 \(4N\lceil D/2\rceil\) & 上限約為 2160--3072；實際通常遠低於上限。 \\
-  同班別區塊（\texttt{MS03}） & 區塊偏離值 & 粗略上限約 \(4ND\) & 上限約為 4320--5952；短區塊很多時會快速累積。 \\
+  連續工作區段（\texttt{CS04}） & 區段偏離值 & 約不超過 \(5N\lceil D/2\rceil\) & 實際通常遠低於粗略上限。 \\
+  同班別區塊（\texttt{MS03}） & 區塊偏離值 & 粗略上限約 \(5ND\) & 短區塊很多時會快速累積。 \\
   夜--休--早（\texttt{MS04}） & 三日模式次數 & \(0\leq\Phi^{NE}\leq N(D-2)\) & 上限約為 1008--1392。 \\
   夜--休--午（\texttt{MS05}） & 三日模式次數 & \(0\leq\Phi^{NA}\leq N(D-2)\) & 上限約為 1008--1392。 \\
   未經休假換班（\texttt{MS06}） & 換班次數 & \(0\leq\Phi^{restswitch}\leq N(D-1)\) & 上限約為 1044--1440。 \\
@@ -1140,7 +1139,7 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
 
 \subsubsection{Hard Constraints}
 
-\paragraph{Daily unique assignment (\texttt{CH01})}
+\paragraph{每日唯一指派（\texttt{CH01}）}
 
 每位 T 人員每天恰好具有一個實際狀態：
 \[
@@ -1152,7 +1151,7 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
 同一人同日同時存在互相衝突的固定事件，應在建模前回報
 \texttt{INVALID\_INPUT}，而不是交由求解器選擇。
 
-\paragraph{Exact monthly leave-rest count (\texttt{CH06})}
+\paragraph{每月 R休 上限（\texttt{CH06}）}
 
 \[
   r^{T,L}_{ed}\leq p_{ed},
@@ -1160,7 +1159,7 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
   \sum_{d\in\mathcal D^M}r^{T,L}_{ed}=k_e.
 \]
 
-\paragraph{Minimum eleven-hour rest (\texttt{CH03})}
+\paragraph{最少十一小時休息（\texttt{CH03}）}
 
 令 \(\mathcal{I}^{T}\) 為所有前後實際工作間隔不足十一小時的 T 正常班組合。
 對每一組 \(((d,s),(d',s'))\in\mathcal{I}^{T}\)，加入
@@ -1172,7 +1171,7 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
 正常班與固定 \(X\) 的間隔不足十一小時時，直接移除相應正常班選項；兩筆固定
 \(X\) 彼此衝突或間隔不足時，輸入無效。所有判斷均使用完整日期時間。
 
-\paragraph{At most six consecutive days without a general rest (\texttt{CH02})}
+\paragraph{連續七日至少一日一般 R（\texttt{CH02}）}
 
 定義 \(q^{T}_{ed}\in\{0,1,\ldots,6\}\) 表示日期 \(d\) 結束後，自最近一次一般
 \(R\) 以來連續經過的排班日數：
@@ -1186,7 +1185,7 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
 模型要求 \(q^{T}_{ed}\leq 6\)。因此 \texttt{R*[R]} 會中斷計數，
 \texttt{R*[R1]} 則不會。月初初始值由歷史班表計算。
 
-\paragraph{Eight-week rest quotas (\texttt{CH04})}
+\paragraph{八週休假額度（\texttt{CH04}）}
 
 對每個週期 \(c\)，令 \(\mathcal{D}_c=c\cap\mathcal{D}\)，並令
 \[
@@ -1217,7 +1216,7 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
 \]
 \(R休\) 不計入上述任一 R/R1 額度。
 
-\paragraph{Fixed events and historical state (\texttt{CH05})}
+\paragraph{固定事件與歷史狀態（\texttt{CH05}）}
 
 所有固定 \(X\) 與 \texttt{input.csv} 中的固定指派均不得由求解器改寫。
 \texttt{history.csv} 在建模前轉換為八週額度、最近實際工作結束時間、連續日數、
@@ -1226,7 +1225,7 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
 
 \subsubsection{Soft Constraints}
 
-\paragraph{Requested rest (\texttt{CS01})}
+\paragraph{指定休假滿足（\texttt{CS01}）}
 
 指定休假的定義與 M 模型相同。未滿足指定休假的違反量為
 \[
@@ -1237,7 +1236,7 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
 \]
 滿足後依實際額度輸出為 \texttt{R*[R]}、\texttt{R*[R1]} 或 \texttt{R*[R休]}。
 
-\paragraph{Monthly general-rest distribution (\texttt{CS02})}
+\paragraph{每月一般 R 分布（\texttt{CS02}）}
 
 每位 T 人員在目標月份內實際使用的一般休假數為
 \[
@@ -1245,20 +1244,19 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
   =
   \sum_{d\in\mathcal{D}^{M}}r^{T}_{ed}.
 \]
-以月曆基準 \(n\) 為中心，\([n-1,n+1]\) 內不產生懲罰。定義
+以月曆基準 \(n\) 為中心，定義
 \[
   \Delta^{T,R}_e
   =
-  \max\{0,|Q^{T,R}_e-n|-1\},
+  |Q^{T,R}_e-n|,
   \qquad
   \Phi^{T,month,R}
   =
   \sum_{e\in\mathcal{E}^{T}}(\Delta^{T,R}_e)^2.
 \]
-因此偏離基準 0 或 1 日時懲罰為 0；偏離 2、3、4 日時，懲罰依序為
-1、4、9。
+因此偏離基準 0、1、2、3 日時，懲罰依序為 0、1、4、9。
 
-\paragraph{Monthly national-holiday-rest distribution (\texttt{CS03})}
+\paragraph{每月 R1 分布（\texttt{CS03}）}
 
 同理，令
 \[
@@ -1270,7 +1268,7 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
 \[
   \Delta^{T,R1}_e
   =
-  \max\{0,|Q^{T,R1}_e-m|-1\},
+  |Q^{T,R1}_e-m|,
   \qquad
   \Phi^{T,month,R1}
   =
@@ -1280,7 +1278,7 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
 目標月份內的休假分布，不取代八週週期的精確額度限制；必要時仍可超出無懲罰
 區間，但會產生相應代價。
 
-\paragraph{Monthly-shift adherence (\texttt{TS06})}
+\paragraph{月班別一致性（\texttt{TS06}）}
 
 每個模型日期排入非該日期固定班組的正常工作格計一次違反；\(X\) 不計：
 \[
@@ -1292,7 +1290,7 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
 \]
 目標月以輸入的月班組為基準；延伸日期改用輪轉後的下月班組。
 
-\paragraph{Shift attendance (\texttt{TS01})}
+\paragraph{班組出勤人數（\texttt{TS01}）}
 
 此規則避免同一班組在單日出勤人數過低。日期 \(d\)、班別 \(s\) 的正常出勤
 人數為
@@ -1313,7 +1311,7 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
 \]
 例如班組共有 11 人，當日正常出勤 4 人時，目標為 5 人，違反量增加 1。
 
-\paragraph{Specialty attendance (\texttt{TS02})}
+\paragraph{專業人員出勤（\texttt{TS02}）}
 
 此規則避免班組當日完全缺少某個既有專業。對每個
 \(q\in\mathcal{Q}_{ds}\)，定義
@@ -1339,17 +1337,23 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
 \]
 專業欄空白的人員仍可正常出勤，但空白不形成一個需要覆蓋的專業類別。
 
-\paragraph{Ability level (\texttt{TS03})}
+\paragraph{高能力人員配置（\texttt{TS03}）}
 
-正常出勤者的平均能力希望至少為 3。日期 \(d\)、班別 \(s\) 的能力總和為
+日期 \(d\)、班別 \(s\) 中，能力至少為 4 的正常出勤人數為
 \[
-  C_{ds}=\sum_{e\in\mathcal{E}^{T}}\alpha_e x^{T}_{eds}.
+  H_{ds}
+  =
+  \sum_{\substack{e\in\mathcal{E}^{T}\\\alpha_e\geq4}}x^{T}_{eds}.
 \]
-定義能力不足量
+每班希望至少有兩位能力 4--5 的正常出勤者，定義不足懲罰
 \[
   \delta^{ability}_{ds}
   =
-  \max(0,3A_{ds}-C_{ds}),
+  \begin{cases}
+    10, & H_{ds}=0,\\
+    1, & H_{ds}=1,\\
+    0, & H_{ds}\geq2.
+  \end{cases}
 \]
 並令
 \[
@@ -1358,10 +1362,9 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
   \sum_{d\in\mathcal{D}^{M}}
   \sum_{s\in\mathcal{S}}\delta^{ability}_{ds}.
 \]
-此寫法不需要除法，且所有係數均為整數。若當日無人正常出勤，能力不足量為 0，
-由出勤規則負責處理無人出勤問題。
+能力 4--5 的跨班人員按實際工作班別計入。
 
-\paragraph{Continuous work-streak length (\texttt{CS04})}
+\paragraph{連續工作區段長度（\texttt{CS04}）}
 
 此規則避免工作與休假過度零碎，或長期貼近連續六日上限。T 的連續工作區段是
 連續曆日皆為正常班或 \(X\) 的最大區段；一般 \(R\)、\(R1\) 與 \(R休\) 都會結束區段。
@@ -1369,7 +1372,7 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
 其長度產生懲罰，總違反量記為 \(\Phi^{T,streak}\)。月初承接歷史區段；月底仍
 未結束的區段不在本月作最終長度評分。
 
-\paragraph{Night-to-early month transition rest (\texttt{TS04})}
+\paragraph{跨月夜轉早休假（\texttt{TS04}）}
 
 此規則只適用於 \(e\in\mathcal{E}^{N\rightarrow E}\)，目的是讓夜班轉早班的人員
 在最後一次實際夜班與第一次實際早班之間具有至少兩個休假日。
@@ -1408,7 +1411,7 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
 \]
 因此只有一個休假日時違反量為 1，沒有休假日時違反量為 2。
 
-\paragraph{Month-boundary rest balance (\texttt{TS05})}
+\paragraph{月交界休假平衡（\texttt{TS05}）}
 
 此規則避免所有夜轉早人員把休假集中在月交界的同一側。預設比較前月最後一日
 \(d_0\) 與本月第一日 \(d_1\)。令 \(\overline{\rho}^{T}_{e,d_0}\) 為歷史班表中的
@@ -1430,7 +1433,7 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
 \]
 若業務上選定其他兩個主要交界休假日，只需將 \(d_0,d_1\) 改為對應日期。
 
-\paragraph{Weekday rest fairness (\texttt{CS05})}
+\paragraph{平日休假公平（\texttt{CS05}）}
 
 對每位人員與八週週期 \(c\)，定義平日休假數
 \[
@@ -1454,7 +1457,7 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
 \]
 國定假日即使落在星期一至星期五，也不計入平日。
 
-\paragraph{Holiday rest fairness (\texttt{CS06})}
+\paragraph{假日休假公平（\texttt{CS06}）}
 
 同理，定義
 \[
@@ -1488,7 +1491,7 @@ T 模型的軟性違反量為
     \Phi^{T,month,R1}     &: \text{本月 }R1\text{ 數量偏離 }(\texttt{CS03}),\\
     \Phi^{T,att}          &: \text{班組出勤不足 }(\texttt{TS01}),\\
     \Phi^{T,specialty}    &: \text{專業組別缺席 }(\texttt{TS02}),\\
-    \Phi^{T,ability}      &: \text{平均能力不足 }(\texttt{TS03}),\\
+    \Phi^{T,ability}      &: \text{高能力人員不足 }(\texttt{TS03}),\\
     \Phi^{T,streak}       &: \text{連續工作區段長度 }(\texttt{CS04}),\\
     \Phi^{T,monthrest}    &: \text{夜班轉早班休假不足 }(\texttt{TS04}),\\
     \Phi^{T,monthbalance} &: \text{月交界休假過度集中 }(\texttt{TS05}),\\
@@ -1561,8 +1564,8 @@ T 模型的軟性違反量為
 \]
 
 其中，偏離月班別與班組出勤不足在 \(J^T_2\) 中具有最高權重；專業組別缺席次之。
-能力不足的原始違反量會隨出勤人數累積，因此使用較低的
-單位權重。夜班轉早班休假不足直接影響跨月作息，故在 \(J^T_4\) 中給予較高
+能力不足在每班完全沒有高能力人員時會產生 10 點懲罰，因此使用單位權重。
+夜班轉早班休假不足直接影響跨月作息，故在 \(J^T_4\) 中給予較高
 權重；假日休假公平的原始尺度通常較小，因此其權重高於平日休假公平。
 
 求解器依序固定各群組的最優值，再處理下一群組，因此低順位規則不會犧牲
@@ -1572,8 +1575,8 @@ T 模型的軟性違反量為
 
 令 \(N_T=|\mathcal{E}^{T}|\)、\(D=|\mathcal{D}^{M}|\)、\(P_T\) 為 T 的指定休假
 申請數，並令 \(Q_{\max}=\max_{d,s}|\mathcal{Q}_{ds}|\)。另沿用
-\(f_n(q)=[\max\{0,|q-n|-1\}]^2\) 與
-\(f_m(q)=[\max\{0,|q-m|-1\}]^2\)。各違反量的原始尺度如下：
+\(f_n(q)=|q-n|^2\) 與
+\(f_m(q)=|q-m|^2\)。各違反量的原始尺度如下：
 
 \small
 \begin{longtable}{p{2.8cm}p{2.5cm}p{4.5cm}p{4.3cm}}
@@ -1586,13 +1589,13 @@ T 模型的軟性違反量為
   \midrule
   \endhead
   未滿足 \(R^*\)（\texttt{CS01}） & 申請人日 & \(0\leq\Phi^{T,R^*}\leq P_T\) & 應維持最高順位，通常不與其他規則直接交換。 \\
-  本月一般 \(R\)（\texttt{CS02}） & 超出 \(\pm1\) 後的平方懲罰 & 理論上至 \(N_T\max_q f_n(q)\) & 平方項可能快速放大，不宜直接與純計數規則使用相同權重。 \\
-  本月 \(R1\)（\texttt{CS03}） & 超出 \(\pm1\) 後的平方懲罰 & 理論上至 \(N_T\max_q f_m(q)\) & 原始值通常小於一般 \(R\)，但仍需注意平方尺度。 \\
+  本月一般 \(R\)（\texttt{CS02}） & 與目標差額的平方懲罰 & 理論上至 \(N_T\max_q f_n(q)\) & 平方項可能快速放大，不宜直接與純計數規則使用相同權重。 \\
+  本月 \(R1\)（\texttt{CS03}） & 與目標差額的平方懲罰 & 理論上至 \(N_T\max_q f_m(q)\) & 原始值通常小於一般 \(R\)，但仍需注意平方尺度。 \\
   非月班別工作（\texttt{TS06}） & 人日 & 上限為 \(N_T|\mathcal{D}|\) & 高權重，但仍可與同組營運品質交換。 \\
   班組出勤不足（\texttt{TS01}） & 缺少人數 & 上限為 \(\sum_{d,s}B_{ds}\)，約不超過 \(DN_T/2\) & 是人數缺口，單位意義直接。 \\
   專業組別缺席（\texttt{TS02}） & 班別--日期--專業 & 上限為 \(\sum_{d,s}|\mathcal{Q}_{ds}|\leq3DQ_{\max}\) & 專業種類愈多，原始值愈大。 \\
-  能力不足（\texttt{TS03}） & 能力分數 & \(0\leq\Phi^{T,ability}\leq2DN_T\) & 與人數型違反量尺度不同，宜獨立分組或縮小權重。 \\
-  連續工作區段（\texttt{CS04}） & 區段偏離值 & 約不超過 \(4N_T\lceil D/2\rceil\) & 實際通常遠低於粗略上限。 \\
+  能力不足（\texttt{TS03}） & 班別--日期懲罰 & \(0\leq\Phi^{T,ability}\leq30D\) & 每班至少 2 位為 0、只有 1 位為 1、完全沒有為 10。 \\
+  連續工作區段（\texttt{CS04}） & 區段偏離值 & 約不超過 \(5N_T\lceil D/2\rceil\) & 實際通常遠低於粗略上限。 \\
   夜轉早休假不足（\texttt{TS04}） & 缺少休假日 & \(0\leq\Phi^{T,monthrest}\leq2|\mathcal{E}^{N\rightarrow E}|\) & 原始值很小，與大型總和同組時需提高相對權重。 \\
   月交界休假分散（\texttt{TS05}） & 人數差 & \(0\leq\Phi^{T,monthbalance}\leq|\mathcal{E}^{N\rightarrow E}|\) & 只在夜轉早月份出現。 \\
   平日休假公平（\texttt{CS05}） & 班組內最大值減最小值 & 每班組至多為週期內平日數 & 原始值通常較小。 \\

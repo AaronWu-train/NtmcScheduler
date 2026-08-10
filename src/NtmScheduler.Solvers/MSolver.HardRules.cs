@@ -98,7 +98,7 @@ public static partial class MSolver
         EnforceEightWeekRestQuotas(model, input, dates, variables);
     }
 
-    // Hard constraint — each employee/date has exactly one state: normal work, R, R1, R休, or fixed X.
+    // 每日唯一指派——每位員工每日只能是正常工作、R、R1、R休或固定 X 其中之一。
     private static void AddExactlyOneAssignmentPerActiveDay(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
     {
         foreach (var employee in input.DemandMonth.Employees)
@@ -122,7 +122,7 @@ public static partial class MSolver
         }
     }
 
-    // Hard constraint — do not exceed each employee's target-month R休 limit; null means zero.
+    // 每月 R休 上限——不得超過每位員工的目標月上限；null 視為零。
     private static void LimitRequestedLeaveRestCount(CpModel model, ScheduleInput input, ModelVariables variables)
     {
         var targetDates = TargetMonthDates(input).ToArray();
@@ -130,7 +130,7 @@ public static partial class MSolver
             model.Add(LinearExpr.Sum(targetDates.Select(date => variables.LeaveRest[(employee.EmployeeId, date)])) <= (employee.RequestedLeaveRestCount ?? 0));
     }
 
-    // Hard constraint — force every supplied normal-work, R, R1, or R休 assignment to its requested value.
+    // 固定指派——輸入的正常工作、R、R1 或 R休 必須維持指定值。
     // Fixed X events are already forced because AddExactlyOneAssignmentPerActiveDay inserts their constant value of one.
     private static void FixSuppliedAssignments(CpModel model, ScheduleInput input, ModelVariables variables)
     {
@@ -157,7 +157,7 @@ public static partial class MSolver
         }
     }
 
-    // Hard constraint — meet each positive station/shift minimum; zero-demand positions remain forbidden.
+    // 班位覆蓋——滿足各站各班的正需求；需求為零的班位仍禁止排人。
     private static void RequireMinimumStationCoverage(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
     {
         foreach (var date in dates)
@@ -181,7 +181,7 @@ public static partial class MSolver
         }
     }
 
-    // Hard constraint — forbid any two actual work intervals that overlap or leave less than eleven hours of rest.
+    // 最少十一小時休息——禁止實際工作區間重疊或間隔少於十一小時。
     private static void ForbidOverlappingOrInsufficientlySeparatedWork(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
     {
         foreach (var employee in input.DemandMonth.Employees)
@@ -222,7 +222,7 @@ public static partial class MSolver
         }
     }
 
-    // Hard constraint — every seven consecutive calendar days must contain at least one general rest (R).
+    // 連續七日至少一日一般 R——每個連續七日視窗都必須包含至少一日 R。
     private static void RequireGeneralRestInEverySevenDayWindow(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
     {
         // Only R resets this seven-day window; R1 is intentionally not a general-rest reset.
@@ -244,7 +244,7 @@ public static partial class MSolver
         }
     }
 
-    // Hard constraint — continue each employee's exact eight-week R and R1 quotas from opening usage or new-hire credit.
+    // 八週休假額度——從期初用量或新進折抵承接每人的精確 R 與 R1 額度。
     private static void EnforceEightWeekRestQuotas(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
     {
         var lastModeledDate = dates[^1];

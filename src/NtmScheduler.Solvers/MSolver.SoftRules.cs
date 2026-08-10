@@ -66,14 +66,14 @@ public static partial class MSolver
         ];
     }
 
-    // Requested rest — count R* cells whose result is not an actual rest.
+    // 指定休假滿足——計算結果不是實際休假的 R* 格數。
     private static LinearExpr CountUnfulfilledRequestedRests(ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables) =>
         LinearExpr.Sum(from employee in input.DemandMonth.Employees
             from date in targetDates
             where employee.Assignments.GetValueOrDefault(date)?.RequestedRest == true
             select 1 - variables.AnyRest[(employee.EmployeeId, date)]);
 
-    // Unused R休 — count the difference between each employee's limit and actual target-month use.
+    // 未使用 R休 額度——計算每人上限與目標月實際使用數的差額。
     private static LinearExpr MeasureUnusedLeaveRests(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
     {
         var unused = new List<IntVar>();
@@ -87,11 +87,11 @@ public static partial class MSolver
         return LinearExpr.Sum(unused);
     }
 
-    // External staffing — minimize target-month external headcount.
+    // 外援人力——最小化目標月的外派總人次。
     private static LinearExpr CountExternalStaffing(IReadOnlyList<DateOnly> targetDates, ModelVariables variables) =>
         LinearExpr.Sum(variables.External.Where(x => targetDates.Contains(x.Key.Date)).Select(x => x.Value));
 
-    // Monthly rest distribution — derive each employee's R/R1 target from active weekends/holidays.
+    // 每月休假分布——依到職後的週末與國定假日推導每人的 R/R1 目標。
     private static LinearExpr MeasureMonthlyRestDeviation(
         CpModel model,
         ScheduleInput input,
@@ -108,24 +108,22 @@ public static partial class MSolver
             var maximum = Math.Max(activeDates.Length, target);
             var count = model.NewIntVar(0, activeDates.Length, $"{name}_count_{employee.EmployeeId}");
             var deviation = model.NewIntVar(0, maximum, $"{name}_deviation_{employee.EmployeeId}");
-            var excess = model.NewIntVar(0, maximum, $"{name}_excess_{employee.EmployeeId}");
             var penalty = model.NewIntVar(0, (long)maximum * maximum, $"{name}_penalty_{employee.EmployeeId}");
             model.Add(count == LinearExpr.Sum(activeDates.Select(date => rests[(employee.EmployeeId, date)])));
             model.AddAbsEquality(deviation, count - target);
-            model.AddMaxEquality(excess, [deviation - 1, LinearExpr.Constant(0)]);
-            model.AddMultiplicationEquality(penalty, excess, excess);
+            model.AddMultiplicationEquality(penalty, deviation, deviation);
             penalties.Add(penalty);
         }
         return LinearExpr.Sum(penalties);
     }
 
-    // Non-home station — count days worked outside the employee's affiliation station.
+    // 非所屬站指派——計算不在員工所屬站工作的日數。
     private static LinearExpr CountCrossStationAssignments(ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables) =>
         LinearExpr.Sum(from employee in input.DemandMonth.Employees
             from date in targetDates
             select variables.SupportsOtherStation[(employee.EmployeeId, date)]);
 
-    // Work streak — score completed actual-work streaks; R, R1, and R休 end a streak.
+    // 連續工作區段——計算已結束的實際工作區段；R、R1、R休會結束區段。
     private static LinearExpr MeasureWorkStreakPenalties(
         CpModel model,
         ScheduleInput input,
@@ -166,7 +164,7 @@ public static partial class MSolver
         return LinearExpr.Sum(penalties);
     }
 
-    // Same-shift block — target month only; station is ignored and R/R1/R休/X are skipped.
+    // 同班別區塊——只看目標月並忽略車站，班別序列略過 R/R1/R休/X。
     private static LinearExpr MeasureSameShiftBlockPenalties(
         CpModel model,
         ScheduleInput input,
@@ -223,7 +221,7 @@ public static partial class MSolver
         return LinearExpr.Sum(penalties);
     }
 
-    // Night-rest-day pattern — inspect every three-day window that intersects the target month.
+    // 夜班--休假--早／午班型態——檢查所有與目標月相交的三日視窗。
     private static LinearExpr CountNightRestShiftPatterns(
         CpModel model,
         ScheduleInput input,
@@ -252,7 +250,7 @@ public static partial class MSolver
         return LinearExpr.Sum(patterns);
     }
 
-    // Shift change without rest — compare normal shifts while X is transparent; only target-month changes count.
+    // 未休假直接換班——比較正常班並略過 X，只計入目標月發生的換班。
     private static LinearExpr CountShiftChangesWithoutRest(
         CpModel model,
         ScheduleInput input,
@@ -300,7 +298,7 @@ public static partial class MSolver
         return LinearExpr.Sum(violations);
     }
 
-    // Preferred rotation — Early -> Afternoon -> Night -> Early; R/R1/R休/X are transparent.
+    // 偏好班別輪轉——早 -> 午 -> 夜 -> 早；序列略過 R/R1/R休/X。
     private static LinearExpr CountNonPreferredRotations(
         CpModel model,
         ScheduleInput input,
@@ -356,7 +354,7 @@ public static partial class MSolver
         return LinearExpr.Sum(violations);
     }
 
-    // Rest fairness — compare only employees active for the full target month, grouped by station group.
+    // 休假公平——只比較同站群組且目標月全月在職的人員。
     private static LinearExpr MeasureRestCountRangeByStationGroup(
         CpModel model,
         ScheduleInput input,
@@ -386,7 +384,7 @@ public static partial class MSolver
         return LinearExpr.Sum(ranges);
     }
 
-    // Support fairness — compare cross-station support only among full-month employees in one station group.
+    // 跨站支援公平——只比較同站群組且全月在職人員的跨站支援數。
     private static LinearExpr MeasureSupportCountRangeByStationGroup(
         CpModel model,
         ScheduleInput input,
@@ -414,7 +412,7 @@ public static partial class MSolver
         return LinearExpr.Sum(ranges);
     }
 
-    // Shift fairness — sum each full-month station group's integer variance numerator n*sum(x²)-sum(x)².
+    // 班別次數公平——加總各全月在職站群的整數變異數分子 n*sum(x²)-sum(x)²。
     private static LinearExpr MeasureShiftCountDispersionByStationGroup(
         CpModel model,
         ScheduleInput input,
@@ -487,10 +485,12 @@ public static partial class MSolver
     {
         0 => 0,
         1 => 4,
-        2 => 2,
+        2 => 3,
         3 => 1,
-        4 or 5 => 0,
-        _ => 2 * (length - 5)
+        4 => 0,
+        5 => 2,
+        _ when length >= 6 => 5,
+        _ => 0
     };
 
     private sealed record ObjectiveGroup(

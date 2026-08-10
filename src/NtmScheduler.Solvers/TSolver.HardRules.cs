@@ -57,7 +57,7 @@ public static partial class TSolver
         EnforceEightWeekRestQuotas(model, input, dates, variables);
     }
 
-    // Hard constraint — each active employee/date has exactly one state: normal work, R, R1, R休, or fixed X.
+    // 每日唯一指派——每位在職員工每日只能是正常工作、R、R1、R休或固定 X 其中之一。
     private static void AddExactlyOneAssignmentPerActiveDay(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
     {
         foreach (var employee in input.DemandMonth.Employees)
@@ -76,7 +76,7 @@ public static partial class TSolver
         }
     }
 
-    // Hard constraint — do not exceed each employee's target-month R休 limit; null means zero.
+    // 每月 R休 上限——不得超過每位員工的目標月上限；null 視為零。
     private static void LimitRequestedLeaveRestCount(CpModel model, ScheduleInput input, ModelVariables variables)
     {
         var targetDates = TargetMonthDates(input).ToArray();
@@ -84,7 +84,7 @@ public static partial class TSolver
             model.Add(LinearExpr.Sum(targetDates.Select(date => variables.LeaveRest[(employee.EmployeeId, date)])) <= (employee.RequestedLeaveRestCount ?? 0));
     }
 
-    // Hard constraint — force every supplied normal-work, R, R1, or R休 cell. X is fixed by the daily equation.
+    // 固定指派——輸入的正常工作、R、R1 或 R休 必須維持指定值；X 由每日等式固定。
     private static void FixSuppliedAssignments(CpModel model, ScheduleInput input, ModelVariables variables)
     {
         foreach (var employee in input.DemandMonth.Employees)
@@ -108,7 +108,7 @@ public static partial class TSolver
         }
     }
 
-    // Hard constraint — forbid work intervals that overlap or leave less than eleven hours of rest.
+    // 最少十一小時休息——禁止工作區間重疊或間隔少於十一小時。
     private static void ForbidOverlappingOrInsufficientlySeparatedWork(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
     {
         foreach (var employee in input.DemandMonth.Employees)
@@ -137,7 +137,7 @@ public static partial class TSolver
         }
     }
 
-    // Hard constraint — after seven active calendar days, every seven-day window contains a general rest (R).
+    // 連續七日至少一日一般 R——到職滿七日後，每個七日視窗都必須包含 R。
     private static void RequireGeneralRestInEverySevenDayWindow(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
     {
         var modeledDates = dates.ToHashSet();
@@ -155,7 +155,7 @@ public static partial class TSolver
         }
     }
 
-    // Hard constraint — continue exact 56-day quotas: 16 R and one R1 per listed national holiday.
+    // 八週休假額度——承接精確 56 日額度：16 日 R，且每個國定假日對應一日 R1。
     private static void EnforceEightWeekRestQuotas(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
     {
         var lastModeledDate = dates[^1];

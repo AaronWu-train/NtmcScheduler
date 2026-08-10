@@ -1,5 +1,7 @@
 # 07. 系統架構與技術決策
 
+> 本文件描述第一版產品的目標架構。目前 repository 只完成 Solver 與 CLI；現有程式路徑以 `11-implementation-plan.md` 為準。
+
 ## 1. 總體形態
 
 單一 ASP.NET Core Blazor Web App（Interactive Server）＋單一資料庫＋單一背景求解佇列。
@@ -8,12 +10,12 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 - **.NET 10**（決策 D-08）。
 - 資安要求：**只允許 Microsoft 與 Google 官方套件**，不得隨意引入第三方套件。
 
-## 2. 專案結構與相依規則
+## 2. 目標專案結構與相依規則
 
 | 專案 | 主要責任 | 相依 |
 |---|---|---|
 | `NtmScheduler.Core` | Domain、DTO、規則結果、排班服務介面 | 無（**不得參考 OR-Tools 或 EF Core**） |
-| `NtmScheduler.Solvers` | OR-Tools、M／T ModelBuilder、硬／軟規則、逐條最佳化、候選解、缺班分析 | Core、Google.OrTools |
+| `NtmScheduler.Solvers` | OR-Tools、M／T solver、硬／軟規則、固定 Priority 群組最佳化、候選解、缺班分析 | Core、Google.OrTools |
 | `NtmScheduler.Infrastructure` | EF Core、設定、CSV、背景工作、稽核、匯出；負責呼叫 Solvers | Core、Solvers |
 | `NtmScheduler.Web` | Blazor UI、操作服務、進度與結果呈現 | Core、Infrastructure |
 | `NtmScheduler.Tests` | 單元、整合與端對端測試 | 全部 |
@@ -29,9 +31,9 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 |---|---|
 | 人員與月班組 | M 所屬站；T 專業、能力（1–5）及每月班別 |
 | 事件與歷史 | R\*、X、目前班表／歷史快照、延伸日與跨月狀態 |
-| 規則管理 | P0 鎖定；P2–P4 開關、順序及參數；Rule ID 穩定 |
-| 排班服務 | 輸入驗證、M/T 選擇、逐條最佳化、最多 3 份候選 |
-| 目前班表驗證 | 人工修改後以 RuleEvaluationEngine 重算 P0、Coverage、軟規則指標 |
+| 規則說明 | 顯示固定的 J1–J5 群組、權重及白話說明；第一版不提供執行時開關、排序或調參 |
+| 排班服務 | 輸入驗證、M/T 選擇、依固定 Priority 群組做字典序最佳化、最多 3 份候選 |
+| 目前班表驗證 | 人工修改後由後端驗證服務重算 P0、Coverage、軟規則指標 |
 | 快照與稽核 | Candidate→目前班表、可選快照、修改者、時間及前後值 |
 | 背景工作 | ScheduleRun 先寫入資料庫，再由 BackgroundService 依序執行；重啟可重建工作 |
 
@@ -47,12 +49,11 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 | `FixedEvent` | R\*（人＋日期）與 X（人＋起訖時間＋說明） |
 | `NonStandardShift` | 前端可維護的非常態班型名稱、唯一代碼與起訖時間；月班表名稱／代碼讀入後解析為 X |
 | `ScheduleCycle` | 8 週週期 start、end、requiredR（一般休假，預設 16）、requiredR1（國定假日數） |
-| `ScheduleRun` / `Snapshot` | 排班請求、狀態、輸入快照（人員、事件、歷史截止點、固定設定、規則順序、seed、程式版本） |
+| `ScheduleRun` / `Snapshot` | 排班請求、狀態、輸入快照（人員、事件、歷史截止點、固定設定、seed、程式版本） |
 | `CandidateSolution` | 求解候選與其品質指標 |
 | `Assignment` | 人 × 日期的狀態（含跨站站碼）；Schedule／Snapshot／Candidate 共用結構 |
 | `MonthSchedule` | 每單位每月一份目前可編輯班表 |
 | `ScheduleSnapshot` | 歷史匯入或手動快照；舊版唯讀 |
-| `RuleSetting` | 每條規則的 enabled、priority、order、parameters |
 | `AuditLog` | 操作者、時間、動作、前後值 |
 
 ## 5. 資料庫
@@ -77,7 +78,7 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 | M 營運 | 車站群組、每日班位需求、可外派車站（LB02／LB04／LB11） |
 | T 營運 | 月輪轉順序（早→午→夜→早），及必要時的下月班組例外 |
 | 休假週期 | 每個 8 週週期的 start、end、requiredR（一般休假，預設 16）、requiredR1（國定假日數） |
-| 規則 | 每條規則的 enabled、priority、order、parameters |
+| 規則 | J1–J5 群組、違反量與權重固定寫在 M/T solver 原始碼 |
 | 求解 | 總時限（預設 5 分鐘）、seed、差異門檻（預設 10%）；候選目標數固定 3 |
 
 ## 8. 背景工作與併發

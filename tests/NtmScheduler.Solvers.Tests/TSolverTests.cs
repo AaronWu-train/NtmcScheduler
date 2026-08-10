@@ -70,6 +70,23 @@ public sealed class TSolverTests
     }
 
     [TestMethod]
+    public void Solve_NoHighAbilityEmployees_ReportsTenPenaltyPerShiftDay()
+    {
+        var input = ValidInput();
+        input = input with
+        {
+            PreviousMonth = input.PreviousMonth with { Employees = input.PreviousMonth.Employees.Select(employee => employee with { Ability = 3 }).ToArray() },
+            DemandMonth = input.DemandMonth with { Employees = input.DemandMonth.Employees.Select(employee => employee with { Ability = 3 }).ToArray() }
+        };
+
+        var result = TSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(10) });
+
+        Assert.IsGreaterThanOrEqualTo(1, result.Candidates.Count, string.Join(Environment.NewLine, result.Errors));
+        Assert.AreEqual(30 * 3 * 10, result.Candidates[0].Objectives.SelectMany(group => group.Components)
+            .Single(component => component.Name == "Ability").Value);
+    }
+
+    [TestMethod]
     [DataRow(Shift.Early, Shift.Afternoon)]
     [DataRow(Shift.Afternoon, Shift.Night)]
     [DataRow(Shift.Night, Shift.Early)]
