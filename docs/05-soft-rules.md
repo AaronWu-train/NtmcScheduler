@@ -56,16 +56,17 @@ C# 不使用 J1–J5 或 Rule ID；輸出 `Priority + 有意義名稱`。
 | Priority | 名稱 | 組內項目與權重 |
 |---:|---|---|
 | 1 | `RequestedRest` | RequestedRest ×1 |
-| 2 | `StaffingQuality` | Attendance ×9；Specialty ×3；Ability ×1 |
+| 2 | `StaffingQuality` | NonMonthlyShift ×9；Attendance ×9；Specialty ×3；Ability ×1 |
 | 3 | `MonthlyRestDistribution` | MonthlyRest ×1；MonthlySpecialRest ×1 |
 | 4 | `WorkPatternQuality` | WorkStreak ×3；NightToEarlyRest ×12；MonthBoundaryRestBalance ×5 |
 | 5 | `RestFairness` | WeekdayRestFairness ×2；HolidayRestFairness ×4 |
 
 ### T 各項違反量
 
-- **Attendance**：每日每月班組的實際出勤人數，低於當日在職組員數一半（整數除法）的缺口。
-- **Specialty**：一個月班組中，當日沒有任一位該專業分組人員出勤，計 +1。
-- **Ability**：當日出勤人員總能力低於 `3 × 出勤人數` 的差額。
+- **NonMonthlyShift**：每個模型日期的正常工作班別不同於該日期月班別，計 +1；目標月以 `T月班別` 為基準，月底後七天以早 → 午 → 夜 → 早的下月輪轉班別為基準。X 不計。
+- **Attendance**：每日每月班組的實際出勤人數，低於當日在職組員數一半（整數除法）的缺口；跨班人員計入實際工作的班別。
+- **Specialty**：一個月班組原有的專業分組，當日沒有任何該專業人員在該班正常出勤，計 +1；跨班人員可補足實際工作班別的專業。
+- **Ability**：實際在該班正常出勤人員的總能力低於 `3 × 出勤人數` 的差額；跨班人員計入實際工作班別。
 - **NightToEarlyRest**：本月為早班者，從上月實際班表找最後一個夜班，到本月第一個實際早班前少於兩天 R/R1/R休 的差額。上月沒有實際夜班時不產生此違反量。
 - **MonthBoundaryRestBalance**：有實際夜轉早的人員，比較上月最後一日與本月第一日休假人數差。
 - **Weekday/HolidayRestFairness**：同一 T 月班別內的休假數最大差。

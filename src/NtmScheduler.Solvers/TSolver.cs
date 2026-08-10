@@ -120,8 +120,8 @@ public static partial class TSolver
             else if (solver.Value(variables.LeaveRest[cell]) == 1) selected.Add(variables.LeaveRest[cell]);
             else
             {
-                var employee = input.DemandMonth.Employees.Single(value => value.EmployeeId == cell.Employee);
-                selected.Add(variables.Work[(cell.Employee, cell.Date, ShiftAssignedOnDate(employee, cell.Date, input.DemandMonth.MonthStart))]);
+                var shift = SelectedWorkShift(solver, variables, cell.Employee, cell.Date);
+                selected.Add(variables.Work[(cell.Employee, cell.Date, shift)]);
             }
         }
         return selected.ToArray();
@@ -150,7 +150,7 @@ public static partial class TSolver
                 else if (solver.Value(variables.Rest[(employee.EmployeeId, date)]) == 1) assignments[date] = new() { Kind = AssignmentKind.Rest, RequestedRest = requested };
                 else if (solver.Value(variables.SpecialRest[(employee.EmployeeId, date)]) == 1) assignments[date] = new() { Kind = AssignmentKind.SpecialRest, RequestedRest = requested };
                 else if (solver.Value(variables.LeaveRest[(employee.EmployeeId, date)]) == 1) assignments[date] = new() { Kind = AssignmentKind.LeaveRest, RequestedRest = requested };
-                else assignments[date] = new() { Kind = AssignmentKind.Work, Shift = ShiftAssignedOnDate(employee, date, input.DemandMonth.MonthStart), RequestedRest = requested };
+                else assignments[date] = new() { Kind = AssignmentKind.Work, Shift = SelectedWorkShift(solver, variables, employee.EmployeeId, date), RequestedRest = requested };
             }
 
             var closingDates = targetDates.Where(date => date >= closingInterval.Start && date <= closingInterval.End && IsEmployedOn(employee, date));
@@ -158,8 +158,7 @@ public static partial class TSolver
             var closing = new RestUsage(
                 prior.Rest + closingDates.Sum(date => (int)solver.Value(variables.Rest[(employee.EmployeeId, date)])),
                 prior.SpecialRest + closingDates.Sum(date => (int)solver.Value(variables.SpecialRest[(employee.EmployeeId, date)])));
-            var workCount = targetDates.Where(date => IsEmployedOn(employee, date))
-                .Sum(date => (int)solver.Value(variables.Work[(employee.EmployeeId, date, employee.MonthlyShift!.Value)]));
+            var workCount = assignments.Values.Count(cell => cell.Kind == AssignmentKind.Work);
 
             employees.Add(employee with
             {
@@ -178,6 +177,9 @@ public static partial class TSolver
             objective.Components.Select(component => new ObjectiveComponent(component.Name, solver.Value(component.Expression), component.Weight)).ToArray())).ToArray();
         return new(new MonthlySchedule(input.DemandMonth.MonthStart, employees), scores);
     }
+
+    private static Shift SelectedWorkShift(CpSolver solver, ModelVariables variables, string employee, DateOnly date) =>
+        Shifts.Single(shift => solver.Value(variables.Work[(employee, date, shift)]) == 1);
 
     // Applies the remaining global time budget to the next CP-SAT search.
     private static bool ConfigureRemainingSearchTime(CpSolver solver, SolverOptions options, Stopwatch stopwatch)

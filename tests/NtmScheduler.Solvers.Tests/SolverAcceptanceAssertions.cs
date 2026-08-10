@@ -36,10 +36,6 @@ internal static class SolverAcceptanceAssertions
     internal static void AssertTHardRules(ScheduleInput input, TCandidate candidate)
     {
         AssertCommonHardRules(input, candidate.Schedule, true);
-        var demand = input.DemandMonth.Employees.ToDictionary(employee => employee.EmployeeId);
-        foreach (var employee in candidate.Schedule.Employees)
-        foreach (var cell in employee.Assignments.Values.Where(cell => cell.Kind == AssignmentKind.Work))
-            Assert.AreEqual(demand[employee.EmployeeId].MonthlyShift, cell.Shift, $"{employee.EmployeeId} works outside T月班別.");
     }
 
     internal static void AssertMSoftRules(ScheduleInput input, MCandidate candidate)
@@ -86,13 +82,14 @@ internal static class SolverAcceptanceAssertions
         AssertObjectiveStructure(candidate.Objectives,
         [
             (1, "RequestedRest", [("RequestedRest", 1)]),
-            (2, "StaffingQuality", [("Attendance", 9), ("Specialty", 3), ("Ability", 1)]),
+            (2, "StaffingQuality", [("NonMonthlyShift", 9), ("Attendance", 9), ("Specialty", 3), ("Ability", 1)]),
             (3, "MonthlyRestDistribution", [("MonthlyRest", 1), ("MonthlySpecialRest", 1)]),
             (4, "WorkPatternQuality", [("WorkStreak", 3), ("NightToEarlyRest", 12), ("MonthBoundaryRestBalance", 5)]),
             (5, "RestFairness", [("WeekdayRestFairness", 2), ("HolidayRestFairness", 4)])
         ]);
 
         Expect(candidate.Objectives, "RequestedRest", RequestedRestViolations(input, candidate.Schedule));
+        Assert.IsGreaterThanOrEqualTo(Component(candidate.Objectives, "NonMonthlyShift").Value, TNonMonthlyShift(input, candidate.Schedule));
         Expect(candidate.Objectives, "Attendance", TAttendance(input, candidate.Schedule));
         Expect(candidate.Objectives, "Specialty", TSpecialty(input, candidate.Schedule));
         Expect(candidate.Objectives, "Ability", TAbility(input, candidate.Schedule));
@@ -328,7 +325,7 @@ internal static class SolverAcceptanceAssertions
         return TargetDates(input).Sum(date => Shifts.Sum(shift =>
         {
             var members = input.DemandMonth.Employees.Where(employee => IsActive(employee, date) && employee.MonthlyShift == shift).ToArray();
-            var attendance = members.Count(employee => candidates[employee.EmployeeId].Assignments.GetValueOrDefault(date)?.Kind == AssignmentKind.Work);
+            var attendance = candidates.Values.Count(employee => employee.Assignments.GetValueOrDefault(date) is { Kind: AssignmentKind.Work, Shift: var actual } && actual == shift);
             return Math.Max(members.Length / 2 - attendance, 0);
         }));
     }
@@ -340,7 +337,9 @@ internal static class SolverAcceptanceAssertions
         {
             var members = input.DemandMonth.Employees.Where(employee => IsActive(employee, date) && employee.MonthlyShift == shift).ToArray();
             return members.Select(employee => employee.Affiliation).Distinct().Count(specialty =>
-                !members.Any(employee => employee.Affiliation == specialty && candidates[employee.EmployeeId].Assignments.GetValueOrDefault(date)?.Kind == AssignmentKind.Work));
+                !input.DemandMonth.Employees.Any(employee => employee.Affiliation == specialty
+                    && candidates[employee.EmployeeId].Assignments.GetValueOrDefault(date) is { Kind: AssignmentKind.Work, Shift: var actual }
+                    && actual == shift));
         }));
     }
 
@@ -349,9 +348,18 @@ internal static class SolverAcceptanceAssertions
         var candidates = schedule.Employees.ToDictionary(employee => employee.EmployeeId);
         return TargetDates(input).Sum(date => Shifts.Sum(shift =>
         {
-            var working = input.DemandMonth.Employees.Where(employee => IsActive(employee, date) && employee.MonthlyShift == shift && candidates[employee.EmployeeId].Assignments.GetValueOrDefault(date)?.Kind == AssignmentKind.Work).ToArray();
+            var working = input.DemandMonth.Employees.Where(employee => IsActive(employee, date)
+                && candidates[employee.EmployeeId].Assignments.GetValueOrDefault(date) is { Kind: AssignmentKind.Work, Shift: var actual }
+                && actual == shift).ToArray();
             return Math.Max(3 * working.Length - working.Sum(employee => employee.Ability!.Value), 0);
         }));
+    }
+
+    private static long TNonMonthlyShift(ScheduleInput input, MonthlySchedule schedule)
+    {
+        var demand = input.DemandMonth.Employees.ToDictionary(employee => employee.EmployeeId);
+        return schedule.Employees.Sum(employee => employee.Assignments.Values.Count(cell =>
+            cell.Kind == AssignmentKind.Work && cell.Shift != demand[employee.EmployeeId].MonthlyShift));
     }
 
     private static long TNightToEarly(ScheduleInput input, MonthlySchedule schedule)

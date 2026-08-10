@@ -51,7 +51,6 @@ public static partial class TSolver
     {
         AddExactlyOneAssignmentPerActiveDay(model, input, dates, variables);
         RequireExactRequestedLeaveRestCount(model, input, variables);
-        RestrictWorkToAssignedMonthlyShift(model, input, dates, variables);
         FixSuppliedAssignments(model, input, variables);
         ForbidOverlappingOrInsufficientlySeparatedWork(model, input, dates, variables);
         RequireGeneralRestInEverySevenDayWindow(model, input, dates, variables);
@@ -84,15 +83,6 @@ public static partial class TSolver
             model.Add(LinearExpr.Sum(targetDates.Select(date => variables.LeaveRest[(employee.EmployeeId, date)])) == (employee.RequestedLeaveRestCount ?? 0));
     }
 
-    // Hard constraint — target-month work uses T月班別; extension work uses the next rotated monthly shift.
-    private static void RestrictWorkToAssignedMonthlyShift(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
-    {
-        foreach (var employee in input.DemandMonth.Employees)
-        foreach (var date in dates)
-        foreach (var shift in Shifts.Where(shift => shift != ShiftAssignedOnDate(employee, date, input.DemandMonth.MonthStart)))
-            model.Add(variables.Work[(employee.EmployeeId, date, shift)] == 0);
-    }
-
     // Hard constraint — force every supplied normal-work, R, R1, or R休 cell. X is fixed by the daily equation.
     private static void FixSuppliedAssignments(CpModel model, ScheduleInput input, ModelVariables variables)
     {
@@ -102,7 +92,7 @@ public static partial class TSolver
             switch (assignment.Value.Kind)
             {
                 case AssignmentKind.Work:
-                    model.Add(variables.Work[(employee.EmployeeId, assignment.Key, employee.MonthlyShift!.Value)] == 1);
+                    model.Add(variables.Work[(employee.EmployeeId, assignment.Key, assignment.Value.Shift!.Value)] == 1);
                     break;
                 case AssignmentKind.Rest:
                     model.Add(variables.Rest[(employee.EmployeeId, assignment.Key)] == 1);
@@ -194,8 +184,8 @@ public static partial class TSolver
         }
     }
 
-    // Target-month work uses T月班別; seven extension dates use the next monthly rotation.
-    private static Shift ShiftAssignedOnDate(EmployeeMonthlySchedule employee, DateOnly date, DateOnly monthStart) =>
+    // Target-month preference uses T月班別; seven extension dates use the next monthly rotation.
+    private static Shift MonthlyShiftOnDate(EmployeeMonthlySchedule employee, DateOnly date, DateOnly monthStart) =>
         date < monthStart.AddMonths(1) ? employee.MonthlyShift!.Value : NextMonthlyShift(employee.MonthlyShift!.Value);
 
     private static Shift NextMonthlyShift(Shift shift) => shift switch

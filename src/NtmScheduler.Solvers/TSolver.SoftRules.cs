@@ -14,6 +14,7 @@ public static partial class TSolver
         ModelVariables variables)
     {
         var requestedRest = CountUnfulfilledRequestedRests(input, targetDates, variables);
+        var nonMonthlyShift = CountNonMonthlyShiftAssignments(input, modelDates, variables);
         var attendance = MeasureAttendanceShortfall(model, input, targetDates, variables);
         var specialty = CountMissingSpecialties(model, input, targetDates, variables);
         var ability = MeasureAbilityShortfall(model, input, targetDates, variables);
@@ -29,8 +30,8 @@ public static partial class TSolver
         [
             new(1, "RequestedRest", requestedRest, [("RequestedRest", 1, requestedRest)]),
             new(2, "StaffingQuality",
-                attendance * 9 + specialty * 3 + ability,
-                [("Attendance", 9, attendance), ("Specialty", 3, specialty), ("Ability", 1, ability)]),
+                nonMonthlyShift * 9 + attendance * 9 + specialty * 3 + ability,
+                [("NonMonthlyShift", 9, nonMonthlyShift), ("Attendance", 9, attendance), ("Specialty", 3, specialty), ("Ability", 1, ability)]),
             new(3, "MonthlyRestDistribution",
                 monthlyRest + monthlySpecialRest,
                 [("MonthlyRest", 1, monthlyRest), ("MonthlySpecialRest", 1, monthlySpecialRest)]),
@@ -50,7 +51,15 @@ public static partial class TSolver
             where employee.Assignments.GetValueOrDefault(date)?.RequestedRest == true
             select 1 - variables.AnyRest[(employee.EmployeeId, date)]);
 
-    // Attendance — penalize each monthly-shift group's shortfall below half of its active members.
+    // Monthly-shift adherence — count normal-work cells outside the target or rotated extension shift.
+    private static LinearExpr CountNonMonthlyShiftAssignments(ScheduleInput input, IReadOnlyList<DateOnly> modelDates, ModelVariables variables) =>
+        LinearExpr.Sum(from employee in input.DemandMonth.Employees
+            from date in modelDates
+            from shift in Shifts
+            where shift != MonthlyShiftOnDate(employee, date, input.DemandMonth.MonthStart)
+            select variables.Work[(employee.EmployeeId, date, shift)]);
+
+    // Attendance — compare the monthly group's target with everyone actually working that shift.
     private static LinearExpr MeasureAttendanceShortfall(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
     {
         var deficits = new List<IntVar>();
@@ -58,7 +67,9 @@ public static partial class TSolver
         foreach (var shift in Shifts)
         {
             var members = input.DemandMonth.Employees.Where(employee => IsEmployedOn(employee, date) && employee.MonthlyShift == shift).ToArray();
-            var attendance = LinearExpr.Sum(members.Select(employee => variables.Work[(employee.EmployeeId, date, shift)]));
+            var attendance = LinearExpr.Sum(input.DemandMonth.Employees
+                .Where(employee => IsEmployedOn(employee, date))
+                .Select(employee => variables.Work[(employee.EmployeeId, date, shift)]));
             var deficit = model.NewIntVar(0, members.Length / 2, $"attendance_deficit_{date:yyyyMMdd}_{shift}");
             model.AddMaxEquality(deficit, [members.Length / 2 - attendance, LinearExpr.Constant(0)]);
             deficits.Add(deficit);
@@ -66,7 +77,7 @@ public static partial class TSolver
         return LinearExpr.Sum(deficits);
     }
 
-    // Specialty — penalize a professional group with no attending member in its monthly shift.
+    // Specialty — a transfer can cover a specialty required by the receiving monthly group.
     private static LinearExpr CountMissingSpecialties(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
     {
         var missing = new List<BoolVar>();
@@ -76,7 +87,7 @@ public static partial class TSolver
             var members = input.DemandMonth.Employees.Where(employee => IsEmployedOn(employee, date) && employee.MonthlyShift == shift).ToArray();
             foreach (var specialty in members.Select(employee => employee.Affiliation).Distinct())
             {
-                var specialists = members.Where(employee => employee.Affiliation == specialty).ToArray();
+                var specialists = input.DemandMonth.Employees.Where(employee => IsEmployedOn(employee, date) && employee.Affiliation == specialty).ToArray();
                 var attendance = LinearExpr.Sum(specialists.Select(employee => variables.Work[(employee.EmployeeId, date, shift)]));
                 var absent = model.NewBoolVar($"specialty_absent_{date:yyyyMMdd}_{shift}_{specialty}");
                 model.Add(attendance >= 1 - absent);
@@ -87,17 +98,17 @@ public static partial class TSolver
         return LinearExpr.Sum(missing);
     }
 
-    // Ability — penalize attending groups whose average ability is below three.
+    // Ability — score everyone actually working the shift, including transfers.
     private static LinearExpr MeasureAbilityShortfall(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
     {
         var deficits = new List<IntVar>();
         foreach (var date in targetDates)
         foreach (var shift in Shifts)
         {
-            var members = input.DemandMonth.Employees.Where(employee => IsEmployedOn(employee, date) && employee.MonthlyShift == shift).ToArray();
-            var attendance = LinearExpr.Sum(members.Select(employee => variables.Work[(employee.EmployeeId, date, shift)]));
-            var ability = LinearExpr.Sum(members.Select(employee => variables.Work[(employee.EmployeeId, date, shift)] * employee.Ability!.Value));
-            var deficit = model.NewIntVar(0, members.Length * 2L, $"ability_deficit_{date:yyyyMMdd}_{shift}");
+            var workers = input.DemandMonth.Employees.Where(employee => IsEmployedOn(employee, date)).ToArray();
+            var attendance = LinearExpr.Sum(workers.Select(employee => variables.Work[(employee.EmployeeId, date, shift)]));
+            var ability = LinearExpr.Sum(workers.Select(employee => variables.Work[(employee.EmployeeId, date, shift)] * employee.Ability!.Value));
+            var deficit = model.NewIntVar(0, workers.Length * 2L, $"ability_deficit_{date:yyyyMMdd}_{shift}");
             model.AddMaxEquality(deficit, [3 * attendance - ability, LinearExpr.Constant(0)]);
             deficits.Add(deficit);
         }

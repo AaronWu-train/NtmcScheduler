@@ -61,7 +61,7 @@ public sealed class TSolverTests
     public void Solve_ExtensionUsesNextMonthlyShift(Shift current, Shift next)
     {
         var employee = ValidInput().DemandMonth.Employees[0] with { MonthlyShift = current };
-        var method = typeof(TSolver).GetMethod("ShiftAssignedOnDate", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var method = typeof(TSolver).GetMethod("MonthlyShiftOnDate", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
 
         Assert.AreEqual(current, method.Invoke(null, [employee, new DateOnly(2026, 9, 30), new DateOnly(2026, 9, 1)]));
         Assert.AreEqual(next, method.Invoke(null, [employee, new DateOnly(2026, 10, 1), new DateOnly(2026, 9, 1)]));
@@ -98,6 +98,79 @@ public sealed class TSolverTests
 
         Assert.AreEqual(SolveStatus.InvalidInput, result.Status);
         Assert.IsTrue(result.Errors.Any(error => error.Field == "Assignments"));
+    }
+
+    [TestMethod]
+    public void ValidateInput_HistoryAndDemandMayMixShifts()
+    {
+        static List<InputError> Validate(ScheduleInput value) => (List<InputError>)typeof(TSolver)
+            .GetMethod("ValidateInput", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+            .Invoke(null, [value, new SolverOptions()])!;
+
+        var input = ValidInput();
+        var history = input.PreviousMonth.Employees[0];
+        var historyDate = input.PreviousMonth.MonthStart;
+        history = history with
+        {
+            Assignments = new Dictionary<DateOnly, ScheduleCell>(history.Assignments)
+            {
+                [historyDate] = new() { Kind = AssignmentKind.Work, Shift = Shift.Early }
+            }
+        };
+        input = input with
+        {
+            PreviousMonth = input.PreviousMonth with
+            {
+                Employees = [history, .. input.PreviousMonth.Employees.Skip(1)]
+            }
+        };
+
+        var errors = Validate(input);
+        Assert.IsFalse(errors.Any(), string.Join(Environment.NewLine, errors));
+
+        var demand = input.DemandMonth.Employees[0];
+        demand = demand with
+        {
+            Assignments = new Dictionary<DateOnly, ScheduleCell>(demand.Assignments)
+            {
+                [input.DemandMonth.MonthStart.AddDays(2)] = new() { Kind = AssignmentKind.Work, Shift = Shift.Afternoon }
+            }
+        };
+        input = input with
+        {
+            DemandMonth = input.DemandMonth with
+            {
+                Employees = [demand, .. input.DemandMonth.Employees.Skip(1)]
+            }
+        };
+
+        errors = Validate(input);
+        Assert.IsFalse(errors.Any(), string.Join(Environment.NewLine, errors));
+    }
+
+    [TestMethod]
+    public void Solve_FixedCrossShiftIsWeightedSoftViolation()
+    {
+        var input = OnlyEmployee(ValidInput(), "T-E2");
+        var employee = input.DemandMonth.Employees[0];
+        employee = employee with
+        {
+            Assignments = new Dictionary<DateOnly, ScheduleCell>(employee.Assignments)
+            {
+                [input.DemandMonth.MonthStart] = new() { Kind = AssignmentKind.Work, Shift = Shift.Afternoon }
+            }
+        };
+        input = input with { DemandMonth = input.DemandMonth with { Employees = [employee] } };
+
+        var result = TSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(10) });
+
+        Assert.AreNotEqual(SolveStatus.InvalidInput, result.Status, string.Join(Environment.NewLine, result.Errors));
+        Assert.AreNotEqual(SolveStatus.Infeasible, result.Status);
+        var candidate = result.Candidates[0];
+        Assert.AreEqual(Shift.Afternoon, candidate.Schedule.Employees[0].Assignments[input.DemandMonth.MonthStart].Shift);
+        var violation = candidate.Objectives.SelectMany(objective => objective.Components).Single(component => component.Name == "NonMonthlyShift");
+        Assert.AreEqual(1, violation.Value);
+        Assert.AreEqual(9, violation.Weight);
     }
 
     [TestMethod]

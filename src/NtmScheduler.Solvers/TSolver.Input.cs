@@ -155,8 +155,8 @@ public static partial class TSolver
 
         if (cell.Kind == AssignmentKind.Work)
         {
-            if (cell.Shift is null || cell.Shift != employee.MonthlyShift || cell.Station is not null)
-                errors.Add(new($"{prefix}.Assignments", $"T work {employee.EmployeeId}/{date:yyyy-MM-dd} must use the row's monthly shift and no station."));
+            if (cell.Shift is null || !Shifts.Contains(cell.Shift.Value) || cell.Station is not null)
+                errors.Add(new($"{prefix}.Assignments", $"T work {employee.EmployeeId}/{date:yyyy-MM-dd} needs a valid shift and no station."));
             if (cell.EventStart is not null || cell.EventEnd is not null)
                 errors.Add(new($"{prefix}.Assignments", $"Normal work {employee.EmployeeId}/{date:yyyy-MM-dd} cannot contain event times."));
             return;
