@@ -78,6 +78,6 @@ dotnet run --project src/NtmScheduler.Cli
 
 CLI 依序詢問目標月、上月 CSV、本月 CSV、八週區間 CSV 與非常態班型 CSV。CSV 只由 CLI 解析；solver 收到的是 `MonthlySchedule`、`RestInterval` 與 `NonStandardShiftTable` typed snapshot。CLI 依能力與 T 月班別欄自動判斷 M/T；Ctrl+C 傳入 cancellation token。
 
-輸出為目前目錄的 `candidate-1.csv`–`candidate-3.csv`。M 有外派時另寫 `candidate-N-external.csv`。既有輸出檔時只詢問一次是否覆寫。
+輸出為目前目錄的 `candidate-N.csv`。M 有外派時另寫同編號的 `candidate-N-external.csv`。若預定編號已有主檔或外派檔，CLI 不詢問也不覆寫，整批改用下一段連續可用編號。
 
 Exit code：有候選為 0；輸入錯誤、無解或無候選為 1；取消為 130。

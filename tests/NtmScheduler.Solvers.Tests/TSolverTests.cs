@@ -412,7 +412,7 @@ public sealed class TSolverTests
     [DataRow("m-2026-09", true, false)]
     [DataRow("t-2026-09", false, false)]
     [DataRow("t-2026-09", false, true)]
-    public void Cli_Example_RedirectedInputWritesCandidate(string example, bool expectsExternal, bool declineOverwrite)
+    public void Cli_Example_RedirectedInputWritesCandidate(string example, bool expectsExternal, bool existingCandidate)
     {
         var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../"));
         var exampleRoot = Path.Combine(root, "examples", example);
@@ -425,23 +425,24 @@ public sealed class TSolverTests
         try
         {
             Directory.SetCurrentDirectory(outputRoot);
-            if (declineOverwrite) File.WriteAllText(Path.Combine(outputRoot, "candidate-1.csv"), "keep");
+            if (existingCandidate) File.WriteAllText(Path.Combine(outputRoot, "candidate-1.csv"), "keep");
             Console.SetIn(new StringReader(string.Join('\n',
                 "2026-09",
                 Path.Combine(exampleRoot, "previous.csv"),
                 Path.Combine(exampleRoot, "demand.csv"),
                 Path.Combine(exampleRoot, "rest-intervals.csv"),
-                Path.Combine(exampleRoot, "non-standard-shifts.csv"),
-                declineOverwrite ? "n" : "") + "\n"));
+                Path.Combine(exampleRoot, "non-standard-shifts.csv")) + "\n"));
             var output = new StringWriter();
             var error = new StringWriter();
             Console.SetOut(output);
             Console.SetError(error);
 
             Assert.AreEqual(0, Program.Main(), output + Environment.NewLine + error);
-            Assert.IsTrue(File.Exists(Path.Combine(outputRoot, "candidate-1.csv")));
-            Assert.AreEqual(expectsExternal, File.Exists(Path.Combine(outputRoot, "candidate-1-external.csv")));
-            if (declineOverwrite) Assert.AreEqual("keep", File.ReadAllText(Path.Combine(outputRoot, "candidate-1.csv")));
+            var number = existingCandidate ? 2 : 1;
+            Assert.IsTrue(File.Exists(Path.Combine(outputRoot, $"candidate-{number}.csv")));
+            Assert.AreEqual(expectsExternal, File.Exists(Path.Combine(outputRoot, $"candidate-{number}-external.csv")));
+            if (existingCandidate) Assert.AreEqual("keep", File.ReadAllText(Path.Combine(outputRoot, "candidate-1.csv")));
+            Assert.DoesNotContain("覆寫", output.ToString());
         }
         finally
         {

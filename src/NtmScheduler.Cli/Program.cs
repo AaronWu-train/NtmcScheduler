@@ -62,20 +62,13 @@ public static class Program
     {
         Print(result.Status, result.Errors, result.Candidates.Select(candidate => candidate.Objectives).ToArray());
         if (result.Candidates.Count == 0) return 1;
-        var files = result.Candidates.Select((_, index) => $"candidate-{index + 1}.csv")
-            .Concat(result.Candidates.Select((candidate, index) => (candidate, index)).Where(value => value.candidate.ExternalAssignments.Count > 0).Select(value => $"candidate-{value.index + 1}-external.csv"))
-            .ToArray();
-        if (!CanWrite(files))
-        {
-            Console.WriteLine("已保留原有候選檔。");
-            return 0;
-        }
-
+        var firstNumber = NextAvailableCandidateNumber(result.Candidates.Count);
         for (var index = 0; index < result.Candidates.Count; index++)
         {
             var candidate = result.Candidates[index];
-            ScheduleCsv.WriteMonthly($"candidate-{index + 1}.csv", candidate.Schedule);
-            if (candidate.ExternalAssignments.Count > 0) WriteExternal($"candidate-{index + 1}-external.csv", candidate.ExternalAssignments);
+            var number = firstNumber + index;
+            ScheduleCsv.WriteMonthly($"candidate-{number}.csv", candidate.Schedule);
+            if (candidate.ExternalAssignments.Count > 0) WriteExternal($"candidate-{number}-external.csv", candidate.ExternalAssignments);
         }
         Console.WriteLine($"已輸出 {result.Candidates.Count} 份候選班表。");
         return 0;
@@ -85,14 +78,9 @@ public static class Program
     {
         Print(result.Status, result.Errors, result.Candidates.Select(candidate => candidate.Objectives).ToArray());
         if (result.Candidates.Count == 0) return 1;
-        var files = result.Candidates.Select((_, index) => $"candidate-{index + 1}.csv").ToArray();
-        if (!CanWrite(files))
-        {
-            Console.WriteLine("已保留原有候選檔。");
-            return 0;
-        }
+        var firstNumber = NextAvailableCandidateNumber(result.Candidates.Count);
         for (var index = 0; index < result.Candidates.Count; index++)
-            ScheduleCsv.WriteMonthly($"candidate-{index + 1}.csv", result.Candidates[index].Schedule);
+            ScheduleCsv.WriteMonthly($"candidate-{firstNumber + index}.csv", result.Candidates[index].Schedule);
         Console.WriteLine($"已輸出 {result.Candidates.Count} 份候選班表。");
         return 0;
     }
@@ -123,11 +111,13 @@ public static class Program
         throw new ScheduleCsvException("能力/T月班別", "M rows must leave both fields blank; T rows must fill both fields.");
     }
 
-    private static bool CanWrite(IEnumerable<string> paths)
+    private static int NextAvailableCandidateNumber(int count)
     {
-        if (!paths.Any(File.Exists)) return true;
-        var answer = Ask("候選輸出檔已存在，是否覆寫？ [y/N]：");
-        return answer.Equals("y", StringComparison.OrdinalIgnoreCase);
+        var first = 1;
+        while (Enumerable.Range(first, count).Any(number =>
+                   File.Exists($"candidate-{number}.csv") || File.Exists($"candidate-{number}-external.csv")))
+            first++;
+        return first;
     }
 
     private static void WriteExternal(string path, IReadOnlyList<MExternalAssignment> assignments)
