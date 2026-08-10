@@ -111,7 +111,7 @@ public static partial class MSolver
             var penalty = model.NewIntVar(0, (long)maximum * maximum, $"{name}_penalty_{employee.EmployeeId}");
             model.Add(count == LinearExpr.Sum(activeDates.Select(date => rests[(employee.EmployeeId, date)])));
             model.AddAbsEquality(deviation, count - target);
-            model.AddMultiplicationEquality(penalty, deviation, deviation);
+            model.AddElement(deviation, Enumerable.Range(0, maximum + 1).Select(value => (long)value * value), penalty);
             penalties.Add(penalty);
         }
         return LinearExpr.Sum(penalties);
