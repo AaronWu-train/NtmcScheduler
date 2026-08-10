@@ -162,6 +162,40 @@ public sealed class TSolverTests
     }
 
     [TestMethod]
+    public void Csv_NonStandardShiftNameAndCodeBecomeEvents()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"ntm-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var shiftsPath = Path.Combine(root, "non-standard-shifts.csv");
+            File.WriteAllText(shiftsPath, "班型,時間,代碼\n日一,08:30~17:30,0837\n夜一,22:30~06:30,2235\n");
+            var shifts = ScheduleCsv.ReadNonStandardShifts(shiftsPath);
+            var schedulePath = Path.Combine(root, "schedule.csv");
+            ScheduleCsv.WriteMonthly(schedulePath, ValidInput().DemandMonth);
+            var lines = File.ReadAllLines(schedulePath);
+            var fields = lines[1].Split(',');
+            fields[8] = "日一";
+            fields[9] = "0837";
+            fields[10] = "2235";
+            lines[1] = string.Join(',', fields);
+            File.WriteAllLines(schedulePath, lines);
+
+            var parsed = ScheduleCsv.ReadMonthly(schedulePath, new(2026, 9, 1), shifts);
+            var assignments = parsed.Employees[0].Assignments;
+
+            Assert.HasCount(2, shifts.Shifts);
+            Assert.AreEqual(AssignmentKind.WorkEvent, assignments[new(2026, 9, 1)].Kind);
+            Assert.AreEqual(new TimeOnly(8, 30), TimeOnly.FromDateTime(assignments[new(2026, 9, 2)].EventStart!.Value.DateTime));
+            Assert.AreEqual(new DateOnly(2026, 9, 4), DateOnly.FromDateTime(assignments[new(2026, 9, 3)].EventEnd!.Value.Date));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
     public void Csv_VerifiesMonthlyRestTotals()
     {
         var root = Path.Combine(Path.GetTempPath(), $"ntm-{Guid.NewGuid():N}");
@@ -244,6 +278,7 @@ public sealed class TSolverTests
                 Path.Combine(exampleRoot, "previous.csv"),
                 Path.Combine(exampleRoot, "demand.csv"),
                 Path.Combine(exampleRoot, "rest-intervals.csv"),
+                Path.Combine(exampleRoot, "non-standard-shifts.csv"),
                 declineOverwrite ? "n" : "") + "\n"));
             var output = new StringWriter();
             var error = new StringWriter();
@@ -374,7 +409,7 @@ public sealed class TSolverTests
         }
 
         demand.Add(Row("T-NEW", "Signal", 4, Shift.Early, new(2026, 9, 21), new Dictionary<DateOnly, ScheduleCell>(), new(12, 1), null, null));
-        return new(new(month.AddMonths(-1), previous), new(month, demand), [first, second]);
+        return new(new(month.AddMonths(-1), previous), new(month, demand), [first, second], new([]));
     }
 
     private static ScheduleInput OnlyEmployee(ScheduleInput input, string employeeId) => input with

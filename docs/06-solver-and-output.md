@@ -74,7 +74,7 @@ M 候選另包含外派日期、車站、班別與人數。
 dotnet run --project src/NtmScheduler.Cli
 ```
 
-CLI 依序詢問目標月、上月 CSV、本月 CSV 與八週區間 CSV。依能力與 T 月班別欄自動判斷 M/T；Ctrl+C 傳入 cancellation token。
+CLI 依序詢問目標月、上月 CSV、本月 CSV、八週區間 CSV 與非常態班型 CSV。CSV 只由 CLI 解析；solver 收到的是 `MonthlySchedule`、`RestInterval` 與 `NonStandardShiftTable` typed snapshot。CLI 依能力與 T 月班別欄自動判斷 M/T；Ctrl+C 傳入 cancellation token。
 
 輸出為目前目錄的 `candidate-1.csv`–`candidate-3.csv`。M 有外派時另寫 `candidate-N-external.csv`。既有輸出檔時只詢問一次是否覆寫。
 

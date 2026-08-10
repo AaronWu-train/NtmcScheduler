@@ -45,6 +45,7 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 | `Employee` | 員工編號、姓名、單位（M/T）、M 的 homeStation、T 的 specialty 與 ability |
 | `EmployeeMonthlyShift` | T 每人每月班組（早／午／夜） |
 | `FixedEvent` | R\*（人＋日期）與 X（人＋起訖時間＋說明） |
+| `NonStandardShift` | 前端可維護的非常態班型名稱、唯一代碼與起訖時間；月班表名稱／代碼讀入後解析為 X |
 | `ScheduleCycle` | 8 週週期 start、end、requiredR（一般休假，預設 16）、requiredR1（國定假日數） |
 | `ScheduleRun` / `Snapshot` | 排班請求、狀態、輸入快照（人員、事件、歷史截止點、固定設定、規則順序、seed、程式版本） |
 | `CandidateSolution` | 求解候選與其品質指標 |

@@ -24,12 +24,13 @@ public static partial class ScheduleCsv
 
     private static readonly TimeSpan TaipeiOffset = TimeSpan.FromHours(8);
 
-    public static MonthlySchedule ReadMonthly(string path, DateOnly monthStart)
+    public static MonthlySchedule ReadMonthly(string path, DateOnly monthStart, NonStandardShiftTable? nonStandardShifts = null)
     {
         if (monthStart.Day != 1) throw new ScheduleCsvException(nameof(monthStart), "Month must start on day one.");
         var rows = ReadRows(path);
         if (rows.Count == 0) throw new ScheduleCsvException(path, "CSV is empty.");
         if (!rows[0].SequenceEqual(Headers)) throw new ScheduleCsvException(path, "Monthly schedule headers do not match the required format.");
+        var nonStandardShiftLookup = NonStandardShiftLookup(nonStandardShifts);
 
         var employees = new List<EmployeeMonthlySchedule>();
         for (var rowNumber = 1; rowNumber < rows.Count; rowNumber++)
@@ -37,7 +38,7 @@ public static partial class ScheduleCsv
             var row = rows[rowNumber];
             if (row.Length != Headers.Length) throw new ScheduleCsvException($"{path}:{rowNumber + 1}", $"Expected {Headers.Length} fields but found {row.Length}.");
             if (row.All(string.IsNullOrWhiteSpace)) continue;
-            employees.Add(ParseEmployee(row, rowNumber + 1, monthStart));
+            employees.Add(ParseEmployee(row, rowNumber + 1, monthStart, nonStandardShiftLookup));
         }
         return new(monthStart, employees);
     }
@@ -98,7 +99,41 @@ public static partial class ScheduleCsv
         return intervals;
     }
 
-    private static EmployeeMonthlySchedule ParseEmployee(string[] row, int rowNumber, DateOnly monthStart)
+    public static NonStandardShiftTable ReadNonStandardShifts(string path)
+    {
+        var rows = ReadRows(path);
+        string[] expected = ["班型", "時間", "代碼"];
+        if (rows.Count == 0 || !rows[0].SequenceEqual(expected))
+            throw new ScheduleCsvException(path, "非常態班型 CSV 表頭不符合規定。");
+
+        var shifts = new List<NonStandardShift>();
+        var tokens = new HashSet<string>(StringComparer.Ordinal);
+        for (var rowNumber = 1; rowNumber < rows.Count; rowNumber++)
+        {
+            var row = rows[rowNumber];
+            if (row.All(string.IsNullOrWhiteSpace)) continue;
+            var field = $"{path}:{rowNumber + 1}";
+            if (row.Length != 3) throw new ScheduleCsvException(field, "非常態班型資料應為三欄。");
+            var name = string.IsNullOrWhiteSpace(row[0]) ? null : row[0].Trim();
+            var times = row[1].Trim().Split('~');
+            var code = row[2].Trim();
+            if (code.Length == 0) throw new ScheduleCsvException(field, "非常態班型代碼不可空白。");
+            if (times.Length != 2 ||
+                !TimeOnly.TryParseExact(times[0], "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var startTime) ||
+                !TimeOnly.TryParseExact(times[1], "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var endTime))
+                throw new ScheduleCsvException(field, "非常態班型時間必須使用 HH:mm~HH:mm。");
+            if (!tokens.Add(code) || name is not null && !tokens.Add(name))
+                throw new ScheduleCsvException(field, "非常態班型名稱與代碼不可重複。");
+            shifts.Add(new(name, startTime, endTime, code));
+        }
+        return new(shifts);
+    }
+
+    private static EmployeeMonthlySchedule ParseEmployee(
+        string[] row,
+        int rowNumber,
+        DateOnly monthStart,
+        IReadOnlyDictionary<string, NonStandardShift> nonStandardShifts)
     {
         var field = $"row {rowNumber}";
         var ability = NullableInt(row[4], $"{field} 能力");
@@ -133,7 +168,7 @@ public static partial class ScheduleCsv
             }
             if (text.Length == 0) continue;
             var date = monthStart.AddDays(day - 1);
-            assignments[date] = ParseCell(text, date, monthlyShift, $"{field} day {day}");
+            assignments[date] = ParseCell(text, date, monthlyShift, nonStandardShifts, $"{field} day {day}");
         }
         var expectedMonthlyUsage = CountRestUsage(assignments.Values);
         if (closingUsage is null && monthlyUsage is not null)
@@ -152,7 +187,12 @@ public static partial class ScheduleCsv
         cells.Count(cell => cell.Kind == AssignmentKind.Rest),
         cells.Count(cell => cell.Kind == AssignmentKind.SpecialRest));
 
-    private static ScheduleCell ParseCell(string text, DateOnly date, Shift? monthlyShift, string field) => text switch
+    private static ScheduleCell ParseCell(
+        string text,
+        DateOnly date,
+        Shift? monthlyShift,
+        IReadOnlyDictionary<string, NonStandardShift> nonStandardShifts,
+        string field) => text switch
     {
         "R" => new() { Kind = AssignmentKind.Rest },
         "R1" => new() { Kind = AssignmentKind.SpecialRest },
@@ -163,6 +203,7 @@ public static partial class ScheduleCsv
         "R*[R休]" => new() { Kind = AssignmentKind.LeaveRest, RequestedRest = true },
         _ when EventPattern().Match(text) is { Success: true } match => EventCell(match, date, field),
         _ when monthlyShift is not null && ShiftFromText(text) is { } shift => new() { Kind = AssignmentKind.Work, Shift = shift },
+        _ when nonStandardShifts.GetValueOrDefault(text) is { } shift => EventCell(shift.StartTime, shift.EndTime, date),
         _ when MWorkPattern().Match(text) is { Success: true } match => new()
         {
             Kind = AssignmentKind.Work,
@@ -183,11 +224,25 @@ public static partial class ScheduleCsv
         if (!TimeOnly.TryParseExact(match.Groups[1].Value, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var startTime) ||
             !TimeOnly.TryParseExact(match.Groups[2].Value, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var endTime))
             throw new ScheduleCsvException(field, "X time must use HH:mm-HH:mm.");
+        return EventCell(startTime, endTime, date);
+    }
+
+    private static ScheduleCell EventCell(TimeOnly startTime, TimeOnly endTime, DateOnly date)
+    {
         var start = new DateTimeOffset(date.ToDateTime(startTime), TaipeiOffset);
-        var endDate = endTime <= startTime ? date.AddDays(1) : date;
-        var end = new DateTimeOffset(endDate.ToDateTime(endTime), TaipeiOffset);
-        if (end - start > TimeSpan.FromHours(24)) throw new ScheduleCsvException(field, "X cannot exceed 24 hours.");
+        var end = new DateTimeOffset((endTime <= startTime ? date.AddDays(1) : date).ToDateTime(endTime), TaipeiOffset);
         return new() { Kind = AssignmentKind.WorkEvent, EventStart = start, EventEnd = end };
+    }
+
+    private static IReadOnlyDictionary<string, NonStandardShift> NonStandardShiftLookup(NonStandardShiftTable? table)
+    {
+        var result = new Dictionary<string, NonStandardShift>(StringComparer.Ordinal);
+        foreach (var shift in table?.Shifts ?? [])
+        {
+            result[shift.Code] = shift;
+            if (!string.IsNullOrWhiteSpace(shift.Name)) result[shift.Name] = shift;
+        }
+        return result;
     }
 
     private static string CellText(MonthlySchedule schedule, EmployeeMonthlySchedule employee, int day)

@@ -33,9 +33,9 @@ M 與 T 不共用任何建模邏輯。每個 solver 只有一個 private `Variab
 
 ## CLI 責任
 
-`ScheduleCsv.cs` 是 CSV 邊界：讀寫月班表，讀取八週區間，並把文字格值轉為 solver contracts。`Program.cs` 只做：
+`ScheduleCsv.cs` 是 CSV 邊界：讀寫月班表，讀取八週區間與非常態班型，並把文字格值轉為 solver contracts。`Program.cs` 只做：
 
-1. 詢問四個輸入。
+1. 詢問五個輸入。
 2. 建立 `ScheduleInput`。
 3. 依能力／T 月班別判斷 M 或 T。
 4. 傳入 Ctrl+C cancellation token。
@@ -49,13 +49,13 @@ CLI 不包含業務規則，solver 不知道 CSV 路徑。
 
 - typed input 與 InvalidInput 邊界。
 - M/T 至少一個可求解主要案例。
-- CSV round-trip、BOM、quoted field、跨午夜 X 與非法格值。
+- CSV round-trip、BOM、quoted field、非常態班型、跨午夜 X 與非法格值。
 - 新進人員、A/B 區間累積、八週區間驗證。
 - timeout、cancellation、CLI redirected stdin 與 examples smoke test。
 
 ## 可執行範例
 
-`examples/m-2026-09` 與 `examples/t-2026-09` 都包含 `previous.csv`、`demand.csv`、`rest-intervals.csv` 與最小 README。兩組均由 solver 生成已驗證的合成需求，可直接交給 CLI 做快速 smoke test。範例假日不代表正式政府行事曆。
+`examples/m-2026-09` 與 `examples/t-2026-09` 都包含 `previous.csv`、`demand.csv`、`rest-intervals.csv`、`non-standard-shifts.csv` 與最小 README。兩組均由 solver 生成已驗證的合成需求，可直接交給 CLI 做快速 smoke test。範例假日不代表正式政府行事曆。
 
 ## 不在本階段
 

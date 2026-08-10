@@ -12,7 +12,17 @@ Solver 不讀 CSV、Excel、DB 或 UI，只接受 typed snapshot：
 public sealed record ScheduleInput(
     MonthlySchedule PreviousMonth,
     MonthlySchedule DemandMonth,
-    IReadOnlyList<RestInterval> RestIntervals);
+    IReadOnlyList<RestInterval> RestIntervals,
+    NonStandardShiftTable NonStandardShifts);
+
+public sealed record NonStandardShift(
+    string? Name,
+    TimeOnly StartTime,
+    TimeOnly EndTime,
+    string Code);
+
+public sealed record NonStandardShiftTable(
+    IReadOnlyList<NonStandardShift> Shifts);
 ```
 
 `DemandMonth` 是本月人員資料的唯一來源，不另建員工主檔。上月有、本月沒有的人不排入本月。
@@ -38,9 +48,26 @@ ID,姓名,所屬,到職日期,能力,T月班別,
 - `月底區間累計R/R1` 是截至本月最後一日，在月底所屬 56 日區間內已計入的 R/R1。
 - `當月指定R休` 在需求月表示精確需求數，空白視為 0，否則必須是非負整數；歷史與候選則填由日格重算的實際 R休數。
 
-日格可用：空白、`R`、`R1`、歷史用的 `R休`、`R*`、`R*[R]`、`R*[R1]`、`R*[R休]`、`X[08:30-17:30]`、M 的 `LB01早`（也接受簡寫 `1早`；站號為 1–12）、T 的 `早`。需求月不得直接填未標示 R* 的 `R休`。M 午班輸入同時接受 `LB01小`／`1小` 與舊稱 `LB01午`／`1午`，輸出一律正規化為 `LB01小`；T 午班仍使用 `午`。
+日格可用：空白、`R`、`R1`、歷史用的 `R休`、`R*`、`R*[R]`、`R*[R1]`、`R*[R休]`、`X[08:30-17:30]`、非常態班型表中的非空白班型名稱或代碼、M 的 `LB01早`（也接受簡寫 `1早`；站號為 1–12）、T 的 `早`。需求月不得直接填未標示 R* 的 `R休`。M 午班輸入同時接受 `LB01小`／`1小` 與舊稱 `LB01午`／`1午`，輸出一律正規化為 `LB01小`；T 午班仍使用 `午`。
 
 X 的結束時間小於或等於開始時間時，視為隔日結束；時長不得超過 24 小時。
+
+## 非常態班型 CSV
+
+固定三欄，時間分隔符號為半形 `~`：
+
+```csv
+班型,時間,代碼
+早一,06:30~14:30,0635
+,08:00~16:00,0805
+日一,08:30~17:30,0837
+夜一,22:30~06:30,2235
+```
+
+- `代碼`、`時間`必填；`班型`可留空。
+- 代碼不可重複；非空白班型名稱不可重複；名稱與代碼也不可互相重複，避免日格查表結果不唯一。
+- 日格可填非空白班型名稱或代碼，讀入後轉為 `WorkEvent`；候選輸出正規化為 `X[HH:mm-HH:mm]`。
+- `早`、`午`、`夜`日格優先解讀為 T 正常班；同列代碼仍可用來指定 X。
 
 ## 八週區間 CSV
 

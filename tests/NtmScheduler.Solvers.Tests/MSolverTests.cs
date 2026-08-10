@@ -229,7 +229,8 @@ public sealed class MSolverTests
         return new(
             new MonthlySchedule(month.AddMonths(-1), previous),
             new MonthlySchedule(month, demand),
-            [firstInterval, secondInterval]);
+            [firstInterval, secondInterval],
+            new([]));
     }
 
     private static bool IsRestDay(int day, int employee) => Mod(day - employee, 10) is 0 or 3 or 6;

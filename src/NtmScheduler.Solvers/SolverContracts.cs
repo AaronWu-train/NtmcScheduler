@@ -8,6 +8,12 @@ public enum Shift
     Night
 }
 
+/// <summary>A user-maintained alias that resolves a schedule cell to an X interval.</summary>
+public sealed record NonStandardShift(string? Name, TimeOnly StartTime, TimeOnly EndTime, string Code);
+
+/// <summary>The typed boundary for the editable non-standard-shift CSV or future UI.</summary>
+public sealed record NonStandardShiftTable(IReadOnlyList<NonStandardShift> Shifts);
+
 /// <summary>The actual assignment stored in a schedule cell.</summary>
 public enum AssignmentKind
 {
@@ -91,7 +97,8 @@ public sealed record RestInterval(
 public sealed record ScheduleInput(
     MonthlySchedule PreviousMonth,
     MonthlySchedule DemandMonth,
-    IReadOnlyList<RestInterval> RestIntervals);
+    IReadOnlyList<RestInterval> RestIntervals,
+    NonStandardShiftTable NonStandardShifts);
 
 public sealed record ObjectiveComponent(string Name, long Value, int Weight)
 {

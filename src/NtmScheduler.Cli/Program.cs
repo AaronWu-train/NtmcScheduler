@@ -23,12 +23,14 @@ public static class Program
             var previousPath = Ask("上月班表 CSV（留空代表空歷史）：");
             var demandPath = Default(Ask("本月需求 CSV [demand.csv]："), "demand.csv");
             var intervalsPath = Default(Ask("八週區間 CSV [rest-intervals.csv]："), "rest-intervals.csv");
+            var nonStandardShiftsPath = Default(Ask("非常態班型 CSV [non-standard-shifts.csv]："), "non-standard-shifts.csv");
+            var nonStandardShifts = ScheduleCsv.ReadNonStandardShifts(nonStandardShiftsPath);
 
             var previous = string.IsNullOrWhiteSpace(previousPath)
                 ? new MonthlySchedule(month.AddMonths(-1), [])
-                : ScheduleCsv.ReadMonthly(previousPath, month.AddMonths(-1));
-            var demand = ScheduleCsv.ReadMonthly(demandPath, month);
-            var input = new ScheduleInput(previous, demand, ScheduleCsv.ReadRestIntervals(intervalsPath));
+                : ScheduleCsv.ReadMonthly(previousPath, month.AddMonths(-1), nonStandardShifts);
+            var demand = ScheduleCsv.ReadMonthly(demandPath, month, nonStandardShifts);
+            var input = new ScheduleInput(previous, demand, ScheduleCsv.ReadRestIntervals(intervalsPath), nonStandardShifts);
             var isT = DetectT(demand);
 
             return isT

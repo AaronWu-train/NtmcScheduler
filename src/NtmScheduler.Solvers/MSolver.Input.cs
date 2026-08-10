@@ -13,6 +13,7 @@ public static partial class MSolver
         if (input.PreviousMonth is null) errors.Add(new(nameof(input.PreviousMonth), "PreviousMonth is required."));
         if (input.DemandMonth is null) errors.Add(new(nameof(input.DemandMonth), "DemandMonth is required."));
         if (input.RestIntervals is null) errors.Add(new(nameof(input.RestIntervals), "RestIntervals is required."));
+        if (input.NonStandardShifts?.Shifts is null) errors.Add(new(nameof(input.NonStandardShifts), "NonStandardShifts is required."));
         if (input.PreviousMonth?.Employees is null) errors.Add(new("PreviousMonth.Employees", "Employees is required."));
         if (input.DemandMonth?.Employees is null) errors.Add(new("DemandMonth.Employees", "Employees is required."));
         if (input.RestIntervals is not null && input.RestIntervals.Any(interval => interval?.NationalHolidays is null))
@@ -28,7 +29,8 @@ public static partial class MSolver
     {
         PreviousMonth = CopySchedule(input.PreviousMonth),
         DemandMonth = CopySchedule(input.DemandMonth),
-        RestIntervals = input.RestIntervals.Select(interval => interval with { NationalHolidays = interval.NationalHolidays.ToHashSet() }).ToArray()
+        RestIntervals = input.RestIntervals.Select(interval => interval with { NationalHolidays = interval.NationalHolidays.ToHashSet() }).ToArray(),
+        NonStandardShifts = input.NonStandardShifts with { Shifts = input.NonStandardShifts.Shifts.ToArray() }
     };
 
     private static MonthlySchedule CopySchedule(MonthlySchedule schedule) => schedule with
