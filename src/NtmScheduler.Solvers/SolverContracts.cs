@@ -36,7 +36,7 @@ public sealed record SolverOptions
 {
     public TimeSpan TimeLimit { get; init; } = TimeSpan.FromMinutes(5);
     public int RandomSeed { get; init; }
-    public int WorkerCount { get; init; } = 1;
+    public int WorkerCount { get; init; } = 8;
 }
 
 public sealed record InputError(string Field, string Message);
