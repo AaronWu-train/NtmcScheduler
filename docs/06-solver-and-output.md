@@ -26,6 +26,7 @@ M 與 T 完全分開建模，各自保留 `Main / Input / Rules` 三個 partial 
 複製並驗證 ScheduleInput
 建立目標月 + 7 日的 CP-SAT 變數
 加入硬限制
+先取得一份符合硬限制的初始解
 建立具名軟規則與權重
 逐 Priority 字典序求解
 搜尋最多 3 份差異候選
@@ -36,11 +37,12 @@ M 與 T 完全分開建模，各自保留 `Main / Input / Rules` 三個 partial 
 
 ## 字典序求解
 
-1. 對當前 Priority 設定 `Minimize`。
-2. 只有 CP-SAT 回傳 `Optimal` 時，加入 `objective == optimum`。
-3. 繼續下一 Priority。
-4. 任一組只得到 `Feasible` 或剩餘時間用完，回傳 `TimeLimit` 與當前可用候選，不再最佳化後續組。
-5. 全部優先組證明最佳後，才搜尋替代候選。
+1. 在同一總時限內先求一份只符合硬限制的初始解。
+2. 對當前 Priority 設定 `Minimize`。
+3. 只有 CP-SAT 回傳 `Optimal` 時，加入 `objective == optimum`。
+4. 繼續下一 Priority。
+5. 任一組只得到 `Feasible` 或剩餘時間用完，回傳 `TimeLimit` 與當前可用候選，不再最佳化後續組。
+6. 全部優先組證明最佳後，才搜尋替代候選。
 
 ## 候選差異
 

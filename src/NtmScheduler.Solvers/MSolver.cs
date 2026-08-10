@@ -43,13 +43,24 @@ public static partial class MSolver
 
         var variables = CreateDecisionVariables(model, input, modelDates);
         AddHardConstraints(model, input, modelDates, variables);
-        var objectives = BuildObjectiveGroups(model, input, targetDates, modelDates, variables);
 
         var solver = new CpSolver();
         using var registration = cancellationToken.Register(solver.StopSearch);
         var stopwatch = Stopwatch.StartNew();
         var candidates = new List<MCandidate>(3);
         MCandidate? current = null;
+
+        if (!ConfigureRemainingSearchTime(solver, options, stopwatch))
+            return new(SolveStatus.TimeLimit, candidates, []);
+        var feasibilityStatus = solver.Solve(model);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (feasibilityStatus == CpSolverStatus.Infeasible) return new(SolveStatus.Infeasible, [], []);
+        if (feasibilityStatus == CpSolverStatus.ModelInvalid) throw new InvalidOperationException("The M CP-SAT model is invalid.");
+        if (feasibilityStatus is not (CpSolverStatus.Optimal or CpSolverStatus.Feasible))
+            return new(SolveStatus.TimeLimit, candidates, []);
+        current = ReadCandidate(solver, input, targetDates, variables, []);
+        AddSolutionHints(model, solver, variables);
+        var objectives = BuildObjectiveGroups(model, input, targetDates, modelDates, variables);
 
         foreach (var objective in objectives)
         {
@@ -79,6 +90,21 @@ public static partial class MSolver
         candidates.Add(current!);
         SearchAdditionalCandidates(model, solver, input, options, stopwatch, targetDates, variables, objectives, candidates, cancellationToken);
         return new(SolveStatus.Optimal, candidates, []);
+    }
+
+    private static void AddSolutionHints(CpModel model, CpSolver solver, ModelVariables variables)
+    {
+        foreach (var variable in variables.Work.Values
+                     .Concat(variables.WorksShift.Values)
+                     .Concat(variables.Rest.Values)
+                     .Concat(variables.SpecialRest.Values)
+                     .Concat(variables.LeaveRest.Values)
+                     .Concat(variables.AnyRest.Values)
+                     .Concat(variables.ActualWork.Values)
+                     .Concat(variables.SupportsOtherStation.Values))
+            model.AddHint(variable, solver.Value(variable));
+        foreach (var variable in variables.External.Values)
+            model.AddHint(variable, solver.Value(variable));
     }
 
     // Candidate generation

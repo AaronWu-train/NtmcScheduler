@@ -105,7 +105,12 @@ public static class Program
         for (var index = 0; index < candidates.Count; index++)
         {
             Console.WriteLine($"候選 {index + 1}：");
-            foreach (var objective in candidates[index]) Console.WriteLine($"  Priority {objective.Priority} {objective.Name}: {objective.Value}");
+            foreach (var objective in candidates[index])
+            {
+                Console.WriteLine($"  Priority {objective.Priority} {objective.Name}: {objective.Value}");
+                foreach (var component in objective.Components.Where(component => component.Value != 0))
+                    Console.WriteLine($"    {component.Name}: {component.Value} × {component.Weight} = {component.WeightedValue}");
+            }
         }
     }
 
