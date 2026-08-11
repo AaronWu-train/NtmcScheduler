@@ -46,8 +46,7 @@ internal static class SolverAcceptanceAssertions
         AssertObjectiveStructure(candidate.Objectives,
         [
             (1, "RequestedRest", [("RequestedRest", 3), ("UnusedLeaveRest", 1)]),
-            (4, "ScheduleQuality", [("ExternalStaffing", 24), ("MonthlyRest", 24), ("SpecialRestBalance", 12), ("WorkStreak", 4), ("MixedShiftWorkStreak", 15), ("NightRestEarly", 30), ("NightRestAfternoon", 20), ("ShiftChangeWithoutRest", 7), ("NonPreferredRotation", 7)]),
-            (5, "Fairness", [("NonHomeStation", 2), ("WeekdayRestFairness", 2), ("HolidayRestFairness", 4), ("SupportFairness", 3), ("EarlyShiftFairness", 1), ("AfternoonShiftFairness", 1), ("NightShiftFairness", 2)])
+            (4, "ScheduleQualityAndFairness", [("ExternalStaffing", 24000), ("MonthlyRest", 24000), ("SpecialRestBalance", 12000), ("WorkStreak", 4000), ("MixedShiftWorkStreak", 15000), ("NightRestEarly", 30000), ("NightRestAfternoon", 20000), ("ShiftChangeWithoutRest", 7000), ("NonPreferredRotation", 7000), ("NonHomeStation", 1), ("WeekdayRestFairness", 6), ("HolidayRestFairness", 12), ("SupportFairness", 9), ("EarlyShiftFairness", 3), ("AfternoonShiftFairness", 3), ("NightShiftFairness", 6)])
         ]);
 
         Expect(candidate.Objectives, "RequestedRest", RequestedRestViolations(input, candidate.Schedule));
@@ -78,9 +77,9 @@ internal static class SolverAcceptanceAssertions
         Expect(candidate.Objectives, "WeekdayRestFairness", MRestFairness(input, candidate.Schedule, false));
         Expect(candidate.Objectives, "HolidayRestFairness", MRestFairness(input, candidate.Schedule, true));
         Expect(candidate.Objectives, "SupportFairness", MSupportFairness(input, candidate.Schedule));
-        Expect(candidate.Objectives, "EarlyShiftFairness", MShiftDispersion(input, candidate.Schedule, Shift.Early));
-        Expect(candidate.Objectives, "AfternoonShiftFairness", MShiftDispersion(input, candidate.Schedule, Shift.Afternoon));
-        Expect(candidate.Objectives, "NightShiftFairness", MShiftDispersion(input, candidate.Schedule, Shift.Night));
+        Expect(candidate.Objectives, "EarlyShiftFairness", MShiftRange(input, candidate.Schedule, Shift.Early));
+        Expect(candidate.Objectives, "AfternoonShiftFairness", MShiftRange(input, candidate.Schedule, Shift.Afternoon));
+        Expect(candidate.Objectives, "NightShiftFairness", MShiftRange(input, candidate.Schedule, Shift.Night));
     }
 
     internal static void AssertTSoftRules(ScheduleInput input, TCandidate candidate)
@@ -110,25 +109,6 @@ internal static class SolverAcceptanceAssertions
         Expect(candidate.Objectives, "MonthBoundaryRestBalance", TBoundaryRestBalance(input, candidate.Schedule));
         Expect(candidate.Objectives, "WeekdayRestFairness", TRestFairness(input, candidate.Schedule, false));
         Expect(candidate.Objectives, "HolidayRestFairness", TRestFairness(input, candidate.Schedule, true));
-    }
-
-    internal static void AssertCandidateDifference(ScheduleInput input, IReadOnlyList<MonthlySchedule> candidates)
-    {
-        Assert.IsGreaterThanOrEqualTo(2, candidates.Count, "The fixture must produce alternative candidates.");
-        var comparable = (from employee in input.DemandMonth.Employees
-                          from date in TargetDates(input)
-                          where IsActive(employee, date) && employee.Assignments.GetValueOrDefault(date)?.Kind is null
-                          select (employee.EmployeeId, Date: date)).ToArray();
-        var minimum = (int)Math.Ceiling(comparable.Length * 0.10);
-
-        for (var first = 0; first < candidates.Count; first++)
-        for (var second = first + 1; second < candidates.Count; second++)
-        {
-            var left = candidates[first].Employees.ToDictionary(employee => employee.EmployeeId);
-            var right = candidates[second].Employees.ToDictionary(employee => employee.EmployeeId);
-            var difference = comparable.Count(cell => Signature(left[cell.EmployeeId].Assignments[cell.Date]) != Signature(right[cell.EmployeeId].Assignments[cell.Date]));
-            Assert.IsGreaterThanOrEqualTo(minimum, difference, $"Candidates {first + 1} and {second + 1} differ in only {difference}/{comparable.Length} comparable cells.");
-        }
     }
 
     private static void AssertCommonHardRules(ScheduleInput input, MonthlySchedule schedule, bool t)
@@ -370,13 +350,13 @@ internal static class SolverAcceptanceAssertions
         schedule,
         employee => employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Work && cell.Station != employee.Affiliation));
 
-    private static long MShiftDispersion(ScheduleInput input, MonthlySchedule schedule, Shift shift)
+    private static long MShiftRange(ScheduleInput input, MonthlySchedule schedule, Shift shift)
     {
         var candidates = schedule.Employees.ToDictionary(employee => employee.EmployeeId);
         return input.DemandMonth.Employees.Where(employee => IsActive(employee, input.DemandMonth.MonthStart)).GroupBy(employee => StationGroup(employee.Affiliation)).Sum(group =>
         {
             var counts = group.Select(employee => (long)candidates[employee.EmployeeId].Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Work && cell.Shift == shift)).ToArray();
-            return counts.Length * counts.Sum(count => count * count) - counts.Sum() * counts.Sum();
+            return counts.Max() - counts.Min();
         });
     }
 
@@ -510,5 +490,4 @@ internal static class SolverAcceptanceAssertions
     private static bool IsHoliday(ScheduleInput input, DateOnly date) => date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday || IsNationalHoliday(input, date);
     private static int StationGroup(string station) => (int.Parse(station[2..]) - 1) / 3;
     private static int BlockPenalty(int length) => length switch { 1 => 4, 2 => 1, 3 or 4 => 0, 5 => 1, _ when length >= 6 => 2 * (length - 4), _ => 0 };
-    private static (AssignmentKind? Kind, string? Station, Shift? Shift) Signature(ScheduleCell cell) => (cell.Kind, cell.Station, cell.Shift);
 }

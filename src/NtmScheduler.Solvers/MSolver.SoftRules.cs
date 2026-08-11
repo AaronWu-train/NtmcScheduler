@@ -13,6 +13,7 @@ public static partial class MSolver
         IReadOnlyList<DateOnly> modelDates,
         ModelVariables variables)
     {
+        const int scheduleQualityMultiplier = 1000;
         var requestedRest = CountUnfulfilledRequestedRests(input, targetDates, variables);
         var unusedLeaveRest = MeasureUnusedLeaveRests(model, input, targetDates, variables);
         var externalStaffing = MeasureExternalStaffingAboveAllowance(model, targetDates, variables);
@@ -28,40 +29,43 @@ public static partial class MSolver
         var weekdayFairness = MeasureRestCountRangeByStationGroup(model, input, targetDates.Where(date => !IsWeekendOrNationalHoliday(input, date)), variables, "weekday_fairness");
         var holidayFairness = MeasureRestCountRangeByStationGroup(model, input, targetDates.Where(date => IsWeekendOrNationalHoliday(input, date)), variables, "holiday_fairness");
         var supportFairness = MeasureSupportCountRangeByStationGroup(model, input, targetDates, variables);
-        var earlyShiftFairness = MeasureShiftCountDispersionByStationGroup(model, input, targetDates, variables, Shift.Early);
-        var afternoonShiftFairness = MeasureShiftCountDispersionByStationGroup(model, input, targetDates, variables, Shift.Afternoon);
-        var nightShiftFairness = MeasureShiftCountDispersionByStationGroup(model, input, targetDates, variables, Shift.Night);
+        var earlyShiftFairness = MeasureShiftCountRangeByStationGroup(model, input, targetDates, variables, Shift.Early);
+        var afternoonShiftFairness = MeasureShiftCountRangeByStationGroup(model, input, targetDates, variables, Shift.Afternoon);
+        var nightShiftFairness = MeasureShiftCountRangeByStationGroup(model, input, targetDates, variables, Shift.Night);
 
         return
         [
             new(1, "RequestedRest", requestedRest * 3 + unusedLeaveRest,
                 [("RequestedRest", 3, requestedRest), ("UnusedLeaveRest", 1, unusedLeaveRest)]),
-            new(4, "ScheduleQuality",
-                externalStaffing * 24 + monthlyRest * 24 + specialRestBalance * 12
-                    + workStreak * 4 + mixedShiftWorkStreak * 15 + nightRestEarly * 30
-                    + nightRestAfternoon * 20 + shiftChangeWithoutRest * 7 + rotation * 7,
+            new(4, "ScheduleQualityAndFairness",
+                externalStaffing * (24 * scheduleQualityMultiplier)
+                    + monthlyRest * (24 * scheduleQualityMultiplier)
+                    + specialRestBalance * (12 * scheduleQualityMultiplier)
+                    + workStreak * (4 * scheduleQualityMultiplier)
+                    + mixedShiftWorkStreak * (15 * scheduleQualityMultiplier)
+                    + nightRestEarly * (30 * scheduleQualityMultiplier)
+                    + nightRestAfternoon * (20 * scheduleQualityMultiplier)
+                    + shiftChangeWithoutRest * (7 * scheduleQualityMultiplier)
+                    + rotation * (7 * scheduleQualityMultiplier)
+                    + nonHomeStation + weekdayFairness * 6 + holidayFairness * 12 + supportFairness * 9
+                    + earlyShiftFairness * 3 + afternoonShiftFairness * 3 + nightShiftFairness * 6,
                 [
-                    ("ExternalStaffing", 24, externalStaffing),
-                    ("MonthlyRest", 24, monthlyRest),
-                    ("SpecialRestBalance", 12, specialRestBalance),
-                    ("WorkStreak", 4, workStreak),
-                    ("MixedShiftWorkStreak", 15, mixedShiftWorkStreak),
-                    ("NightRestEarly", 30, nightRestEarly),
-                    ("NightRestAfternoon", 20, nightRestAfternoon),
-                    ("ShiftChangeWithoutRest", 7, shiftChangeWithoutRest),
-                    ("NonPreferredRotation", 7, rotation)
-                ]),
-            new(5, "Fairness",
-                nonHomeStation * 2 + weekdayFairness * 2 + holidayFairness * 4 + supportFairness * 3
-                    + earlyShiftFairness + afternoonShiftFairness + nightShiftFairness * 2,
-                [
-                    ("NonHomeStation", 2, nonHomeStation),
-                    ("WeekdayRestFairness", 2, weekdayFairness),
-                    ("HolidayRestFairness", 4, holidayFairness),
-                    ("SupportFairness", 3, supportFairness),
-                    ("EarlyShiftFairness", 1, earlyShiftFairness),
-                    ("AfternoonShiftFairness", 1, afternoonShiftFairness),
-                    ("NightShiftFairness", 2, nightShiftFairness)
+                    ("ExternalStaffing", 24 * scheduleQualityMultiplier, externalStaffing),
+                    ("MonthlyRest", 24 * scheduleQualityMultiplier, monthlyRest),
+                    ("SpecialRestBalance", 12 * scheduleQualityMultiplier, specialRestBalance),
+                    ("WorkStreak", 4 * scheduleQualityMultiplier, workStreak),
+                    ("MixedShiftWorkStreak", 15 * scheduleQualityMultiplier, mixedShiftWorkStreak),
+                    ("NightRestEarly", 30 * scheduleQualityMultiplier, nightRestEarly),
+                    ("NightRestAfternoon", 20 * scheduleQualityMultiplier, nightRestAfternoon),
+                    ("ShiftChangeWithoutRest", 7 * scheduleQualityMultiplier, shiftChangeWithoutRest),
+                    ("NonPreferredRotation", 7 * scheduleQualityMultiplier, rotation),
+                    ("NonHomeStation", 1, nonHomeStation),
+                    ("WeekdayRestFairness", 6, weekdayFairness),
+                    ("HolidayRestFairness", 12, holidayFairness),
+                    ("SupportFairness", 9, supportFairness),
+                    ("EarlyShiftFairness", 3, earlyShiftFairness),
+                    ("AfternoonShiftFairness", 3, afternoonShiftFairness),
+                    ("NightShiftFairness", 6, nightShiftFairness)
                 ])
         ];
     }
@@ -462,15 +466,15 @@ public static partial class MSolver
         return LinearExpr.Sum(ranges);
     }
 
-    // 班別次數公平——加總各全月在職站群的整數變異數分子 n*sum(x²)-sum(x)²。
-    private static LinearExpr MeasureShiftCountDispersionByStationGroup(
+    // 班別次數公平——加總各全月在職站群的最多與最少班數差。
+    private static LinearExpr MeasureShiftCountRangeByStationGroup(
         CpModel model,
         ScheduleInput input,
         IReadOnlyList<DateOnly> targetDates,
         ModelVariables variables,
         Shift shift)
     {
-        var dispersions = new List<LinearExpr>();
+        var ranges = new List<LinearExpr>();
         foreach (var group in input.DemandMonth.Employees
                      .Where(employee => IsEmployedOn(employee, input.DemandMonth.MonthStart))
                      .GroupBy(employee => StationGroupIndex(employee.Affiliation)))
@@ -483,19 +487,13 @@ public static partial class MSolver
                 model.Add(count == LinearExpr.Sum(targetDates.Select(date => variables.WorksShift[(employee.EmployeeId, date, shift)])));
                 return count;
             }).ToArray();
-            var squares = counts.Select((count, index) =>
-            {
-                var square = model.NewIntVar(0, (long)targetDates.Count * targetDates.Count, $"shift_fairness_square_{group.Key}_{shift}_{index}");
-                model.AddMultiplicationEquality(square, count, count);
-                return square;
-            }).ToArray();
-            var total = model.NewIntVar(0, members.Length * targetDates.Count, $"shift_fairness_total_{group.Key}_{shift}");
-            var totalSquare = model.NewIntVar(0, (long)members.Length * members.Length * targetDates.Count * targetDates.Count, $"shift_fairness_total_square_{group.Key}_{shift}");
-            model.Add(total == LinearExpr.Sum(counts));
-            model.AddMultiplicationEquality(totalSquare, total, total);
-            dispersions.Add(LinearExpr.Sum(squares) * members.Length - totalSquare);
+            var maximum = model.NewIntVar(0, targetDates.Count, $"shift_fairness_max_{group.Key}_{shift}");
+            var minimum = model.NewIntVar(0, targetDates.Count, $"shift_fairness_min_{group.Key}_{shift}");
+            model.AddMaxEquality(maximum, counts);
+            model.AddMinEquality(minimum, counts);
+            ranges.Add(maximum - minimum);
         }
-        return LinearExpr.Sum(dispersions);
+        return LinearExpr.Sum(ranges);
     }
 
     // Returns a fixed historical value before the target month and a decision expression during the modeled month.

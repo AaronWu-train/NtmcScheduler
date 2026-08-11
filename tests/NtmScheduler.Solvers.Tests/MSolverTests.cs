@@ -241,7 +241,7 @@ public sealed class MSolverTests
         Assert.IsGreaterThanOrEqualTo(1, result.Candidates.Count);
         var candidate = result.Candidates[0];
         CollectionAssert.AreEqual(
-            new[] { "RequestedRest", "ScheduleQuality", "Fairness" },
+            new[] { "RequestedRest", "ScheduleQualityAndFairness" },
             candidate.Objectives.Select(value => value.Name).ToArray());
         Assert.AreEqual(new DateOnly(2026, 9, 1), candidate.Schedule.MonthStart);
         Assert.HasCount(40, candidate.Schedule.Employees);
@@ -253,17 +253,17 @@ public sealed class MSolverTests
             .SelectMany(value => value.Components)
             .Single(value => value.Name == "NightRestEarly").Value);
 
-        long ExpectedDispersion(Shift shift) => candidate.Schedule.Employees
+        long ExpectedRange(Shift shift) => candidate.Schedule.Employees
             .GroupBy(employee => (int.Parse(employee.Affiliation[2..]) - 1) / 3)
             .Sum(group =>
             {
                 var counts = group.Select(employee => (long)employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Work && cell.Shift == shift)).ToArray();
-                return counts.Length * counts.Sum(count => count * count) - counts.Sum() * counts.Sum();
+                return counts.Max() - counts.Min();
             });
-        var fairness = candidate.Objectives.Single(objective => objective.Name == "Fairness").Components;
-        Assert.AreEqual((ExpectedDispersion(Shift.Early), 1), (fairness.Single(component => component.Name == "EarlyShiftFairness").Value, fairness.Single(component => component.Name == "EarlyShiftFairness").Weight));
-        Assert.AreEqual((ExpectedDispersion(Shift.Afternoon), 1), (fairness.Single(component => component.Name == "AfternoonShiftFairness").Value, fairness.Single(component => component.Name == "AfternoonShiftFairness").Weight));
-        Assert.AreEqual((ExpectedDispersion(Shift.Night), 2), (fairness.Single(component => component.Name == "NightShiftFairness").Value, fairness.Single(component => component.Name == "NightShiftFairness").Weight));
+        var fairness = candidate.Objectives.Single(objective => objective.Name == "ScheduleQualityAndFairness").Components;
+        Assert.AreEqual((ExpectedRange(Shift.Early), 3), (fairness.Single(component => component.Name == "EarlyShiftFairness").Value, fairness.Single(component => component.Name == "EarlyShiftFairness").Weight));
+        Assert.AreEqual((ExpectedRange(Shift.Afternoon), 3), (fairness.Single(component => component.Name == "AfternoonShiftFairness").Value, fairness.Single(component => component.Name == "AfternoonShiftFairness").Weight));
+        Assert.AreEqual((ExpectedRange(Shift.Night), 6), (fairness.Single(component => component.Name == "NightShiftFairness").Value, fairness.Single(component => component.Name == "NightShiftFairness").Weight));
         SolverAcceptanceAssertions.AssertMHardRules(input, candidate);
         SolverAcceptanceAssertions.AssertMSoftRules(input, candidate);
 

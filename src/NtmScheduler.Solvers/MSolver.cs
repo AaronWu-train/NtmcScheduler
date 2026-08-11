@@ -86,9 +86,13 @@ public static partial class MSolver
         foreach (var objective in objectives)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!ConfigureRemainingSearchTime(solver, options, stopwatch))
+            if (!ConfigureRemainingSearchTime(solver, options, stopwatch, reserve: CandidateSearchReserve(options)))
             {
-                if (current is not null) candidates.Add(current);
+                if (current is not null)
+                {
+                    candidates.Add(current);
+                    SearchAdditionalCandidates(model, solver, input, options, stopwatch, targetDates, variables, objectives, candidates, cancellationToken);
+                }
                 return new(SolveStatus.TimeLimit, candidates, []);
             }
 
@@ -99,8 +103,16 @@ public static partial class MSolver
             if (status == CpSolverStatus.ModelInvalid) throw new InvalidOperationException("The M CP-SAT model is invalid.");
             if (status != CpSolverStatus.Optimal)
             {
-                if (status == CpSolverStatus.Feasible) current = ReadCandidate(solver, input, targetDates, variables, objectives);
+                if (status == CpSolverStatus.Feasible)
+                {
+                    current = ReadCandidate(solver, input, targetDates, variables, objectives);
+                    model.Add(objective.Total == solver.Value(objective.Total));
+                    model.ClearHints();
+                    AddSolutionHints(model, solver, variables);
+                }
                 if (current is not null) candidates.Add(current);
+                if (status == CpSolverStatus.Feasible)
+                    SearchAdditionalCandidates(model, solver, input, options, stopwatch, targetDates, variables, objectives, candidates, cancellationToken);
                 return new(SolveStatus.TimeLimit, candidates, []);
             }
 
@@ -282,9 +294,14 @@ public static partial class MSolver
     }
 
     // Applies the remaining global time budget to the next CP-SAT search.
-    private static bool ConfigureRemainingSearchTime(CpSolver solver, SolverOptions options, Stopwatch stopwatch, bool repairHint = false)
+    private static bool ConfigureRemainingSearchTime(
+        CpSolver solver,
+        SolverOptions options,
+        Stopwatch stopwatch,
+        bool repairHint = false,
+        TimeSpan reserve = default)
     {
-        var remaining = options.TimeLimit - stopwatch.Elapsed;
+        var remaining = options.TimeLimit - stopwatch.Elapsed - reserve;
         if (remaining <= TimeSpan.Zero) return false;
         var workers = repairHint ? 1 : options.WorkerCount;
         solver.StringParameters = string.Create(
@@ -292,5 +309,8 @@ public static partial class MSolver
             $"max_time_in_seconds:{remaining.TotalSeconds} random_seed:{options.RandomSeed} num_search_workers:{workers}{(repairHint ? " repair_hint:true" : "")}");
         return true;
     }
+
+    private static TimeSpan CandidateSearchReserve(SolverOptions options) =>
+        options.TimeLimit > TimeSpan.FromSeconds(30) ? TimeSpan.FromSeconds(30) : TimeSpan.Zero;
 
 }

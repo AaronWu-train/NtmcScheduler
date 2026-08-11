@@ -20,7 +20,7 @@ public static class Program
         try
         {
             var month = ReadMonth();
-            var previousPath = Ask("上月班表 CSV（留空代表空歷史）：");
+            var previousPath = Default(Ask("上月班表 CSV [previous.csv]："), "previous.csv");
             var demandPath = Default(Ask("本月需求 CSV [demand.csv]："), "demand.csv");
             var intervalsPath = Default(Ask("八週區間 CSV [rest-intervals.csv]："), "rest-intervals.csv");
             var nonStandardShiftsPath = Default(Ask("非常態班型 CSV [non-standard-shifts.csv]："), "non-standard-shifts.csv");
@@ -116,8 +116,7 @@ public static class Program
     private static string ObjectiveText(string name) => name switch
     {
         "RequestedRest" => "指定休假",
-        "ScheduleQuality" => "綜合排班品質",
-        "Fairness" => "站務配置與公平性",
+        "ScheduleQualityAndFairness" => "排班品質與公平性",
         "StaffingQuality" => "班組人力品質",
         "RestDistribution" => "休假分布",
         "WorkPatternQuality" => "工作型態品質",
@@ -171,9 +170,9 @@ public static class Program
         "WeekdayRestFairness" => "各比較群組內平日休假最多與最少者差額的合計",
         "HolidayRestFairness" => "各比較群組內假日休假最多與最少者差額的合計",
         "SupportFairness" => "各三站群組內跨站支援最多與最少者差額的合計",
-        "EarlyShiftFairness" => "各三站群組的人數乘以各人早班數平方和，再減早班數總和平方的合計",
-        "AfternoonShiftFairness" => "各三站群組的人數乘以各人午班數平方和，再減午班數總和平方的合計",
-        "NightShiftFairness" => "各三站群組的人數乘以各人夜班數平方和，再減夜班數總和平方的合計",
+        "EarlyShiftFairness" => "各三站群組內早班最多與最少者班數差的合計",
+        "AfternoonShiftFairness" => "各三站群組內午班最多與最少者班數差的合計",
+        "NightShiftFairness" => "各三站群組內夜班最多與最少者班數差的合計",
         "NonMonthlyShift" => "正常工作班別不同於當月指定班別的格數",
         "Attendance" => "每日各班出勤低於該月班組半數的缺額合計",
         "Specialty" => "每日各班完全無人出勤的應有專業組數",

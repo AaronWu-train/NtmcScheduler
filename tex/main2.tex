@@ -697,14 +697,17 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 \[
   C^{M,s}_e=\sum_{d\in\mathcal{D}^{\mathrm{tar}}}y^{M}_{eds}.
 \]
-對群組 \(g\) 令 \(n_g=|\mathcal E^{full}_g|\)，並定義
+定義
 \[
   \Phi^{M,shift,s}
   =\sum_{g\in\mathcal G}
-  \left(n_g\sum_{e\in\mathcal E^{full}_g}(C^{M,s}_e)^2
-  -\left(\sum_{e\in\mathcal E^{full}_g}C^{M,s}_e\right)^2\right).
+  \left(
+    \max_{e\in\mathcal E^{full}_g}C^{M,s}_e
+    -
+    \min_{e\in\mathcal E^{full}_g}C^{M,s}_e
+  \right).
 \]
-此為群組內班數變異數的整數等價量；\(X\) 與延伸日不計。
+此為各群組內最多者與最少者的班數差；\(X\) 與延伸日不計。
 
 \subsubsection{字典序目標}
 
@@ -729,18 +732,22 @@ M 模型定義三個目標群組：
 \[
   J^M_5
   =
-  2\Phi^{M,home}
-  +2\Phi^{M,weekday}
-  +4\Phi^{M,holiday}
-  +3\Phi^{M,support}
-  +\Phi^{M,shift,\mathrm E}
-  +\Phi^{M,shift,\mathrm A}
-  +2\Phi^{M,shift,\mathrm N}.
+  \Phi^{M,home}
+  +6\Phi^{M,weekday}
+  +12\Phi^{M,holiday}
+  +9\Phi^{M,support}
+  +3\Phi^{M,shift,\mathrm E}
+  +3\Phi^{M,shift,\mathrm A}
+  +6\Phi^{M,shift,\mathrm N}.
+\]
+令
+\[
+  J^M_{4+5}=1000J^M_4+J^M_5.
 \]
 完整目標為
 \[
   \operatorname{lexmin}
-  \left(J^M_1,J^M_4,J^M_5\right).
+  \left(J^M_1,J^M_{4+5}\right).
 \]
 
 \subsection{The T Problem}
@@ -1238,20 +1245,23 @@ M 可選擇提供 56 日萬年班表。模板第 1 日對應每個 16R 八週區
 
 \section{Alternative Candidates}
 
-只有在該模型的所有目標群組皆證明為最優後，系統才搜尋替代候選。每個模型最多輸出
-三份候選；所有已固定的 \(J_1,\ldots,J_5\) 最優值維持不變。
+每個模型最多輸出三份候選。M 在總時限大於 30 秒時固定預留最後 30 秒搜尋
+替代候選；若當前目標只取得 feasible incumbent，先固定該 incumbent 分數，再於
+預留時間內搜尋同分候選。30 秒以下的短時限執行不另切候選時間。T 仍只在所有
+目標群組皆證明最優後搜尋替代候選。
 
 候選差異只比較目標月份中真正由求解器決定的 \((e,d)\) 格。固定正常班、
 固定 \(R\)、固定 \(R1\)、固定 \(R休\)、固定 \(X\) 與延伸日期均排除；指定休假 \(R^*\)
 仍由求解器決定底層使用 \(R\)、\(R1\) 或 \(R休\)，因此保留在比較集合。比較實際狀態
 時忽略 \(R^*\) 顯示標記，但三種休假仍視為不同狀態。
 
-若可比較格數為 \(N_{cell}\)，定義最低差異格數
+M/T 若可比較格數為 \(N_{cell}\)，定義最低差異格數
 \[
   \Delta_{min}=\left\lceil0.1N_{cell}\right\rceil.
 \]
 第二份候選與第一份至少相差 \(\Delta_{min}\) 格；第三份必須分別與前兩份
-達到相同門檻。候選搜尋共用整次求解的剩餘時間；時間用完時保留已找到的候選。
+達到相同門檻。M 候選另須維持相同的已達目標分數。候選搜尋共用整次求解的
+剩餘時間；時間用完時保留已找到的候選。
 
 \section{Mathematical Symbols and C\# Variables}
 
@@ -1318,7 +1328,7 @@ M 可選擇提供 56 日萬年班表。模板第 1 日對應每個 16R 八週區
   \((\beta_{ed},\mu_{ed})\) & 函數內 \texttt{lastShift/mixed} & \texttt{CountMixedShiftWorkStreaks} \\
   \(\gamma_{ed}\) & 函數內 \texttt{state} & \texttt{ShiftChangeWithoutRestViolation} \\
   \(\eta_{ed}\) & 函數內 \texttt{state} & \texttt{NonPreferredRotationViolation} \\
-  \(J^M_1,J^M_4,J^M_5\) & \texttt{objectives} 中的 \texttt{LinearExpr Total} & \texttt{BuildObjectiveGroups}；權重直接寫在同一函數 \\
+  \(J^M_1,J^M_{4+5}\) & \texttt{objectives} 中的 \texttt{LinearExpr Total} & \texttt{BuildObjectiveGroups}；權重直接寫在同一函數 \\
   \bottomrule
 \end{longtable}
 \normalsize

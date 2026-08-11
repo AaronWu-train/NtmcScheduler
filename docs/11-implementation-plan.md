@@ -30,7 +30,7 @@ src/
 - `MSolver.cs` / `TSolver.cs`：公開 `Solve`、固定 Priority 群組的字典序 CP-SAT 呼叫、候選差異與結果讀取。
 - `*.Input.cs`：快照複製、月份／人員／日格／區間驗證、歷史查詢與 R/R1 累積推導。
 - `*.HardRules.cs`：OR-Tools 變數與不可關閉的硬限制。
-- `*.SoftRules.cs`：軟違反量、固定群組及權重；M 為 J1、J4、J5，T 為 J1–J5。
+- `*.SoftRules.cs`：軟違反量、固定群組及權重；M 為 J1 與合併的 `1000×J4+J5`，T 為 J1–J5。
 
 M 與 T 不共用任何建模邏輯。每個 solver 只有一個 private `Variables` record 收納 OR-Tools 變數，不建 `Variables/Constraints/Objectives/Candidates` class 層。
 
