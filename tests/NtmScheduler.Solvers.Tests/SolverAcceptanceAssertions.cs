@@ -46,15 +46,15 @@ internal static class SolverAcceptanceAssertions
         AssertObjectiveStructure(candidate.Objectives,
         [
             (1, "RequestedRest", [("RequestedRest", 3), ("UnusedLeaveRest", 1)]),
-            (4, "ScheduleQuality", [("ExternalStaffing", 24), ("MonthlyRest", 24), ("MonthlySpecialRest", 12), ("NonHomeStation", 2), ("WorkStreak", 4), ("MixedShiftWorkStreak", 15), ("NightRestEarly", 30), ("NightRestAfternoon", 20), ("ShiftChangeWithoutRest", 7), ("NonPreferredRotation", 7)]),
-            (5, "Fairness", [("WeekdayRestFairness", 2), ("HolidayRestFairness", 4), ("SupportFairness", 3), ("EarlyShiftFairness", 1), ("AfternoonShiftFairness", 1), ("NightShiftFairness", 2)])
+            (4, "ScheduleQuality", [("ExternalStaffing", 24), ("MonthlyRest", 24), ("SpecialRestBalance", 12), ("WorkStreak", 4), ("MixedShiftWorkStreak", 15), ("NightRestEarly", 30), ("NightRestAfternoon", 20), ("ShiftChangeWithoutRest", 7), ("NonPreferredRotation", 7)]),
+            (5, "Fairness", [("NonHomeStation", 2), ("WeekdayRestFairness", 2), ("HolidayRestFairness", 4), ("SupportFairness", 3), ("EarlyShiftFairness", 1), ("AfternoonShiftFairness", 1), ("NightShiftFairness", 2)])
         ]);
 
         Expect(candidate.Objectives, "RequestedRest", RequestedRestViolations(input, candidate.Schedule));
         Expect(candidate.Objectives, "UnusedLeaveRest", UnusedLeaveRest(input, candidate.Schedule));
-        Expect(candidate.Objectives, "ExternalStaffing", candidate.ExternalAssignments.Sum(item => item.Count));
+        Expect(candidate.Objectives, "ExternalStaffing", Math.Max(0, candidate.ExternalAssignments.Sum(item => item.Count) - 70));
         Expect(candidate.Objectives, "MonthlyRest", MonthlyRestPenalty(input, candidate.Schedule, AssignmentKind.Rest));
-        Expect(candidate.Objectives, "MonthlySpecialRest", MonthlyRestPenalty(input, candidate.Schedule, AssignmentKind.SpecialRest));
+        Expect(candidate.Objectives, "SpecialRestBalance", SpecialRestBalancePenalty(input, candidate.Schedule));
         Expect(candidate.Objectives, "NonHomeStation", candidate.Schedule.Employees.Sum(employee => employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Work && cell.Station != employee.Affiliation)));
 
         var completedStreakPenalty = CompletedWorkStreakPenalty(input, candidate.Schedule);
@@ -87,7 +87,7 @@ internal static class SolverAcceptanceAssertions
         [
             (1, "RequestedRest", [("RequestedRest", 3), ("UnusedLeaveRest", 1)]),
             (2, "StaffingQuality", [("NonMonthlyShift", 9), ("Attendance", 9), ("Specialty", 3), ("Ability", 1)]),
-            (3, "MonthlyRestDistribution", [("MonthlyRest", 1), ("MonthlySpecialRest", 1)]),
+            (3, "RestDistribution", [("MonthlyRest", 1), ("SpecialRestBalance", 1)]),
             (4, "WorkPatternQuality", [("WorkStreak", 3), ("NightToEarlyRest", 12), ("MonthBoundaryRestBalance", 5)]),
             (5, "RestFairness", [("WeekdayRestFairness", 2), ("HolidayRestFairness", 4)])
         ]);
@@ -99,7 +99,7 @@ internal static class SolverAcceptanceAssertions
         Expect(candidate.Objectives, "Specialty", TSpecialty(input, candidate.Schedule));
         Expect(candidate.Objectives, "Ability", TAbility(input, candidate.Schedule));
         Expect(candidate.Objectives, "MonthlyRest", MonthlyRestPenalty(input, candidate.Schedule, AssignmentKind.Rest));
-        Expect(candidate.Objectives, "MonthlySpecialRest", MonthlyRestPenalty(input, candidate.Schedule, AssignmentKind.SpecialRest));
+        Expect(candidate.Objectives, "SpecialRestBalance", SpecialRestBalancePenalty(input, candidate.Schedule));
 
         var completedStreakPenalty = CompletedWorkStreakPenalty(input, candidate.Schedule);
         Assert.IsGreaterThanOrEqualTo(completedStreakPenalty, Component(candidate.Objectives, "WorkStreak").Value);
@@ -231,6 +231,31 @@ internal static class SolverAcceptanceAssertions
             var deviation = Math.Abs(actual - target);
             return (long)deviation * deviation;
         });
+    }
+
+    private static long SpecialRestBalancePenalty(ScheduleInput input, MonthlySchedule schedule)
+    {
+        var monthStart = input.DemandMonth.MonthStart;
+        var monthEnd = TargetDates(input).Last();
+        var demand = input.DemandMonth.Employees.ToDictionary(employee => employee.EmployeeId);
+        var history = input.PreviousMonth.Employees.ToDictionary(employee => employee.EmployeeId);
+        return schedule.Employees.Sum(employee => input.RestIntervals
+            .Where(interval => interval.Start <= monthEnd && interval.End >= monthStart)
+            .Sum(interval =>
+            {
+                var source = demand[employee.EmployeeId];
+                var prior = interval.Start < monthStart && history.TryGetValue(employee.EmployeeId, out var previous)
+                    ? previous.ClosingUsage!.SpecialRest
+                    : source.EmploymentStartDate is { } start
+                        ? interval.NationalHolidays.Count(date => date < start && date <= interval.End)
+                        : 0;
+                var actual = prior + employee.Assignments.Count(pair =>
+                    pair.Key >= interval.Start && pair.Key <= interval.End && pair.Value.Kind == AssignmentKind.SpecialRest);
+                var expected = interval.NationalHolidays.Count(date => date <= (interval.End < monthEnd ? interval.End : monthEnd));
+                var balance = actual - expected;
+                var deviation = balance > 0 ? balance : Math.Max(0, -balance - 1);
+                return (long)deviation * deviation;
+            }));
     }
 
     private static long CompletedWorkStreakPenalty(ScheduleInput input, MonthlySchedule schedule)
@@ -482,6 +507,6 @@ internal static class SolverAcceptanceAssertions
     private static bool IsNationalHoliday(ScheduleInput input, DateOnly date) => input.RestIntervals.Any(interval => interval.NationalHolidays.Contains(date));
     private static bool IsHoliday(ScheduleInput input, DateOnly date) => date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday || IsNationalHoliday(input, date);
     private static int StationGroup(string station) => (int.Parse(station[2..]) - 1) / 3;
-    private static int BlockPenalty(int length) => length switch { 1 => 4, 2 => 2, 3 or 4 => 0, 5 => 1, _ when length >= 6 => 2 * (length - 4), _ => 0 };
+    private static int BlockPenalty(int length) => length switch { 1 => 4, 2 => 1, 3 or 4 => 0, 5 => 1, _ when length >= 6 => 2 * (length - 4), _ => 0 };
     private static (AssignmentKind? Kind, string? Station, Shift? Shift) Signature(ScheduleCell cell) => (cell.Kind, cell.Station, cell.Shift);
 }

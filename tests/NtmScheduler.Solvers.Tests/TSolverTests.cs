@@ -10,7 +10,7 @@ public sealed class TSolverTests
     public void Solve_MonthlySchedules_ReturnsCandidateAndCreditsNewHire()
     {
         var input = ValidInput();
-        var result = TSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(30) });
+        var result = TSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(10) });
 
         Assert.AreNotEqual(SolveStatus.InvalidInput, result.Status, string.Join(Environment.NewLine, result.Errors));
         Assert.AreNotEqual(SolveStatus.Infeasible, result.Status);
@@ -29,7 +29,7 @@ public sealed class TSolverTests
         Assert.IsGreaterThanOrEqualTo(1, hire.ClosingUsage.SpecialRest);
         Assert.IsTrue(hire.Assignments.Keys.All(date => date >= hire.EmploymentStartDate!.Value));
         CollectionAssert.AreEqual(
-            new[] { "RequestedRest", "StaffingQuality", "MonthlyRestDistribution", "WorkPatternQuality", "RestFairness" },
+            new[] { "RequestedRest", "StaffingQuality", "RestDistribution", "WorkPatternQuality", "RestFairness" },
             result.Candidates[0].Objectives.Select(value => value.Name).ToArray());
         Assert.IsGreaterThanOrEqualTo(1, result.Candidates[0].Objectives
             .SelectMany(value => value.Components)
@@ -62,7 +62,7 @@ public sealed class TSolverTests
             employee.EmployeeId == "T-E2" ? employee with { RequestedLeaveRestCount = 2 } : employee).ToArray();
         input = input with { DemandMonth = input.DemandMonth with { Employees = employees } };
 
-        var result = TSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(30) });
+        var result = TSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(10) });
 
         Assert.IsGreaterThanOrEqualTo(1, result.Candidates.Count, string.Join(Environment.NewLine, result.Errors));
         Assert.AreEqual(1, result.Candidates[0].Objectives.SelectMany(group => group.Components)
@@ -219,10 +219,10 @@ public sealed class TSolverTests
         {
             var input = original with { DemandMonth = original.DemandMonth with { MonthStart = month } };
             var employee = input.DemandMonth.Employees[0] with { EmploymentStartDate = null };
-            var method = solver.GetMethod("ExpectedMonthlyRestCount", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+            var method = solver.GetMethod("ExpectedMonthlyGeneralRestCount", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
 
-            Assert.AreEqual(10, method.Invoke(null, [input, employee, false]));
-            Assert.AreEqual(4, method.Invoke(null, [input, employee with { EmploymentStartDate = new(2026, 8, 21) }, false]));
+            Assert.AreEqual(10, method.Invoke(null, [input, employee]));
+            Assert.AreEqual(4, method.Invoke(null, [input, employee with { EmploymentStartDate = new(2026, 8, 21) }]));
         }
     }
 
