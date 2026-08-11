@@ -286,13 +286,8 @@ public static partial class TSolver
             dates.Count(interval.NationalHolidays.Contains));
     }
 
-    private static int ExpectedMonthlyRestCount(ScheduleInput input, EmployeeMonthlySchedule employee, bool special)
-    {
-        var dates = TargetMonthDates(input).Where(date => IsEmployedOn(employee, date));
-        return special
-            ? dates.Count(date => input.RestIntervals.Any(interval => interval.NationalHolidays.Contains(date)))
-            : dates.Count(date => date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday);
-    }
+    private static int ExpectedMonthlyGeneralRestCount(ScheduleInput input, EmployeeMonthlySchedule employee) =>
+        TargetMonthDates(input).Count(date => IsEmployedOn(employee, date) && date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday);
 
     // Date and time calculations
 

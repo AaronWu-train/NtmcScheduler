@@ -15,9 +15,9 @@ public static partial class MSolver
     {
         var requestedRest = CountUnfulfilledRequestedRests(input, targetDates, variables);
         var unusedLeaveRest = MeasureUnusedLeaveRests(model, input, targetDates, variables);
-        var externalStaffing = CountExternalStaffing(targetDates, variables);
-        var monthlyRest = MeasureMonthlyRestDeviation(model, input, targetDates, variables.Rest, false, "monthly_rest");
-        var monthlySpecialRest = MeasureMonthlyRestDeviation(model, input, targetDates, variables.SpecialRest, true, "monthly_special_rest");
+        var externalStaffing = MeasureExternalStaffingAboveAllowance(model, targetDates, variables);
+        var monthlyRest = MeasureMonthlyRestDeviation(model, input, targetDates, variables.Rest);
+        var specialRestBalance = MeasureSpecialRestBalance(model, input, targetDates, variables.SpecialRest);
         var nonHomeStation = CountCrossStationAssignments(input, targetDates, variables);
         var workStreak = MeasureWorkStreakPenalties(model, input, targetDates, modelDates, variables);
         var mixedShiftWorkStreak = CountMixedShiftWorkStreaks(model, input, targetDates, modelDates, variables);
@@ -37,14 +37,13 @@ public static partial class MSolver
             new(1, "RequestedRest", requestedRest * 3 + unusedLeaveRest,
                 [("RequestedRest", 3, requestedRest), ("UnusedLeaveRest", 1, unusedLeaveRest)]),
             new(4, "ScheduleQuality",
-                externalStaffing * 24 + monthlyRest * 24 + monthlySpecialRest * 12 + nonHomeStation * 2
+                externalStaffing * 24 + monthlyRest * 24 + specialRestBalance * 12
                     + workStreak * 4 + mixedShiftWorkStreak * 15 + nightRestEarly * 30
                     + nightRestAfternoon * 20 + shiftChangeWithoutRest * 7 + rotation * 7,
                 [
                     ("ExternalStaffing", 24, externalStaffing),
                     ("MonthlyRest", 24, monthlyRest),
-                    ("MonthlySpecialRest", 12, monthlySpecialRest),
-                    ("NonHomeStation", 2, nonHomeStation),
+                    ("SpecialRestBalance", 12, specialRestBalance),
                     ("WorkStreak", 4, workStreak),
                     ("MixedShiftWorkStreak", 15, mixedShiftWorkStreak),
                     ("NightRestEarly", 30, nightRestEarly),
@@ -53,9 +52,10 @@ public static partial class MSolver
                     ("NonPreferredRotation", 7, rotation)
                 ]),
             new(5, "Fairness",
-                weekdayFairness * 2 + holidayFairness * 4 + supportFairness * 3
+                nonHomeStation * 2 + weekdayFairness * 2 + holidayFairness * 4 + supportFairness * 3
                     + earlyShiftFairness + afternoonShiftFairness + nightShiftFairness * 2,
                 [
+                    ("NonHomeStation", 2, nonHomeStation),
                     ("WeekdayRestFairness", 2, weekdayFairness),
                     ("HolidayRestFairness", 4, holidayFairness),
                     ("SupportFairness", 3, supportFairness),
@@ -87,34 +87,69 @@ public static partial class MSolver
         return LinearExpr.Sum(unused);
     }
 
-    // 外援人力——最小化目標月的外派總人次。
-    private static LinearExpr CountExternalStaffing(IReadOnlyList<DateOnly> targetDates, ModelVariables variables) =>
-        LinearExpr.Sum(variables.External.Where(x => targetDates.Contains(x.Key.Date)).Select(x => x.Value));
+    // 外援人力——目標月前 70 人次免罰，只計超過部分。
+    private static LinearExpr MeasureExternalStaffingAboveAllowance(CpModel model, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
+    {
+        var external = variables.External.Where(x => targetDates.Contains(x.Key.Date)).Select(x => x.Value).ToArray();
+        var penalty = model.NewIntVar(0, external.Length, "external_staffing_above_allowance");
+        model.AddMaxEquality(penalty, [LinearExpr.Sum(external) - 70, LinearExpr.Constant(0)]);
+        return penalty;
+    }
 
-    // 每月休假分布——依到職後的週末與國定假日推導每人的 R/R1 目標。
+    // 每月一般 R 分布——依到職後的週末推導每人的一般 R 目標。
     private static LinearExpr MeasureMonthlyRestDeviation(
         CpModel model,
         ScheduleInput input,
         IReadOnlyList<DateOnly> targetDates,
-        IReadOnlyDictionary<(string Employee, DateOnly Date), BoolVar> rests,
-        bool special,
-        string name)
+        IReadOnlyDictionary<(string Employee, DateOnly Date), BoolVar> rests)
     {
         var penalties = new List<IntVar>();
         foreach (var employee in input.DemandMonth.Employees)
         {
             var activeDates = targetDates.Where(date => IsEmployedOn(employee, date)).ToArray();
-            var target = ExpectedMonthlyRestCount(input, employee, special);
+            var target = ExpectedMonthlyGeneralRestCount(input, employee);
             var maximum = Math.Max(activeDates.Length, target);
-            var count = model.NewIntVar(0, activeDates.Length, $"{name}_count_{employee.EmployeeId}");
-            var deviation = model.NewIntVar(0, maximum, $"{name}_deviation_{employee.EmployeeId}");
-            var penalty = model.NewIntVar(0, (long)maximum * maximum, $"{name}_penalty_{employee.EmployeeId}");
+            var count = model.NewIntVar(0, activeDates.Length, $"monthly_rest_count_{employee.EmployeeId}");
+            var deviation = model.NewIntVar(0, maximum, $"monthly_rest_deviation_{employee.EmployeeId}");
+            var penalty = model.NewIntVar(0, (long)maximum * maximum, $"monthly_rest_penalty_{employee.EmployeeId}");
             model.Add(count == LinearExpr.Sum(activeDates.Select(date => rests[(employee.EmployeeId, date)])));
             model.AddAbsEquality(deviation, count - target);
             model.AddElement(deviation, Enumerable.Range(0, maximum + 1).Select(value => (long)value * value), penalty);
             penalties.Add(penalty);
         }
         return LinearExpr.Sum(penalties);
+    }
+
+    // 八週累積 R1 餘額——每個區間可暫欠一日；超額與其餘欠額平方計分。
+    private static LinearExpr MeasureSpecialRestBalance(
+        CpModel model,
+        ScheduleInput input,
+        IReadOnlyList<DateOnly> targetDates,
+        IReadOnlyDictionary<(string Employee, DateOnly Date), BoolVar> rests)
+    {
+        var penalties = new List<IntVar>();
+        var monthEnd = targetDates[^1];
+        foreach (var employee in input.DemandMonth.Employees)
+        foreach (var interval in input.RestIntervals.Where(interval => targetDates.Any(date => date >= interval.Start && date <= interval.End)))
+        {
+            var dates = targetDates.Where(date => date >= interval.Start && date <= interval.End && IsEmployedOn(employee, date)).ToArray();
+            var prior = RestUsageBeforeModeledDates(input, employee, interval).SpecialRest;
+            var expected = interval.NationalHolidays.Count(date => date <= (interval.End < monthEnd ? interval.End : monthEnd));
+            var values = Enumerable.Range(0, dates.Length + 1).Select(count => SpecialRestBalancePenaltyValue(prior + count, expected)).ToArray();
+            var count = model.NewIntVar(0, dates.Length, $"special_rest_balance_count_{employee.EmployeeId}_{interval.Start:yyyyMMdd}");
+            var penalty = model.NewIntVar(0, values.Max(), $"special_rest_balance_penalty_{employee.EmployeeId}_{interval.Start:yyyyMMdd}");
+            model.Add(count == LinearExpr.Sum(dates.Select(date => rests[(employee.EmployeeId, date)])));
+            model.AddElement(count, values, penalty);
+            penalties.Add(penalty);
+        }
+        return LinearExpr.Sum(penalties);
+    }
+
+    private static long SpecialRestBalancePenaltyValue(int actual, int expected)
+    {
+        var balance = actual - expected;
+        var penalizedDeviation = balance > 0 ? balance : Math.Max(0, -balance - 1);
+        return (long)penalizedDeviation * penalizedDeviation;
     }
 
     // 非所屬站指派——計算不在員工所屬站工作的日數。
@@ -498,10 +533,10 @@ public static partial class MSolver
     {
         0 => 0,
         1 => 4,
-        2 => 2,
+        2 => 1,
         3 => 0,
         4 => 0,
-        5 => 1,
+        5 => 0,
         _ when length >= 6 => 2 * (length - 4),
         _ => 0
     };

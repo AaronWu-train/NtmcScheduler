@@ -19,8 +19,8 @@ public static partial class TSolver
         var attendance = MeasureAttendanceShortfall(model, input, targetDates, variables);
         var specialty = CountMissingSpecialties(model, input, targetDates, variables);
         var ability = MeasureAbilityShortfall(model, input, targetDates, variables);
-        var monthlyRest = MeasureMonthlyRestDeviation(model, input, targetDates, variables.Rest, false, "monthly_rest");
-        var monthlySpecialRest = MeasureMonthlyRestDeviation(model, input, targetDates, variables.SpecialRest, true, "monthly_special_rest");
+        var monthlyRest = MeasureMonthlyRestDeviation(model, input, targetDates, variables.Rest);
+        var specialRestBalance = MeasureSpecialRestBalance(model, input, targetDates, variables.SpecialRest);
         var workStreak = MeasureWorkStreakPenalties(model, input, targetDates, modelDates, variables);
         var transitionRest = MeasureNightToEarlyRestShortfall(model, input, targetDates, variables);
         var boundaryBalance = MeasureMonthBoundaryRestDifference(model, input, targetDates, variables);
@@ -34,9 +34,9 @@ public static partial class TSolver
             new(2, "StaffingQuality",
                 nonMonthlyShift * 9 + attendance * 9 + specialty * 3 + ability,
                 [("NonMonthlyShift", 9, nonMonthlyShift), ("Attendance", 9, attendance), ("Specialty", 3, specialty), ("Ability", 1, ability)]),
-            new(3, "MonthlyRestDistribution",
-                monthlyRest + monthlySpecialRest,
-                [("MonthlyRest", 1, monthlyRest), ("MonthlySpecialRest", 1, monthlySpecialRest)]),
+            new(3, "RestDistribution",
+                monthlyRest + specialRestBalance,
+                [("MonthlyRest", 1, monthlyRest), ("SpecialRestBalance", 1, specialRestBalance)]),
             new(4, "WorkPatternQuality",
                 workStreak * 3 + transitionRest * 12 + boundaryBalance * 5,
                 [("WorkStreak", 3, workStreak), ("NightToEarlyRest", 12, transitionRest), ("MonthBoundaryRestBalance", 5, boundaryBalance)]),
@@ -136,30 +136,60 @@ public static partial class TSolver
         return LinearExpr.Sum(deficits);
     }
 
-    // 每月休假分布——依到職後的週末與國定假日推導每人的 R/R1 目標。
+    // 每月一般 R 分布——依到職後的週末推導每人的一般 R 目標。
     private static LinearExpr MeasureMonthlyRestDeviation(
         CpModel model,
         ScheduleInput input,
         IReadOnlyList<DateOnly> targetDates,
-        IReadOnlyDictionary<(string Employee, DateOnly Date), BoolVar> rests,
-        bool special,
-        string name)
+        IReadOnlyDictionary<(string Employee, DateOnly Date), BoolVar> rests)
     {
         var penalties = new List<IntVar>();
         foreach (var employee in input.DemandMonth.Employees)
         {
             var activeDates = targetDates.Where(date => IsEmployedOn(employee, date)).ToArray();
-            var target = ExpectedMonthlyRestCount(input, employee, special);
+            var target = ExpectedMonthlyGeneralRestCount(input, employee);
             var maximum = Math.Max(activeDates.Length, target);
-            var count = model.NewIntVar(0, activeDates.Length, $"{name}_count_{employee.EmployeeId}");
-            var deviation = model.NewIntVar(0, maximum, $"{name}_deviation_{employee.EmployeeId}");
-            var penalty = model.NewIntVar(0, (long)maximum * maximum, $"{name}_penalty_{employee.EmployeeId}");
+            var count = model.NewIntVar(0, activeDates.Length, $"monthly_rest_count_{employee.EmployeeId}");
+            var deviation = model.NewIntVar(0, maximum, $"monthly_rest_deviation_{employee.EmployeeId}");
+            var penalty = model.NewIntVar(0, (long)maximum * maximum, $"monthly_rest_penalty_{employee.EmployeeId}");
             model.Add(count == LinearExpr.Sum(activeDates.Select(date => rests[(employee.EmployeeId, date)])));
             model.AddAbsEquality(deviation, count - target);
             model.AddElement(deviation, Enumerable.Range(0, maximum + 1).Select(value => (long)value * value), penalty);
             penalties.Add(penalty);
         }
         return LinearExpr.Sum(penalties);
+    }
+
+    // 八週累積 R1 餘額——每個區間可暫欠一日；超額與其餘欠額平方計分。
+    private static LinearExpr MeasureSpecialRestBalance(
+        CpModel model,
+        ScheduleInput input,
+        IReadOnlyList<DateOnly> targetDates,
+        IReadOnlyDictionary<(string Employee, DateOnly Date), BoolVar> rests)
+    {
+        var penalties = new List<IntVar>();
+        var monthEnd = targetDates[^1];
+        foreach (var employee in input.DemandMonth.Employees)
+        foreach (var interval in input.RestIntervals.Where(interval => targetDates.Any(date => date >= interval.Start && date <= interval.End)))
+        {
+            var dates = targetDates.Where(date => date >= interval.Start && date <= interval.End && IsEmployedOn(employee, date)).ToArray();
+            var prior = RestUsageBeforeModeledDates(input, employee, interval).SpecialRest;
+            var expected = interval.NationalHolidays.Count(date => date <= (interval.End < monthEnd ? interval.End : monthEnd));
+            var values = Enumerable.Range(0, dates.Length + 1).Select(count => SpecialRestBalancePenaltyValue(prior + count, expected)).ToArray();
+            var count = model.NewIntVar(0, dates.Length, $"special_rest_balance_count_{employee.EmployeeId}_{interval.Start:yyyyMMdd}");
+            var penalty = model.NewIntVar(0, values.Max(), $"special_rest_balance_penalty_{employee.EmployeeId}_{interval.Start:yyyyMMdd}");
+            model.Add(count == LinearExpr.Sum(dates.Select(date => rests[(employee.EmployeeId, date)])));
+            model.AddElement(count, values, penalty);
+            penalties.Add(penalty);
+        }
+        return LinearExpr.Sum(penalties);
+    }
+
+    private static long SpecialRestBalancePenaltyValue(int actual, int expected)
+    {
+        var balance = actual - expected;
+        var penalizedDeviation = balance > 0 ? balance : Math.Max(0, -balance - 1);
+        return (long)penalizedDeviation * penalizedDeviation;
     }
 
     // 連續工作區段——計算已結束的實際工作區段；R、R1、R休會結束區段。
@@ -289,7 +319,7 @@ public static partial class TSolver
     {
         0 => 0,
         1 => 4,
-        2 => 2,
+        2 => 1,
         3 => 0,
         4 => 0,
         5 => 1,
