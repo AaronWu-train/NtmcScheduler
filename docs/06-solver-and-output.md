@@ -64,7 +64,8 @@ M 有萬年班表時，以模板加入 partial solution hint
 ## 狀態
 
 - `Optimal`：所有優先組皆已證明最佳。
-- `TimeLimit`：求解時間到；可能帶有已找到的候選。
+- `TimeLimit`：求解時間到；可能帶有已找到的合法候選。候選中的 `ObjectiveScore` 是該 incumbent
+  當下各組分數，不代表每一組皆已證明最佳；目前結果型別不另記錄最佳化進度。
 - `Infeasible`：硬限制無解；本版不做 M 缺班或 T 衝突分析。
 - `InvalidInput`：資料邊界驗證失敗，帶 `Field + Message`。
 

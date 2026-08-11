@@ -50,3 +50,11 @@
 6. Solver 硬限制不可關閉；軟限制依 `tex/main2.tex` 的固定群組做字典序最佳化，群組與權重直接寫在 M/T solver 原始碼（決策 D-21）；M 使用 J1 與合併的 `1000×J4+J5`，T 使用 J1–J5。
 7. 所有時間以台北時間（UTC+8）處理；夜班歸屬其**開始日期**。
 8. `R休` 只可排在目標月的 `R*`，每人輸入數量為上限；未使用數量以權重 1 納入 J1，既有指定休假違反量權重改為 3。它與 R1 同樣屬實際休假但不計入 R/R1 月統計或 56 日額度，也不重置連續七日的一般 R 規則。M 的休假、跨站支援與早／午／夜班數公平性一律在所屬三站群組內比較。
+
+## 實作與驗證備忘
+
+- M/T solver 維持分離、明白的 source-as-spec partial 檔；可接受少量重複，不新增會遮蔽公式的 catalog、definition、encoder、Rule ID map 或規則 DI。
+- 修改 CSV 或範例 fixture 前先看 `git status`、staged 與 unstaged diff；已確認的 staged 格式優先。跨月資料應核對本月 `OpeningUsage` 與上月 `ClosingUsage`，不得靠放寬驗證掩蓋 fixture 錯誤，並保留原始檔案編碼。
+- 建置與測試使用 `NtmScheduler.slnx`。Solver 測試刻意不平行執行，完整 M/T 案例可能需一分鐘以上；不得只為縮短測試而弱化規則、斷言或求解時限。
+- sandbox 若出現 `SocketException (13): Permission denied` 或 named-pipe 錯誤，先在允許本機 IPC 的環境重跑；此錯誤本身不是程式失敗的結論。
+- `TimeLimit` 與 `Infeasible` 必須分開回報；`TimeLimit` 可帶合法 incumbent，而目前 `ObjectiveScore` 不記錄各優先組是否已證明最佳，詳見 `docs/06-solver-and-output.md`。
