@@ -87,7 +87,7 @@ public static class Program
 
     private static void Print(SolveStatus status, IReadOnlyList<InputError> errors, IReadOnlyList<IReadOnlyList<ObjectiveScore>> candidates)
     {
-        Console.WriteLine($"狀態：{status}");
+        Console.WriteLine($"狀態：{StatusText(status)}");
         foreach (var error in errors) Console.Error.WriteLine($"{error.Field}: {error.Message}");
         Console.WriteLine($"候選數量：{candidates.Count}");
         for (var index = 0; index < candidates.Count; index++)
@@ -95,12 +95,91 @@ public static class Program
             Console.WriteLine($"候選 {index + 1}：");
             foreach (var objective in candidates[index])
             {
-                Console.WriteLine($"  Priority {objective.Priority} {objective.Name}: {objective.Value}");
-                foreach (var component in objective.Components.Where(component => component.Value != 0))
-                    Console.WriteLine($"    {component.Name}: {component.Value} × {component.Weight} = {component.WeightedValue}");
+                Console.WriteLine($"  優先層級 {objective.Priority}－{ObjectiveText(objective.Name)}：總加權分 {objective.Value}");
+                foreach (var component in objective.Components)
+                    Console.WriteLine($"    {ComponentText(component.Name)}：違反量 {component.Value}（{ComponentDescription(component.Name)}），權重 {component.Weight}，加權分 {component.WeightedValue}");
             }
         }
     }
+
+    private static string StatusText(SolveStatus status) => status switch
+    {
+        SolveStatus.Optimal => "最佳化完成",
+        SolveStatus.TimeLimit => "時間已用完（目前結果未證明最佳）",
+        SolveStatus.Infeasible => "硬性規則無解",
+        SolveStatus.InvalidInput => "輸入資料無效",
+        _ => status.ToString()
+    };
+
+    private static string ObjectiveText(string name) => name switch
+    {
+        "RequestedRest" => "指定休假",
+        "ScheduleQuality" => "綜合排班品質",
+        "Fairness" => "公平性",
+        "StaffingQuality" => "班組人力品質",
+        "MonthlyRestDistribution" => "每月休假分布",
+        "WorkPatternQuality" => "工作型態品質",
+        "RestFairness" => "休假公平",
+        _ => name
+    };
+
+    private static string ComponentText(string name) => name switch
+    {
+        "RequestedRest" => "未滿足指定休假",
+        "UnusedLeaveRest" => "未使用指定 R休額度",
+        "ExternalStaffing" => "外援人力",
+        "MonthlyRest" => "每月一般 R 偏差",
+        "MonthlySpecialRest" => "每月 R1 偏差",
+        "NonHomeStation" => "非所屬站指派",
+        "WorkStreak" => "連續工作區段",
+        "MixedShiftWorkStreak" => "工作區段混合班型",
+        "NightRestEarly" => "夜休早",
+        "NightRestAfternoon" => "夜休午",
+        "ShiftChangeWithoutRest" => "未休假直接換班",
+        "NonPreferredRotation" => "非偏好輪轉",
+        "WeekdayRestFairness" => "平日休假公平",
+        "HolidayRestFairness" => "假日休假公平",
+        "SupportFairness" => "跨站支援公平",
+        "EarlyShiftFairness" => "早班次數公平",
+        "AfternoonShiftFairness" => "午班次數公平",
+        "NightShiftFairness" => "夜班次數公平",
+        "NonMonthlyShift" => "月班別不一致",
+        "Attendance" => "班組出勤不足",
+        "Specialty" => "專業缺席",
+        "Ability" => "高能力人員不足",
+        "NightToEarlyRest" => "跨月夜轉早休假不足",
+        "MonthBoundaryRestBalance" => "月交界休假不平衡",
+        _ => name
+    };
+
+    private static string ComponentDescription(string name) => name switch
+    {
+        "RequestedRest" => "R* 最後未排成 R、R1 或 R休的格數",
+        "UnusedLeaveRest" => "各人指定 R休上限減去實際 R休數的合計",
+        "ExternalStaffing" => "目標月使用外援的總人次",
+        "MonthlyRest" => "各人實際 R 數與當月週末日目標差額平方的合計",
+        "MonthlySpecialRest" => "各人實際 R1 數與當月國定假日目標差額平方的合計",
+        "NonHomeStation" => "員工不在所屬站工作的總日數",
+        "WorkStreak" => "各已結束連續工作區段依長度罰分表計算後的合計",
+        "MixedShiftWorkStreak" => "包含兩種以上正常班型的已結束工作區段數",
+        "NightRestEarly" => "夜班、休假、早班三日組合的次數",
+        "NightRestAfternoon" => "夜班、休假、午班三日組合的次數",
+        "ShiftChangeWithoutRest" => "兩個正常班之間沒有休假且班別不同的次數",
+        "NonPreferredRotation" => "班別改變不符合早、午、夜循環方向的次數",
+        "WeekdayRestFairness" => "各比較群組內平日休假最多與最少者差額的合計",
+        "HolidayRestFairness" => "各比較群組內假日休假最多與最少者差額的合計",
+        "SupportFairness" => "各三站群組內跨站支援最多與最少者差額的合計",
+        "EarlyShiftFairness" => "各三站群組的人數乘以各人早班數平方和，再減早班數總和平方的合計",
+        "AfternoonShiftFairness" => "各三站群組的人數乘以各人午班數平方和，再減午班數總和平方的合計",
+        "NightShiftFairness" => "各三站群組的人數乘以各人夜班數平方和，再減夜班數總和平方的合計",
+        "NonMonthlyShift" => "正常工作班別不同於當月指定班別的格數",
+        "Attendance" => "每日各班出勤低於該月班組半數的缺額合計",
+        "Specialty" => "每日各班完全無人出勤的應有專業組數",
+        "Ability" => "每日各班能力 4 至 5 人員不足兩人的罰分合計；一人計 1、無人計 10",
+        "NightToEarlyRest" => "上月最後夜班至本月首次早班不足兩日休假的缺額合計",
+        "MonthBoundaryRestBalance" => "夜轉早人員在上月末日與本月首日的休假人數差",
+        _ => "此項規則的計算結果"
+    };
 
     private static bool DetectT(MonthlySchedule schedule)
     {
