@@ -105,7 +105,7 @@ public static class Program
     private static string StatusText(SolveStatus status) => status switch
     {
         SolveStatus.Optimal => "最佳化完成",
-        SolveStatus.TimeLimit => "時間已用完（目前結果未證明最佳）",
+        SolveStatus.TimeLimit => "TLE",
         SolveStatus.Infeasible => "硬性規則無解",
         SolveStatus.InvalidInput => "輸入資料無效",
         _ => status.ToString()
@@ -115,9 +115,9 @@ public static class Program
     {
         "RequestedRest" => "指定休假",
         "ScheduleQuality" => "綜合排班品質",
-        "Fairness" => "公平性",
+        "Fairness" => "站務配置與公平性",
         "StaffingQuality" => "班組人力品質",
-        "MonthlyRestDistribution" => "每月休假分布",
+        "RestDistribution" => "休假分布",
         "WorkPatternQuality" => "工作型態品質",
         "RestFairness" => "休假公平",
         _ => name
@@ -129,7 +129,7 @@ public static class Program
         "UnusedLeaveRest" => "未使用指定 R休額度",
         "ExternalStaffing" => "外援人力",
         "MonthlyRest" => "每月一般 R 偏差",
-        "MonthlySpecialRest" => "每月 R1 偏差",
+        "SpecialRestBalance" => "八週累積 R1 餘額",
         "NonHomeStation" => "非所屬站指派",
         "WorkStreak" => "連續工作區段",
         "MixedShiftWorkStreak" => "工作區段混合班型",
@@ -156,9 +156,9 @@ public static class Program
     {
         "RequestedRest" => "R* 最後未排成 R、R1 或 R休的格數",
         "UnusedLeaveRest" => "各人指定 R休上限減去實際 R休數的合計",
-        "ExternalStaffing" => "目標月使用外援的總人次",
+        "ExternalStaffing" => "目標月外援總人次超過 70 的部分",
         "MonthlyRest" => "各人實際 R 數與當月週末日目標差額平方的合計",
-        "MonthlySpecialRest" => "各人實際 R1 數與當月國定假日目標差額平方的合計",
+        "SpecialRestBalance" => "各人八週區間截至月底的累積 R1 超額，或超過一日容許量的欠額平方合計",
         "NonHomeStation" => "員工不在所屬站工作的總日數",
         "WorkStreak" => "各已結束連續工作區段依長度罰分表計算後的合計",
         "MixedShiftWorkStreak" => "包含兩種以上正常班型的已結束工作區段數",
