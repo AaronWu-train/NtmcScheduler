@@ -8,6 +8,12 @@ MSolveResult MSolver.Solve(
     SolverOptions? options = null,
     CancellationToken cancellationToken = default);
 
+MSolveResult MSolver.Solve(
+    ScheduleInput input,
+    MPerpetualSchedule perpetualSchedule,
+    SolverOptions? options = null,
+    CancellationToken cancellationToken = default);
+
 TSolveResult TSolver.Solve(
     ScheduleInput input,
     SolverOptions? options = null,
@@ -26,7 +32,9 @@ M 與 T 完全分開建模，各自保留 `Main / Input / Rules` 三個 partial 
 複製並驗證 ScheduleInput
 建立目標月 + 7 日的 CP-SAT 變數
 加入硬限制
+M 有萬年班表時，以模板加入 partial solution hint
 先取得一份符合硬限制的初始解
+清除模板 hint，改以初始可行解加入 incumbent hint
 建立具名軟規則與權重
 逐 Priority 字典序求解
 搜尋最多 3 份差異候選
@@ -38,6 +46,7 @@ M 與 T 完全分開建模，各自保留 `Main / Input / Rules` 三個 partial 
 ## 字典序求解
 
 1. 在同一總時限內先求一份只符合硬限制的初始解。
+   M 有萬年班表時，只對模板非空白格使用 `AddHint`；空白格不提供 hint。初始搜尋使用 `repair_hint` 與單 worker；hint 不是限制，不能保證候選遵循模板。清除模板後的各 Priority 搜尋仍使用 `SolverOptions.WorkerCount`。
 2. 對當前 Priority 設定 `Minimize`。
 3. 只有 CP-SAT 回傳 `Optimal` 時，加入 `objective == optimum`。
 4. 繼續下一 Priority。
@@ -77,7 +86,7 @@ M 候選另包含外派日期、車站、班別與人數。
 dotnet run --project src/NtmScheduler.Cli
 ```
 
-CLI 依序詢問目標月、上月 CSV、本月 CSV、八週區間 CSV 與非常態班型 CSV。CSV 只由 CLI 解析；solver 收到的是 `MonthlySchedule`、`RestInterval` 與 `NonStandardShiftTable` typed snapshot。CLI 依能力與 T 月班別欄自動判斷 M/T；Ctrl+C 傳入 cancellation token。
+CLI 依序詢問目標月、上月 CSV、本月 CSV、八週區間 CSV 與非常態班型 CSV；偵測為 M 後再詢問可留白的八週萬年班表 CSV。CSV 只由 CLI 解析；solver 收到 typed snapshot。Ctrl+C 傳入 cancellation token。
 
 輸出為目前目錄的 `candidate-N.csv`。M 有外派時另寫同編號的 `candidate-N-external.csv`。若預定編號已有主檔或外派檔，CLI 不詢問也不覆寫，整批改用下一段連續可用編號。
 

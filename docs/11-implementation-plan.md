@@ -36,9 +36,9 @@ M 與 T 不共用任何建模邏輯。每個 solver 只有一個 private `Variab
 
 ## CLI 責任
 
-`ScheduleCsv.cs` 是 CSV 邊界：讀寫月班表，讀取八週區間與非常態班型，並把文字格值轉為 solver contracts。`Program.cs` 只做：
+`ScheduleCsv.cs` 是 CSV 邊界：讀寫月班表，讀取八週區間、M 萬年班表與非常態班型，並把文字格值轉為 solver contracts。`Program.cs` 只做：
 
-1. 詢問五個輸入。
+1. 詢問五個共用輸入；M 再詢問可留白的萬年班表 CSV。
 2. 建立 `ScheduleInput`。
 3. 依能力／T 月班別判斷 M 或 T。
 4. 傳入 Ctrl+C cancellation token。
@@ -52,7 +52,7 @@ CLI 不包含業務規則，solver 不知道 CSV 路徑。
 
 - typed input 與 InvalidInput 邊界。
 - M/T 至少一個可求解主要案例。
-- CSV round-trip、BOM、quoted field、非常態班型、跨午夜 X 與非法格值。
+- CSV round-trip、舊表頭相容、M 萬年班表、BOM、quoted field、非常態班型、跨午夜 X 與非法格值。
 - 新進人員、A/B 區間累積、八週區間驗證。
 - timeout、cancellation、CLI redirected stdin 與 examples smoke test。
 

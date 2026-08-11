@@ -214,7 +214,7 @@ M 模型的輸入包括：
 \]
 允許外派的車站為
 \[
-  \mathcal{L}^{ext}=\{\mathrm{LB02},\mathrm{LB04},\mathrm{LB11}\}.
+  \mathcal{L}^{ext}=\{\mathrm{LB02},\mathrm{LB04},\mathrm{LB09},\mathrm{LB11}\}.
 \]
 
 \subsubsection{Parameters}
@@ -466,17 +466,23 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 \subsubsection{\texorpdfstring{$J^M_4$}{J4}：綜合排班品質}
 
 \paragraph{外援人力（\texttt{MS01}）}
-令目標月外援總人次為
+令原三站與 LB09 的目標月外援總人次分別為
 \[
-  A^{M,ext}
+  A^{M,legacy}
   =
   \sum_{d\in\mathcal{D}^{\mathrm{tar}}}
-  \sum_{l\in\mathcal{L}^{ext}}
+  \sum_{l\in\{\mathrm{LB02},\mathrm{LB04},\mathrm{LB11}\}}
   \sum_{s\in\mathcal{S}}a_{dls}.
 \]
-前 70 人次不計違反量，故
 \[
-  \Phi^{M,ext}=\max\{0,A^{M,ext}-70\}.
+  A^{M,LB09}
+  =
+  \sum_{d\in\mathcal{D}^{\mathrm{tar}}}
+  \sum_{s\in\mathcal{S}}a_{d,\mathrm{LB09},s}.
+\]
+原三站前 70 人次不計違反量；LB09 每一人次立即計算，故
+\[
+  \Phi^{M,ext}=\max\{0,A^{M,legacy}-70\}+A^{M,LB09}.
 \]
 
 \paragraph{每月一般 R 分布（\texttt{CS02}）}
@@ -1220,9 +1226,19 @@ T 模型定義五個目標群組：
   \left(J^T_1,J^T_2,J^T_3,J^T_4,J^T_5\right).
 \]
 
+\section{M Perpetual Schedule Hint}
+
+M 可選擇提供 56 日萬年班表。模板第 1 日對應每個 16R 八週區間的第一天；
+模板日可留白，留白日不提供 hint。對未固定且非指定休假的建模日，
+模板非空白的一般 R 或正常工作只以
+\texttt{CpModel.AddHint} 提示對應變數為 1。初次 hard-only 搜尋以單 worker 使用
+\texttt{repair\_hint}，hint 不形成限制。取得可行解後先以
+\texttt{ClearHints} 清除模板，再把完整可行解加入 hint，才建立並依序最佳化各目標群組。
+因此上月實際班表與模板不一致不會使模型無解，最終候選也不保證遵循模板。
+
 \section{Alternative Candidates}
 
-只有在五個目標群組皆證明為最優後，系統才搜尋替代候選。每個模型最多輸出
+只有在該模型的所有目標群組皆證明為最優後，系統才搜尋替代候選。每個模型最多輸出
 三份候選；所有已固定的 \(J_1,\ldots,J_5\) 最優值維持不變。
 
 候選差異只比較目標月份中真正由求解器決定的 \((e,d)\) 格。固定正常班、

@@ -106,6 +106,7 @@ public static partial class TSolver
             if (string.IsNullOrWhiteSpace(employee.Affiliation)) errors.Add(new($"{prefix}.Employees", $"Employee '{employee.EmployeeId}' affiliation cannot be blank."));
             if (employee.Ability is < 1 or > 5) errors.Add(new($"{prefix}.Employees", $"Employee '{employee.EmployeeId}' ability must be between 1 and 5."));
             if (employee.MonthlyShift is null) errors.Add(new($"{prefix}.Employees", $"Employee '{employee.EmployeeId}' needs a T monthly shift."));
+            if (employee.PerpetualScheduleId is not null) errors.Add(new($"{prefix}.PerpetualScheduleId", $"T employee '{employee.EmployeeId}' cannot use an M perpetual schedule."));
             if (employee.EmploymentStartDate is { } start && start > monthEnd) errors.Add(new($"{prefix}.Employees", $"Employee '{employee.EmployeeId}' starts after this schedule month."));
 
             foreach (var pair in employee.Assignments)

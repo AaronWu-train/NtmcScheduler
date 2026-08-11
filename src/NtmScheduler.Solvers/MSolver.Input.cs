@@ -37,13 +37,36 @@ public static partial class MSolver
     {
         Employees = schedule.Employees.Select(employee => employee with
         {
+            PerpetualScheduleId = string.IsNullOrWhiteSpace(employee.PerpetualScheduleId) ? null : employee.PerpetualScheduleId.Trim(),
             Assignments = employee.Assignments.ToDictionary(pair => pair.Key, pair => pair.Value)
         }).ToArray()
     };
 
+    private static ScheduleInput InheritPerpetualScheduleIds(ScheduleInput input)
+    {
+        var previous = input.PreviousMonth.Employees.ToDictionary(employee => employee.EmployeeId, StringComparer.Ordinal);
+        return input with
+        {
+            DemandMonth = input.DemandMonth with
+            {
+                Employees = input.DemandMonth.Employees.Select(employee =>
+                    employee.PerpetualScheduleId is null && previous.GetValueOrDefault(employee.EmployeeId)?.PerpetualScheduleId is { } inherited
+                        ? employee with { PerpetualScheduleId = inherited }
+                        : employee).ToArray()
+            }
+        };
+    }
+
+    private static MPerpetualSchedule? CopyPerpetualSchedule(MPerpetualSchedule? schedule) => schedule is null
+        ? null
+        : new(schedule.Patterns.ToDictionary(
+            pattern => pattern.Key,
+            pattern => (IReadOnlyList<ScheduleCell?>)pattern.Value.ToArray(),
+            StringComparer.Ordinal));
+
     // Validation
 
-    private static List<InputError> ValidateInput(ScheduleInput input, SolverOptions options)
+    private static List<InputError> ValidateInput(ScheduleInput input, MPerpetualSchedule? perpetualSchedule, SolverOptions options)
     {
         var errors = new List<InputError>();
         var monthStart = input.DemandMonth.MonthStart;
@@ -60,6 +83,7 @@ public static partial class MSolver
         var previous = UniqueEmployees(input.PreviousMonth, "PreviousMonth.Employees", errors);
         ValidateScheduleRows(input, input.PreviousMonth, true, errors);
         ValidateScheduleRows(input, input.DemandMonth, false, errors);
+        ValidatePerpetualSchedule(input, perpetualSchedule, errors);
 
         foreach (var employee in current.Values)
         {
@@ -82,6 +106,44 @@ public static partial class MSolver
 
         ValidateFixedWorkIntervals(input, errors);
         return errors;
+    }
+
+    private static void ValidatePerpetualSchedule(ScheduleInput input, MPerpetualSchedule? schedule, List<InputError> errors)
+    {
+        if (schedule is null) return;
+        foreach (var pattern in schedule.Patterns)
+        {
+            if (string.IsNullOrWhiteSpace(pattern.Key))
+                errors.Add(new(nameof(MPerpetualSchedule.Patterns), "Pattern ID cannot be blank."));
+            if (pattern.Value.Count != 56)
+                errors.Add(new(nameof(MPerpetualSchedule.Patterns), $"Pattern '{pattern.Key}' must contain exactly 56 days."));
+            foreach (var cell in pattern.Value)
+            {
+                if (cell is null) continue;
+                var validRest = cell.Kind == AssignmentKind.Rest && !cell.RequestedRest && cell.Station is null && cell.Shift is null &&
+                                cell.EventStart is null && cell.EventEnd is null;
+                var validWork = cell.Kind == AssignmentKind.Work && cell.Station is not null && cell.Shift is not null &&
+                                !cell.RequestedRest && cell.EventStart is null && cell.EventEnd is null &&
+                                Stations.Contains(cell.Station) && RequiredHeadcount(cell.Station, cell.Shift.Value) > 0;
+                if (!validRest && !validWork)
+                {
+                    errors.Add(new(nameof(MPerpetualSchedule.Patterns), $"Pattern '{pattern.Key}' contains an invalid M assignment."));
+                    break;
+                }
+            }
+        }
+
+        foreach (var employee in input.DemandMonth.Employees.Where(employee => employee.PerpetualScheduleId is not null))
+        {
+            if (!schedule.Patterns.TryGetValue(employee.PerpetualScheduleId!, out var pattern))
+            {
+                errors.Add(new("DemandMonth.PerpetualScheduleId", $"Employee '{employee.EmployeeId}' references unknown pattern '{employee.PerpetualScheduleId}'."));
+                continue;
+            }
+            if (Stations.Contains(employee.Affiliation) &&
+                pattern.Any(cell => cell?.Kind == AssignmentKind.Work && !StationsInSameGroup(employee.Affiliation).Contains(cell.Station)))
+                errors.Add(new("DemandMonth.PerpetualScheduleId", $"Pattern '{employee.PerpetualScheduleId}' contains work outside employee '{employee.EmployeeId}' station group."));
+        }
     }
 
     private static Dictionary<string, EmployeeMonthlySchedule> UniqueEmployees(MonthlySchedule schedule, string field, List<InputError> errors)
@@ -256,6 +318,9 @@ public static partial class MSolver
 
     private static RestInterval RestIntervalContaining(ScheduleInput input, DateOnly date) =>
         input.RestIntervals.Single(interval => date >= interval.Start && date <= interval.End);
+
+    private static int PerpetualScheduleDayIndex(ScheduleInput input, DateOnly date) =>
+        date.DayNumber - RestIntervalContaining(input, date).Start.DayNumber;
 
     private static RestUsage OpeningRestUsage(ScheduleInput input, EmployeeMonthlySchedule employee)
     {

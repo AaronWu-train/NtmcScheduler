@@ -72,6 +72,165 @@ public sealed class MSolverTests
     }
 
     [TestMethod]
+    public void Csv_MPerpetualScheduleParsesAndRejectsInvalidRows()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"ntm-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var path = Path.Combine(root, "m-perpetual.csv");
+            var header = string.Join(',', new[] { "萬年班表" }.Concat(Enumerable.Range(1, 56).Select(value => value.ToString())));
+            var cells = Enumerable.Range(0, 56).Select(day => day % 7 is 0 or 4 ? "R" : day % 2 == 0 ? "1早" : "LB01小").ToArray();
+            cells[2] = "";
+            var row = string.Join(',', new[] { "LB01-1" }.Concat(cells));
+            File.WriteAllText(path, header + Environment.NewLine + row + Environment.NewLine);
+
+            var schedule = ScheduleCsv.ReadMPerpetualSchedule(path);
+
+            Assert.HasCount(56, schedule.Patterns["LB01-1"]);
+            Assert.AreEqual(AssignmentKind.Rest, schedule.Patterns["LB01-1"][0]!.Kind);
+            Assert.AreEqual(("LB01", Shift.Afternoon), (schedule.Patterns["LB01-1"][1]!.Station, schedule.Patterns["LB01-1"][1]!.Shift));
+            Assert.IsNull(schedule.Patterns["LB01-1"][2]);
+
+            File.AppendAllText(path, row + Environment.NewLine);
+            Assert.ThrowsExactly<ScheduleCsvException>(() => ScheduleCsv.ReadMPerpetualSchedule(path));
+            cells[0] = "R1";
+            File.WriteAllText(path, header + Environment.NewLine + string.Join(',', new[] { "LB01-1" }.Concat(cells)) + Environment.NewLine);
+            Assert.ThrowsExactly<ScheduleCsvException>(() => ScheduleCsv.ReadMPerpetualSchedule(path));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public void Csv_MonthlyPerpetualScheduleIdRoundTripsAndLegacyRemainsReadable()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"ntm-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var schedule = ValidInput().DemandMonth;
+            var employee = schedule.Employees[0] with { PerpetualScheduleId = "LB01-1" };
+            schedule = schedule with { Employees = [employee] };
+            var path = Path.Combine(root, "schedule.csv");
+            ScheduleCsv.WriteMonthly(path, schedule);
+            Assert.AreEqual("LB01-1", ScheduleCsv.ReadMonthly(path, schedule.MonthStart).Employees[0].PerpetualScheduleId);
+
+            var legacy = File.ReadAllLines(path)
+                .Select(line => string.Join(',', line.Split(',').SkipLast(1)))
+                .ToArray();
+            File.WriteAllLines(path, legacy);
+            Assert.IsNull(ScheduleCsv.ReadMonthly(path, schedule.MonthStart).Employees[0].PerpetualScheduleId);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("2026-07-20", 0)]
+    [DataRow("2026-09-13", 55)]
+    [DataRow("2026-09-14", 0)]
+    public void PerpetualScheduleDayIndexStartsAtEachRestInterval(string dateText, int expected)
+    {
+        var method = typeof(MSolver).GetMethod("PerpetualScheduleDayIndex", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        Assert.AreEqual(expected, method.Invoke(null, [ValidInput(), DateOnly.Parse(dateText)]));
+    }
+
+    [TestMethod]
+    public void Solve_PerpetualScheduleIdInheritsAndConflictingHintRemainsNonBinding()
+    {
+        var input = ValidInput();
+        var employeeId = input.DemandMonth.Employees[0].EmployeeId;
+        input = input with
+        {
+            PreviousMonth = input.PreviousMonth with
+            {
+                Employees = input.PreviousMonth.Employees.Select(employee => employee.EmployeeId == employeeId
+                    ? employee with { PerpetualScheduleId = "LB01-1" }
+                    : employee).ToArray()
+            }
+        };
+        ScheduleCell?[] pattern = Enumerable.Range(0, 56)
+            .Select(_ => new ScheduleCell { Kind = AssignmentKind.Rest })
+            .ToArray();
+        pattern[0] = null;
+
+        var result = MSolver.Solve(input, new MPerpetualSchedule(new Dictionary<string, IReadOnlyList<ScheduleCell?>>
+        {
+            ["LB01-1"] = pattern
+        }), new SolverOptions { TimeLimit = TimeSpan.FromSeconds(10) });
+
+        Assert.AreNotEqual(SolveStatus.InvalidInput, result.Status, string.Join(Environment.NewLine, result.Errors));
+        Assert.AreNotEqual(SolveStatus.Infeasible, result.Status);
+        Assert.IsGreaterThanOrEqualTo(1, result.Candidates.Count);
+        Assert.AreEqual("LB01-1", result.Candidates[0].Schedule.Employees.Single(employee => employee.EmployeeId == employeeId).PerpetualScheduleId);
+    }
+
+    [TestMethod]
+    public void Solve_PerpetualScheduleRejectsUnknownAndCrossGroupPatterns()
+    {
+        var input = ValidInput();
+        var employee = input.DemandMonth.Employees[0] with { PerpetualScheduleId = "LB01-1" };
+        input = input with { DemandMonth = input.DemandMonth with { Employees = [employee, .. input.DemandMonth.Employees.Skip(1)] } };
+
+        var unknown = MSolver.Solve(input, new MPerpetualSchedule(new Dictionary<string, IReadOnlyList<ScheduleCell?>>()));
+        Assert.AreEqual(SolveStatus.InvalidInput, unknown.Status);
+        Assert.IsTrue(unknown.Errors.Any(error => error.Field == "DemandMonth.PerpetualScheduleId"));
+
+        var crossGroup = Enumerable.Range(0, 56)
+            .Select(_ => new ScheduleCell { Kind = AssignmentKind.Work, Station = "LB04", Shift = Shift.Early })
+            .ToArray();
+        var invalid = MSolver.Solve(input, new MPerpetualSchedule(new Dictionary<string, IReadOnlyList<ScheduleCell?>>
+        {
+            ["LB01-1"] = crossGroup
+        }));
+        Assert.AreEqual(SolveStatus.InvalidInput, invalid.Status);
+        Assert.IsTrue(invalid.Errors.Any(error => error.Field == "DemandMonth.PerpetualScheduleId"));
+    }
+
+    [TestMethod]
+    public void Solve_Lb09ExternalStaffingIsAllowedAndImmediatelyPenalized()
+    {
+        var input = ValidInput();
+        var date = input.DemandMonth.MonthStart;
+        var group = input.DemandMonth.Employees.Where(employee => employee.Affiliation == "LB07").ToArray();
+        var fixedWork = new (string Station, Shift Shift)[]
+        {
+            ("LB07", Shift.Early), ("LB07", Shift.Afternoon), ("LB08", Shift.Early),
+            ("LB08", Shift.Afternoon), ("LB08", Shift.Night), ("LB07", Shift.Early),
+            ("LB07", Shift.Early), ("LB07", Shift.Early), ("LB07", Shift.Early), ("LB07", Shift.Early)
+        };
+        input = input with
+        {
+            DemandMonth = input.DemandMonth with
+            {
+                Employees = input.DemandMonth.Employees.Select(employee =>
+                {
+                    var index = Array.IndexOf(group, employee);
+                    return index < 0 ? employee : employee with
+                    {
+                        Assignments = new Dictionary<DateOnly, ScheduleCell>(employee.Assignments)
+                        {
+                            [date] = new() { Kind = AssignmentKind.Work, Station = fixedWork[index].Station, Shift = fixedWork[index].Shift }
+                        }
+                    };
+                }).ToArray()
+            }
+        };
+
+        var result = MSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(10) });
+
+        Assert.IsGreaterThanOrEqualTo(1, result.Candidates.Count);
+        var candidate = result.Candidates[0];
+        Assert.AreEqual(2, candidate.ExternalAssignments.Where(item => item.Date == date && item.Station == "LB09").Sum(item => item.Count));
+        Assert.IsGreaterThanOrEqualTo(2, candidate.Objectives.SelectMany(objective => objective.Components).Single(component => component.Name == "ExternalStaffing").Value);
+    }
+
+    [TestMethod]
     public void Solve_MonthlySchedules_ReturnsNamedCandidate()
     {
         var input = ValidInput();

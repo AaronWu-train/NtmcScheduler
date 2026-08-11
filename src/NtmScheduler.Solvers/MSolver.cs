@@ -18,23 +18,42 @@ public static partial class MSolver
     ];
 
     private static readonly Shift[] Shifts = [Shift.Early, Shift.Afternoon, Shift.Night];
-    private static readonly HashSet<string> ExternalStations = ["LB02", "LB04", "LB11"];
+    private static readonly HashSet<string> ExternalStations = ["LB02", "LB04", "LB09", "LB11"];
     private static readonly HashSet<string> NightStations = ["LB01", "LB06", "LB08", "LB12"];
 
     /// <summary>Validates input, optimizes each named objective in priority order, and returns up to three candidates.</summary>
     public static MSolveResult Solve(
         ScheduleInput input,
         SolverOptions? options = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        SolveCore(input, null, options, cancellationToken);
+
+    public static MSolveResult Solve(
+        ScheduleInput input,
+        MPerpetualSchedule perpetualSchedule,
+        SolverOptions? options = null,
+        CancellationToken cancellationToken = default) =>
+        SolveCore(input, perpetualSchedule, options, cancellationToken);
+
+    private static MSolveResult SolveCore(
+        ScheduleInput input,
+        MPerpetualSchedule? perpetualSchedule,
+        SolverOptions? options,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         options ??= new SolverOptions();
         if (input is null) return new(SolveStatus.InvalidInput, [], [new(nameof(input), "ScheduleInput is required.")]);
 
         var missing = FindMissingCollections(input);
+        if (perpetualSchedule is not null && perpetualSchedule.Patterns is null)
+            missing.Add(new(nameof(MPerpetualSchedule.Patterns), "Patterns is required."));
+        else if (perpetualSchedule is not null && perpetualSchedule.Patterns.Any(pattern => pattern.Value is null))
+            missing.Add(new(nameof(MPerpetualSchedule.Patterns), "Every pattern is required."));
         if (missing.Count > 0) return new(SolveStatus.InvalidInput, [], missing);
-        input = CopyInput(input);
-        var errors = ValidateInput(input, options);
+        input = InheritPerpetualScheduleIds(CopyInput(input));
+        perpetualSchedule = CopyPerpetualSchedule(perpetualSchedule);
+        var errors = ValidateInput(input, perpetualSchedule, options);
         if (errors.Count > 0) return new(SolveStatus.InvalidInput, [], errors);
 
         var targetDates = TargetMonthDates(input).ToArray();
@@ -43,6 +62,7 @@ public static partial class MSolver
 
         var variables = CreateDecisionVariables(model, input, modelDates);
         AddHardConstraints(model, input, modelDates, variables);
+        var hasPerpetualHints = AddPerpetualScheduleHints(model, input, perpetualSchedule, modelDates, variables);
 
         var solver = new CpSolver();
         using var registration = cancellationToken.Register(solver.StopSearch);
@@ -50,7 +70,7 @@ public static partial class MSolver
         var candidates = new List<MCandidate>(3);
         MCandidate? current = null;
 
-        if (!ConfigureRemainingSearchTime(solver, options, stopwatch))
+        if (!ConfigureRemainingSearchTime(solver, options, stopwatch, hasPerpetualHints))
             return new(SolveStatus.TimeLimit, candidates, []);
         var feasibilityStatus = solver.Solve(model);
         cancellationToken.ThrowIfCancellationRequested();
@@ -59,6 +79,7 @@ public static partial class MSolver
         if (feasibilityStatus is not (CpSolverStatus.Optimal or CpSolverStatus.Feasible))
             return new(SolveStatus.TimeLimit, candidates, []);
         current = ReadCandidate(solver, input, targetDates, variables, []);
+        model.ClearHints();
         AddSolutionHints(model, solver, variables);
         var objectives = BuildObjectiveGroups(model, input, targetDates, modelDates, variables);
 
@@ -105,6 +126,32 @@ public static partial class MSolver
             model.AddHint(variable, solver.Value(variable));
         foreach (var variable in variables.External.Values)
             model.AddHint(variable, solver.Value(variable));
+    }
+
+    private static bool AddPerpetualScheduleHints(
+        CpModel model,
+        ScheduleInput input,
+        MPerpetualSchedule? perpetualSchedule,
+        IReadOnlyList<DateOnly> dates,
+        ModelVariables variables)
+    {
+        if (perpetualSchedule is null) return false;
+        var added = false;
+        foreach (var employee in input.DemandMonth.Employees.Where(employee => employee.PerpetualScheduleId is not null))
+        {
+            var pattern = perpetualSchedule.Patterns[employee.PerpetualScheduleId!];
+            foreach (var date in dates.Where(date => IsEmployedOn(employee, date) && !employee.Assignments.ContainsKey(date)))
+            {
+                var cell = pattern[PerpetualScheduleDayIndex(input, date)];
+                if (cell is null) continue;
+                if (cell.Kind == AssignmentKind.Rest)
+                    model.AddHint(variables.Rest[(employee.EmployeeId, date)], 1);
+                else
+                    model.AddHint(variables.Work[(employee.EmployeeId, date, cell.Station!, cell.Shift!.Value)], 1);
+                added = true;
+            }
+        }
+        return added;
     }
 
     // Candidate generation
@@ -235,13 +282,14 @@ public static partial class MSolver
     }
 
     // Applies the remaining global time budget to the next CP-SAT search.
-    private static bool ConfigureRemainingSearchTime(CpSolver solver, SolverOptions options, Stopwatch stopwatch)
+    private static bool ConfigureRemainingSearchTime(CpSolver solver, SolverOptions options, Stopwatch stopwatch, bool repairHint = false)
     {
         var remaining = options.TimeLimit - stopwatch.Elapsed;
         if (remaining <= TimeSpan.Zero) return false;
+        var workers = repairHint ? 1 : options.WorkerCount;
         solver.StringParameters = string.Create(
             CultureInfo.InvariantCulture,
-            $"max_time_in_seconds:{remaining.TotalSeconds} random_seed:{options.RandomSeed} num_search_workers:{options.WorkerCount}");
+            $"max_time_in_seconds:{remaining.TotalSeconds} random_seed:{options.RandomSeed} num_search_workers:{workers}{(repairHint ? " repair_hint:true" : "")}");
         return true;
     }
 

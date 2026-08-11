@@ -33,9 +33,11 @@ public static class Program
             var input = new ScheduleInput(previous, demand, ScheduleCsv.ReadRestIntervals(intervalsPath), nonStandardShifts);
             var isT = DetectT(demand);
 
-            return isT
-                ? Finish(TSolver.Solve(input, cancellationToken: cancellation.Token))
-                : Finish(MSolver.Solve(input, cancellationToken: cancellation.Token));
+            if (isT) return Finish(TSolver.Solve(input, cancellationToken: cancellation.Token));
+            var perpetualSchedulePath = Ask("M 八週萬年班表 CSV（留空不使用 hint）：");
+            return string.IsNullOrWhiteSpace(perpetualSchedulePath)
+                ? Finish(MSolver.Solve(input, cancellationToken: cancellation.Token))
+                : Finish(MSolver.Solve(input, ScheduleCsv.ReadMPerpetualSchedule(perpetualSchedulePath), cancellationToken: cancellation.Token));
         }
         catch (OperationCanceledException)
         {
@@ -156,7 +158,7 @@ public static class Program
     {
         "RequestedRest" => "R* 最後未排成 R、R1 或 R休的格數",
         "UnusedLeaveRest" => "各人指定 R休上限減去實際 R休數的合計",
-        "ExternalStaffing" => "目標月外援總人次超過 70 的部分",
+        "ExternalStaffing" => "原三站外援超過 70 的部分，加上 LB09 全部外援人次",
         "MonthlyRest" => "各人實際 R 數與當月週末日目標差額平方的合計",
         "SpecialRestBalance" => "各人八週區間截至月底的累積 R1 超額，或超過一日容許量的欠額平方合計",
         "NonHomeStation" => "員工不在所屬站工作的總日數",

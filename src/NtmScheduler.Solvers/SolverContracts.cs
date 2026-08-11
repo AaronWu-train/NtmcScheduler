@@ -73,6 +73,9 @@ public sealed record EmployeeMonthlySchedule
     /// <summary>Required for T; null for M.</summary>
     public Shift? MonthlyShift { get; init; }
 
+    /// <summary>M eight-week template identifier; null for T.</summary>
+    public string? PerpetualScheduleId { get; init; }
+
     /// <summary>Maximum target-month R休 count. Null means zero; solved and historical schedules leave it null.</summary>
     public int? RequestedLeaveRestCount { get; init; }
 

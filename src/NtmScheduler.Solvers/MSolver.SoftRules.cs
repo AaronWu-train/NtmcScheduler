@@ -87,13 +87,15 @@ public static partial class MSolver
         return LinearExpr.Sum(unused);
     }
 
-    // 外援人力——目標月前 70 人次免罰，只計超過部分。
+    // 外援人力——原三站前 70 人次免罰；LB09 每一人次立即計算。
     private static LinearExpr MeasureExternalStaffingAboveAllowance(CpModel model, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
     {
-        var external = variables.External.Where(x => targetDates.Contains(x.Key.Date)).Select(x => x.Value).ToArray();
-        var penalty = model.NewIntVar(0, external.Length, "external_staffing_above_allowance");
-        model.AddMaxEquality(penalty, [LinearExpr.Sum(external) - 70, LinearExpr.Constant(0)]);
-        return penalty;
+        var target = variables.External.Where(x => targetDates.Contains(x.Key.Date)).ToArray();
+        var legacy = target.Where(x => x.Key.Station != "LB09").Select(x => x.Value).ToArray();
+        var lb09 = target.Where(x => x.Key.Station == "LB09").Select(x => x.Value);
+        var aboveAllowance = model.NewIntVar(0, legacy.Length, "external_staffing_above_allowance");
+        model.AddMaxEquality(aboveAllowance, [LinearExpr.Sum(legacy) - 70, LinearExpr.Constant(0)]);
+        return aboveAllowance + LinearExpr.Sum(lb09);
     }
 
     // 每月一般 R 分布——依到職後的週末推導每人的一般 R 目標。

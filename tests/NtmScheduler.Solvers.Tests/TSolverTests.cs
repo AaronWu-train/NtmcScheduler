@@ -448,7 +448,7 @@ public sealed class TSolverTests
                 Path.Combine(exampleRoot, "previous.csv"),
                 Path.Combine(exampleRoot, "demand.csv"),
                 Path.Combine(exampleRoot, "rest-intervals.csv"),
-                Path.Combine(exampleRoot, "non-standard-shifts.csv")) + "\n"));
+                Path.Combine(exampleRoot, "non-standard-shifts.csv")) + "\n\n"));
             var output = new StringWriter();
             var error = new StringWriter();
             Console.SetOut(output);

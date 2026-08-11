@@ -14,13 +14,14 @@ public sealed class ScheduleCsvException(string field, string message) : Excepti
 /// <summary>Converts the stable monthly-schedule CSV boundary to and from solver contracts.</summary>
 public static partial class ScheduleCsv
 {
-    private static readonly string[] Headers =
+    private static readonly string[] LegacyHeaders =
     [
         "ID", "姓名", "所屬", "到職日期", "能力", "T月班別",
         "月初區間累計R", "月初區間累計R1",
         .. Enumerable.Range(1, 31).Select(day => day.ToString(CultureInfo.InvariantCulture)),
         "當月R", "當月R1", "當月指定R休", "月底區間累計R", "月底區間累計R1", "本月班數"
     ];
+    private static readonly string[] Headers = [.. LegacyHeaders, "萬年班表"];
 
     private static readonly TimeSpan TaipeiOffset = TimeSpan.FromHours(8);
 
@@ -29,16 +30,19 @@ public static partial class ScheduleCsv
         if (monthStart.Day != 1) throw new ScheduleCsvException(nameof(monthStart), "Month must start on day one.");
         var rows = ReadRows(path);
         if (rows.Count == 0) throw new ScheduleCsvException(path, "CSV is empty.");
-        if (!rows[0].SequenceEqual(Headers)) throw new ScheduleCsvException(path, "Monthly schedule headers do not match the required format.");
+        var hasPerpetualSchedule = rows[0].SequenceEqual(Headers);
+        if (!hasPerpetualSchedule && !rows[0].SequenceEqual(LegacyHeaders))
+            throw new ScheduleCsvException(path, "Monthly schedule headers do not match the required format.");
+        var fieldCount = hasPerpetualSchedule ? Headers.Length : LegacyHeaders.Length;
         var nonStandardShiftLookup = NonStandardShiftLookup(nonStandardShifts);
 
         var employees = new List<EmployeeMonthlySchedule>();
         for (var rowNumber = 1; rowNumber < rows.Count; rowNumber++)
         {
             var row = rows[rowNumber];
-            if (row.Length != Headers.Length) throw new ScheduleCsvException($"{path}:{rowNumber + 1}", $"Expected {Headers.Length} fields but found {row.Length}.");
+            if (row.Length != fieldCount) throw new ScheduleCsvException($"{path}:{rowNumber + 1}", $"Expected {fieldCount} fields but found {row.Length}.");
             if (row.All(string.IsNullOrWhiteSpace)) continue;
-            employees.Add(ParseEmployee(row, rowNumber + 1, monthStart, nonStandardShiftLookup, historical));
+            employees.Add(ParseEmployee(row, rowNumber + 1, monthStart, nonStandardShiftLookup, historical, hasPerpetualSchedule));
         }
         return new(monthStart, employees);
     }
@@ -69,6 +73,7 @@ public static partial class ScheduleCsv
             values.Add(employee.ClosingUsage?.Rest.ToString(CultureInfo.InvariantCulture) ?? "");
             values.Add(employee.ClosingUsage?.SpecialRest.ToString(CultureInfo.InvariantCulture) ?? "");
             values.Add(employee.NormalWorkCount?.ToString(CultureInfo.InvariantCulture) ?? "");
+            values.Add(employee.PerpetualScheduleId ?? "");
             lines.Add(Join(values));
         }
         File.WriteAllText(path, string.Join(Environment.NewLine, lines) + Environment.NewLine, new UTF8Encoding(true));
@@ -129,12 +134,35 @@ public static partial class ScheduleCsv
         return new(shifts);
     }
 
+    public static MPerpetualSchedule ReadMPerpetualSchedule(string path)
+    {
+        var rows = ReadRows(path);
+        string[] expected = ["萬年班表", .. Enumerable.Range(1, 56).Select(day => day.ToString(CultureInfo.InvariantCulture))];
+        if (rows.Count == 0 || !rows[0].SequenceEqual(expected))
+            throw new ScheduleCsvException(path, "M perpetual-schedule headers do not match the required format.");
+
+        var patterns = new Dictionary<string, IReadOnlyList<ScheduleCell?>>(StringComparer.Ordinal);
+        for (var rowNumber = 1; rowNumber < rows.Count; rowNumber++)
+        {
+            var row = rows[rowNumber];
+            if (row.All(string.IsNullOrWhiteSpace)) continue;
+            var field = $"{path}:{rowNumber + 1}";
+            if (row.Length != expected.Length) throw new ScheduleCsvException(field, $"Expected {expected.Length} fields but found {row.Length}.");
+            var id = row[0].Trim();
+            if (id.Length == 0) throw new ScheduleCsvException(field, "萬年班表代號不可空白。");
+            if (!patterns.TryAdd(id, row.Skip(1).Select((text, index) => ParseMPerpetualCell(text.Trim(), $"{field} day {index + 1}")).ToArray()))
+                throw new ScheduleCsvException(field, $"萬年班表代號 '{id}' 不可重複。");
+        }
+        return new(patterns);
+    }
+
     private static EmployeeMonthlySchedule ParseEmployee(
         string[] row,
         int rowNumber,
         DateOnly monthStart,
         IReadOnlyDictionary<string, NonStandardShift> nonStandardShifts,
-        bool historical)
+        bool historical,
+        bool hasPerpetualSchedule)
     {
         var field = $"row {rowNumber}";
         var ability = NullableInt(row[4], $"{field} 能力");
@@ -150,6 +178,7 @@ public static partial class ScheduleCsv
             EmploymentStartDate = NullableDate(row[3], $"{field} 到職日期"),
             Ability = ability,
             MonthlyShift = monthlyShift,
+            PerpetualScheduleId = hasPerpetualSchedule && !string.IsNullOrWhiteSpace(row[45]) ? row[45].Trim() : null,
             RequestedLeaveRestCount = closingUsage is null ? monthlyLeaveRest : null,
             OpeningUsage = Usage(row[6], row[7], $"{field} opening"),
             Assignments = new Dictionary<DateOnly, ScheduleCell>(),
@@ -209,20 +238,28 @@ public static partial class ScheduleCsv
         _ when EventPattern().Match(text) is { Success: true } match => EventCell(match, date, field),
         _ when monthlyShift is not null && ShiftFromText(text) is { } shift => new() { Kind = AssignmentKind.Work, Shift = shift },
         _ when nonStandardShifts.GetValueOrDefault(text) is { } shift => EventCell(shift.StartTime, shift.EndTime, date),
-        _ when MWorkPattern().Match(text) is { Success: true } match => new()
-        {
-            Kind = AssignmentKind.Work,
-            Station = match.Groups[1].Value,
-            Shift = MShiftFromText(match.Groups[2].Value)
-        },
-        _ when MWorkShortPattern().Match(text) is { Success: true } match => new()
-        {
-            Kind = AssignmentKind.Work,
-            Station = $"LB{int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture):D2}",
-            Shift = MShiftFromText(match.Groups[2].Value)
-        },
+        _ when MWorkCell(text) is { } cell => cell,
         _ => throw new ScheduleCsvException(field, $"Unsupported schedule cell '{text}'.")
     };
+
+    private static ScheduleCell? ParseMPerpetualCell(string text, string field) => text switch
+    {
+        "" => null,
+        "R" => new() { Kind = AssignmentKind.Rest },
+        _ when MWorkCell(text) is { } cell => cell,
+        _ => throw new ScheduleCsvException(field, $"Unsupported M perpetual-schedule cell '{text}'.")
+    };
+
+    private static ScheduleCell? MWorkCell(string text)
+    {
+        var match = MWorkPattern().Match(text);
+        if (match.Success)
+            return new() { Kind = AssignmentKind.Work, Station = match.Groups[1].Value, Shift = MShiftFromText(match.Groups[2].Value) };
+        match = MWorkShortPattern().Match(text);
+        return match.Success
+            ? new() { Kind = AssignmentKind.Work, Station = $"LB{int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture):D2}", Shift = MShiftFromText(match.Groups[2].Value) }
+            : null;
+    }
 
     private static ScheduleCell EventCell(Match match, DateOnly date, string field)
     {

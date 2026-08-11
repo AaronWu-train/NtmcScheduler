@@ -1,5 +1,9 @@
 namespace NtmScheduler.Solvers;
 
+/// <summary>Optional 56-day M schedule patterns used only as CP-SAT solution hints.</summary>
+public sealed record MPerpetualSchedule(
+    IReadOnlyDictionary<string, IReadOnlyList<ScheduleCell?>> Patterns);
+
 public sealed record MExternalAssignment(
     DateOnly Date,
     string Station,

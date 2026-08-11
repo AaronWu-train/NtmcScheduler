@@ -33,7 +33,7 @@ internal static class SolverAcceptanceAssertions
                 Assert.AreEqual(0, employeeCount + externalCount, $"Zero-demand position staffed for {date:yyyy-MM-dd}/{station}/{shift}.");
         }
 
-        Assert.IsTrue(candidate.ExternalAssignments.All(item => item.Station is "LB02" or "LB04" or "LB11"));
+        Assert.IsTrue(candidate.ExternalAssignments.All(item => item.Station is "LB02" or "LB04" or "LB09" or "LB11"));
     }
 
     internal static void AssertTHardRules(ScheduleInput input, TCandidate candidate)
@@ -52,7 +52,9 @@ internal static class SolverAcceptanceAssertions
 
         Expect(candidate.Objectives, "RequestedRest", RequestedRestViolations(input, candidate.Schedule));
         Expect(candidate.Objectives, "UnusedLeaveRest", UnusedLeaveRest(input, candidate.Schedule));
-        Expect(candidate.Objectives, "ExternalStaffing", Math.Max(0, candidate.ExternalAssignments.Sum(item => item.Count) - 70));
+        Expect(candidate.Objectives, "ExternalStaffing",
+            Math.Max(0, candidate.ExternalAssignments.Where(item => item.Station != "LB09").Sum(item => item.Count) - 70) +
+            candidate.ExternalAssignments.Where(item => item.Station == "LB09").Sum(item => item.Count));
         Expect(candidate.Objectives, "MonthlyRest", MonthlyRestPenalty(input, candidate.Schedule, AssignmentKind.Rest));
         Expect(candidate.Objectives, "SpecialRestBalance", SpecialRestBalancePenalty(input, candidate.Schedule));
         Expect(candidate.Objectives, "NonHomeStation", candidate.Schedule.Employees.Sum(employee => employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Work && cell.Station != employee.Affiliation)));
