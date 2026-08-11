@@ -8,6 +8,8 @@ namespace NtmScheduler.Solvers.Tests;
 [TestClass]
 public sealed class MSolverTests
 {
+    private static readonly SolverOptions ShortSolve = new() { TimeLimit = TimeSpan.FromSeconds(3) };
+
     [TestMethod]
     public void WorkStreakPenaltiesMatchEachModel()
     {
@@ -162,7 +164,7 @@ public sealed class MSolverTests
         var result = MSolver.Solve(input, new MPerpetualSchedule(new Dictionary<string, IReadOnlyList<ScheduleCell?>>
         {
             ["LB01-1"] = pattern
-        }), new SolverOptions { TimeLimit = TimeSpan.FromSeconds(10) });
+        }), ShortSolve);
 
         Assert.AreNotEqual(SolveStatus.InvalidInput, result.Status, string.Join(Environment.NewLine, result.Errors));
         Assert.AreNotEqual(SolveStatus.Infeasible, result.Status);
@@ -177,7 +179,7 @@ public sealed class MSolverTests
         var employee = input.DemandMonth.Employees[0] with { PerpetualScheduleId = "LB01-1" };
         input = input with { DemandMonth = input.DemandMonth with { Employees = [employee, .. input.DemandMonth.Employees.Skip(1)] } };
 
-        var unknown = MSolver.Solve(input, new MPerpetualSchedule(new Dictionary<string, IReadOnlyList<ScheduleCell?>>()));
+        var unknown = MSolver.Solve(input, new MPerpetualSchedule(new Dictionary<string, IReadOnlyList<ScheduleCell?>>()), ShortSolve);
         Assert.AreEqual(SolveStatus.InvalidInput, unknown.Status);
         Assert.IsTrue(unknown.Errors.Any(error => error.Field == "DemandMonth.PerpetualScheduleId"));
 
@@ -187,7 +189,7 @@ public sealed class MSolverTests
         var invalid = MSolver.Solve(input, new MPerpetualSchedule(new Dictionary<string, IReadOnlyList<ScheduleCell?>>
         {
             ["LB01-1"] = crossGroup
-        }));
+        }), ShortSolve);
         Assert.AreEqual(SolveStatus.InvalidInput, invalid.Status);
         Assert.IsTrue(invalid.Errors.Any(error => error.Field == "DemandMonth.PerpetualScheduleId"));
     }
@@ -222,7 +224,7 @@ public sealed class MSolverTests
             }
         };
 
-        var result = MSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(10) });
+        var result = MSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(5) });
 
         Assert.IsGreaterThanOrEqualTo(1, result.Candidates.Count);
         var candidate = result.Candidates[0];
@@ -234,7 +236,7 @@ public sealed class MSolverTests
     public void Solve_MonthlySchedules_ReturnsNamedCandidate()
     {
         var input = ValidInput();
-        var result = MSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(10) });
+        var result = MSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(5) });
 
         Assert.AreNotEqual(SolveStatus.InvalidInput, result.Status, string.Join(Environment.NewLine, result.Errors));
         Assert.AreNotEqual(SolveStatus.Infeasible, result.Status);
@@ -275,7 +277,7 @@ public sealed class MSolverTests
         var input = ValidInput();
         input = input with { PreviousMonth = input.PreviousMonth with { Employees = input.PreviousMonth.Employees.Skip(1).ToArray() } };
 
-        var result = MSolver.Solve(input);
+        var result = MSolver.Solve(input, ShortSolve);
 
         Assert.AreEqual(SolveStatus.InvalidInput, result.Status);
         Assert.IsTrue(result.Errors.Any(error => error.Field == "PreviousMonth"));
@@ -294,7 +296,7 @@ public sealed class MSolverTests
             ]
         };
 
-        var result = MSolver.Solve(input);
+        var result = MSolver.Solve(input, ShortSolve);
 
         Assert.AreEqual(SolveStatus.InvalidInput, result.Status);
         Assert.IsGreaterThanOrEqualTo(2, result.Errors.Count(error => error.Field == nameof(ScheduleInput.RestIntervals)));
@@ -305,7 +307,7 @@ public sealed class MSolverTests
     {
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
-        Assert.ThrowsExactly<OperationCanceledException>(() => MSolver.Solve(ValidInput(), cancellationToken: cancellation.Token));
+        Assert.ThrowsExactly<OperationCanceledException>(() => MSolver.Solve(ValidInput(), ShortSolve, cancellation.Token));
     }
 
     [TestMethod]
@@ -322,7 +324,7 @@ public sealed class MSolverTests
         var employee = input.DemandMonth.Employees[0] with { RequestedLeaveRestCount = -1 };
         input = input with { DemandMonth = input.DemandMonth with { Employees = [employee, .. input.DemandMonth.Employees.Skip(1)] } };
 
-        var result = MSolver.Solve(input);
+        var result = MSolver.Solve(input, ShortSolve);
 
         Assert.AreEqual(SolveStatus.InvalidInput, result.Status);
         Assert.IsTrue(result.Errors.Any(error => error.Field == "DemandMonth.RequestedLeaveRestCount"));
@@ -344,7 +346,7 @@ public sealed class MSolverTests
         };
         input = input with { DemandMonth = input.DemandMonth with { Employees = [employee, .. input.DemandMonth.Employees.Skip(1)] } };
 
-        Assert.AreEqual(SolveStatus.InvalidInput, MSolver.Solve(input).Status);
+        Assert.AreEqual(SolveStatus.InvalidInput, MSolver.Solve(input, ShortSolve).Status);
     }
 
     [TestMethod]
@@ -364,7 +366,7 @@ public sealed class MSolverTests
                 : employee).ToArray();
         input = input with { DemandMonth = input.DemandMonth with { Employees = employees } };
 
-        var result = MSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(5) });
+        var result = MSolver.Solve(input, ShortSolve);
 
         Assert.IsGreaterThanOrEqualTo(1, result.Candidates.Count);
         Assert.IsGreaterThanOrEqualTo(2, result.Candidates[0].Schedule.Employees.Count(employee =>

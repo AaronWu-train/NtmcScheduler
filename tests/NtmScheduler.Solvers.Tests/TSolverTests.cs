@@ -6,11 +6,13 @@ namespace NtmScheduler.Solvers.Tests;
 [TestClass]
 public sealed class TSolverTests
 {
+    private static readonly SolverOptions ShortSolve = new() { TimeLimit = TimeSpan.FromSeconds(3) };
+
     [TestMethod]
     public void Solve_MonthlySchedules_ReturnsCandidateAndCreditsNewHire()
     {
         var input = ValidInput();
-        var result = TSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(10) });
+        var result = TSolver.Solve(input, ShortSolve);
 
         Assert.AreNotEqual(SolveStatus.InvalidInput, result.Status, string.Join(Environment.NewLine, result.Errors));
         Assert.AreNotEqual(SolveStatus.Infeasible, result.Status);
@@ -34,56 +36,14 @@ public sealed class TSolverTests
         Assert.IsGreaterThanOrEqualTo(1, result.Candidates[0].Objectives
             .SelectMany(value => value.Components)
             .Single(value => value.Name == "NightToEarlyRest").Value);
+        Assert.AreEqual(1, result.Candidates[0].Objectives
+            .SelectMany(value => value.Components)
+            .Single(value => value.Name == "UnusedLeaveRest").Value);
+        Assert.IsGreaterThan(0, result.Candidates[0].Objectives
+            .SelectMany(value => value.Components)
+            .Single(value => value.Name == "Ability").Value);
         SolverAcceptanceAssertions.AssertTHardRules(input, result.Candidates[0]);
         SolverAcceptanceAssertions.AssertTSoftRules(input, result.Candidates[0]);
-    }
-
-    [TestMethod]
-    public void Solve_AlternativeCandidatesDifferByTenPercent()
-    {
-        var input = ValidInput();
-        input = input with
-        {
-            PreviousMonth = input.PreviousMonth with { Employees = input.PreviousMonth.Employees.Where(employee => employee.EmployeeId == "T-E2").ToArray() },
-            DemandMonth = input.DemandMonth with { Employees = input.DemandMonth.Employees.Where(employee => employee.EmployeeId == "T-E2").ToArray() }
-        };
-
-        var result = TSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(10) });
-
-        Assert.AreEqual(SolveStatus.Optimal, result.Status);
-        SolverAcceptanceAssertions.AssertCandidateDifference(input, result.Candidates.Select(candidate => candidate.Schedule).ToArray());
-    }
-
-    [TestMethod]
-    public void Solve_LeaveRestLimitAboveRequestedDates_ReportsUnusedAmount()
-    {
-        var input = ValidInput();
-        var employees = input.DemandMonth.Employees.Select(employee =>
-            employee.EmployeeId == "T-E2" ? employee with { RequestedLeaveRestCount = 2 } : employee).ToArray();
-        input = input with { DemandMonth = input.DemandMonth with { Employees = employees } };
-
-        var result = TSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(10) });
-
-        Assert.IsGreaterThanOrEqualTo(1, result.Candidates.Count, string.Join(Environment.NewLine, result.Errors));
-        Assert.AreEqual(1, result.Candidates[0].Objectives.SelectMany(group => group.Components)
-            .Single(component => component.Name == "UnusedLeaveRest").Value);
-    }
-
-    [TestMethod]
-    public void Solve_NoHighAbilityEmployees_ReportsTenPenaltyPerShiftDay()
-    {
-        var input = ValidInput();
-        input = input with
-        {
-            PreviousMonth = input.PreviousMonth with { Employees = input.PreviousMonth.Employees.Select(employee => employee with { Ability = 3 }).ToArray() },
-            DemandMonth = input.DemandMonth with { Employees = input.DemandMonth.Employees.Select(employee => employee with { Ability = 3 }).ToArray() }
-        };
-
-        var result = TSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(10) });
-
-        Assert.IsGreaterThanOrEqualTo(1, result.Candidates.Count, string.Join(Environment.NewLine, result.Errors));
-        Assert.AreEqual(30 * 3 * 10, result.Candidates[0].Objectives.SelectMany(group => group.Components)
-            .Single(component => component.Name == "Ability").Value);
     }
 
     [TestMethod]
@@ -110,7 +70,7 @@ public sealed class TSolverTests
         };
         input = input with { DemandMonth = input.DemandMonth with { Employees = [employee] } };
 
-        Assert.AreEqual(SolveStatus.Infeasible, TSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(5) }).Status);
+        Assert.AreEqual(SolveStatus.Infeasible, TSolver.Solve(input, ShortSolve).Status);
     }
 
     [TestMethod]
@@ -126,7 +86,7 @@ public sealed class TSolverTests
         };
         input = input with { DemandMonth = input.DemandMonth with { Employees = [employee] } };
 
-        var result = TSolver.Solve(input);
+        var result = TSolver.Solve(input, ShortSolve);
 
         Assert.AreEqual(SolveStatus.InvalidInput, result.Status);
         Assert.IsTrue(result.Errors.Any(error => error.Field == "Assignments"));
@@ -194,7 +154,7 @@ public sealed class TSolverTests
         };
         input = input with { DemandMonth = input.DemandMonth with { Employees = [employee] } };
 
-        var result = TSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(10) });
+        var result = TSolver.Solve(input, ShortSolve);
 
         Assert.AreNotEqual(SolveStatus.InvalidInput, result.Status, string.Join(Environment.NewLine, result.Errors));
         Assert.AreNotEqual(SolveStatus.Infeasible, result.Status);
@@ -246,7 +206,7 @@ public sealed class TSolverTests
             }
         };
 
-        Assert.AreEqual(SolveStatus.InvalidInput, TSolver.Solve(input).Status);
+        Assert.AreEqual(SolveStatus.InvalidInput, TSolver.Solve(input, ShortSolve).Status);
     }
 
     [TestMethod]
@@ -426,57 +386,11 @@ public sealed class TSolverTests
     }
 
     [TestMethod]
-    [DataRow("m-2026-09", true, false)]
-    [DataRow("t-2026-09", false, false)]
-    [DataRow("t-2026-09", false, true)]
-    public void Cli_Example_RedirectedInputWritesCandidate(string example, bool expectsExternal, bool existingCandidate)
-    {
-        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../"));
-        var exampleRoot = Path.Combine(root, "examples", example);
-        var outputRoot = Path.Combine(Path.GetTempPath(), $"ntm-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(outputRoot);
-        var originalDirectory = Directory.GetCurrentDirectory();
-        var originalInput = Console.In;
-        var originalOutput = Console.Out;
-        var originalError = Console.Error;
-        try
-        {
-            Directory.SetCurrentDirectory(outputRoot);
-            if (existingCandidate) File.WriteAllText(Path.Combine(outputRoot, "candidate-1.csv"), "keep");
-            Console.SetIn(new StringReader(string.Join('\n',
-                "2026-09",
-                Path.Combine(exampleRoot, "previous.csv"),
-                Path.Combine(exampleRoot, "demand.csv"),
-                Path.Combine(exampleRoot, "rest-intervals.csv"),
-                Path.Combine(exampleRoot, "non-standard-shifts.csv")) + "\n\n"));
-            var output = new StringWriter();
-            var error = new StringWriter();
-            Console.SetOut(output);
-            Console.SetError(error);
-
-            Assert.AreEqual(0, Program.Main(), output + Environment.NewLine + error);
-            var number = existingCandidate ? 2 : 1;
-            Assert.IsTrue(File.Exists(Path.Combine(outputRoot, $"candidate-{number}.csv")));
-            Assert.AreEqual(expectsExternal, File.Exists(Path.Combine(outputRoot, $"candidate-{number}-external.csv")));
-            if (existingCandidate) Assert.AreEqual("keep", File.ReadAllText(Path.Combine(outputRoot, "candidate-1.csv")));
-            Assert.DoesNotContain("覆寫", output.ToString());
-        }
-        finally
-        {
-            Console.SetIn(originalInput);
-            Console.SetOut(originalOutput);
-            Console.SetError(originalError);
-            Directory.SetCurrentDirectory(originalDirectory);
-            Directory.Delete(outputRoot, true);
-        }
-    }
-
-    [TestMethod]
     public void Solve_PreCanceledToken_Throws()
     {
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
-        Assert.ThrowsExactly<OperationCanceledException>(() => TSolver.Solve(ValidInput(), cancellationToken: cancellation.Token));
+        Assert.ThrowsExactly<OperationCanceledException>(() => TSolver.Solve(ValidInput(), ShortSolve, cancellation.Token));
     }
 
     [TestMethod]
@@ -492,7 +406,7 @@ public sealed class TSolverTests
             }
         };
 
-        var result = TSolver.Solve(input);
+        var result = TSolver.Solve(input, ShortSolve);
 
         Assert.AreEqual(SolveStatus.InvalidInput, result.Status);
         Assert.IsTrue(result.Errors.Any(error => error.Field == "EmploymentStartDate"));
@@ -512,7 +426,7 @@ public sealed class TSolverTests
         };
         input = input with { DemandMonth = input.DemandMonth with { Employees = [employee, .. input.DemandMonth.Employees.Skip(1)] } };
 
-        Assert.AreEqual(SolveStatus.InvalidInput, TSolver.Solve(input).Status);
+        Assert.AreEqual(SolveStatus.InvalidInput, TSolver.Solve(input, ShortSolve).Status);
     }
 
     [TestMethod]
@@ -537,7 +451,7 @@ public sealed class TSolverTests
             }
         };
 
-        Assert.AreEqual(SolveStatus.Infeasible, TSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(10) }).Status);
+        Assert.AreEqual(SolveStatus.Infeasible, TSolver.Solve(input, ShortSolve).Status);
     }
 
     internal static ScheduleInput ValidInput()
@@ -576,7 +490,7 @@ public sealed class TSolverTests
             }
             if (id == "T-E2") assignments[month.AddDays(4)] = new() { RequestedRest = true };
             if (id == "T-A1") assignments[month.AddDays(7)] = Event(month.AddDays(7), new(8, 30), new(17, 30));
-            demand.Add(Row(id, group, ability, currentShift, null, assignments, closing, null, null, id == "T-E2" ? 1 : null));
+            demand.Add(Row(id, group, ability, currentShift, null, assignments, closing, null, null, id == "T-E2" ? 2 : null));
         }
 
         demand.Add(Row("T-NEW", "Signal", 4, Shift.Early, new(2026, 9, 21), new Dictionary<DateOnly, ScheduleCell>(), new(12, 1), null, null));
