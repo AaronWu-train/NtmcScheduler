@@ -466,60 +466,70 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 \subsubsection{\texorpdfstring{$J^M_4$}{J4}：綜合排班品質}
 
 \paragraph{外援人力（\texttt{MS01}）}
+令目標月外援總人次為
 \[
-  \Phi^{M,ext}
+  A^{M,ext}
   =
   \sum_{d\in\mathcal{D}^{\mathrm{tar}}}
   \sum_{l\in\mathcal{L}^{ext}}
   \sum_{s\in\mathcal{S}}a_{dls}.
 \]
+前 70 人次不計違反量，故
+\[
+  \Phi^{M,ext}=\max\{0,A^{M,ext}-70\}.
+\]
 
-\paragraph{每月休假分布（\texttt{CS02}、\texttt{CS03}）}
+\paragraph{每月一般 R 分布（\texttt{CS02}）}
 令
 \[
-  Q^{M,R}_e=\sum_{d\in\mathcal{D}^{\mathrm{tar}}}r^{M}_{ed},
-  \qquad
-  Q^{M,R1}_e=\sum_{d\in\mathcal{D}^{\mathrm{tar}}}r^{M,1}_{ed}.
+  Q^{M,R}_e=\sum_{d\in\mathcal{D}^{\mathrm{tar}}}r^{M}_{ed}.
 \]
 定義
 \[
   f_t(q)=|q-t|^2.
 \]
-則一般 \(R\) 與 \(R1\) 的月內分布違反量分別為
+則一般 \(R\) 的月內分布違反量為
 \[
   \Phi^{M,month,R}
   =
   \sum_{e\in\mathcal{E}^{M}}f_{n_e}\!\left(Q^{M,R}_e\right),
 \]
-\[
-  \Phi^{M,month,R1}
-  =
-  \sum_{e\in\mathcal{E}^{M}}f_{m_e}\!\left(Q^{M,R1}_e\right).
-\]
 偏離基準 0、1、2、3 日時，懲罰依序為 0、1、4、9。
-此為月內分布偏好，不取代 \texttt{CH04} 的八週精確額度；\(R休\) 不計入兩個月內數量。
+此為月內分布偏好，不取代 \texttt{CH04} 的八週精確額度；\(R休\) 不計入一般 \(R\) 數量。
 
-\paragraph{非所屬站指派（\texttt{MS02}）}
+\paragraph{八週累積 R1 餘額（\texttt{CS03}）}
+對每個與目標月相交的 56 日區間 \(I\)，令 \(c_I\) 為月底與區間結束日的較早者，
+\(p^{M,1}_{eI}\) 為目標月前已使用或折抵的 \(R1\) 數，並定義
 \[
-  \Phi^{M,home}
-  =
-  \sum_{e\in\mathcal{E}^{M}}
-  \sum_{d\in\mathcal{D}^{\mathrm{tar}}}u_{ed}.
+  A^{M,1}_{eI}=p^{M,1}_{eI}
+  +\sum_{d\in\mathcal D^{\mathrm{tar}}\cap I}r^{M,1}_{ed},
+  \qquad
+  H_I(c_I)=|\{h\in\mathcal H_I:h\le c_I\}|.
 \]
+累積餘額的懲罰函數為
+\[
+  g(a,h)=\max\{0,a-h\}^2+\max\{0,h-a-1\}^2,
+\]
+故
+\[
+  \Phi^{M,balance,R1}=\sum_{e\in\mathcal E^M}\sum_{I}g(A^{M,1}_{eI},H_I(c_I)).
+\]
+累積剛好或暫欠一日皆不懲罰；提前多休與超過一日的欠額按平方計分。餘額沿同一
+區間跨月承接，區間結束時仍由 \texttt{CH04} 強制精確額度。
 
 \paragraph{連續工作區段長度（\texttt{CS04}）}
 此規則控制實際工作與休假的分段品質，不是 \texttt{CH02} 的法規計數。
 實際工作區段是連續曆日皆為正常班或 \(X\) 的最大區段；一般 \(R\)、
 \(R1\) 與 \(R休\) 都會結束區段。定義區段長度懲罰
 \[
-  D(L)
+  D^M(L)
   =
   \begin{cases}
     4, & L=1,\\
-    2, & L=2,\\
+    1, & L=2,\\
     0, & L=3,\\
     0, & L=4,\\
-    1, & L=5,\\
+    0, & L=5,\\
     2(L-4), & L\geq6.
   \end{cases}
 \]
@@ -530,7 +540,7 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
   =
   \sum_{e\in\mathcal{E}^{M}}
   \sum_{B\in\mathcal{B}^{work}_e:\ \max B\in\mathcal{D}^{\mathrm{tar}}}
-  D(|B|).
+  D^M(|B|).
 \]
 
 \paragraph{工作區段班型一致性（\texttt{MS03}）}
@@ -603,7 +613,15 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 \]
 此規則只判斷換班方向，與換班前是否休假無關。
 
-\subsubsection{\texorpdfstring{$J^M_5$}{J5}：公平性}
+\subsubsection{\texorpdfstring{$J^M_5$}{J5}：站務配置與公平性}
+
+\paragraph{非所屬站指派（\texttt{MS02}）}
+\[
+  \Phi^{M,home}
+  =
+  \sum_{e\in\mathcal{E}^{M}}
+  \sum_{d\in\mathcal{D}^{\mathrm{tar}}}u_{ed}.
+\]
 
 以下公平性只比較目標月第一日已在職的人員。令
 \[
@@ -693,10 +711,9 @@ M 模型定義三個目標群組：
     J^M_4={}&
     24\Phi^{M,ext}
     +24\Phi^{M,month,R}
-    +12\Phi^{M,month,R1}
-    +2\Phi^{M,home}\\
-    &+4\Phi^{M,streak}
-    +15\Phi^{M,mixed}
+    +12\Phi^{M,balance,R1}
+    +4\Phi^{M,streak}\\
+    &+15\Phi^{M,mixed}
     +30\Phi^{M,NE}\\
     &+20\Phi^{M,NA}
     +7\Phi^{M,restswitch}
@@ -706,7 +723,8 @@ M 模型定義三個目標群組：
 \[
   J^M_5
   =
-  2\Phi^{M,weekday}
+  2\Phi^{M,home}
+  +2\Phi^{M,weekday}
   +4\Phi^{M,holiday}
   +3\Phi^{M,support}
   +\Phi^{M,shift,\mathrm E}
@@ -1023,14 +1041,12 @@ T 模型的輸入包括：
 \]
 能力 4--5 的跨班人員按實際工作班別計入。
 
-\subsubsection{\texorpdfstring{$J^T_3$}{J3}：每月休假分布}
+\subsubsection{\texorpdfstring{$J^T_3$}{J3}：休假分布}
 
-\paragraph{每月休假分布（\texttt{CS02}、\texttt{CS03}）}
+\paragraph{每月一般 R 分布（\texttt{CS02}）}
 令
 \[
-  Q^{T,R}_e=\sum_{d\in\mathcal{D}^{\mathrm{tar}}}r^{T}_{ed},
-  \qquad
-  Q^{T,R1}_e=\sum_{d\in\mathcal{D}^{\mathrm{tar}}}r^{T,1}_{ed}.
+  Q^{T,R}_e=\sum_{d\in\mathcal{D}^{\mathrm{tar}}}r^{T}_{ed}.
 \]
 沿用
 \[
@@ -1042,24 +1058,36 @@ T 模型的輸入包括：
   =
   \sum_{e\in\mathcal{E}^{T}}f_{n_e}\!\left(Q^{T,R}_e\right),
 \]
+
+\paragraph{八週累積 R1 餘額（\texttt{CS03}）}
+沿用上述 \(g\)。令 \(p^{T,1}_{eI}\) 為目標月前已使用或折抵的 \(R1\) 數，則
 \[
-  \Phi^{T,month,R1}
-  =
-  \sum_{e\in\mathcal{E}^{T}}f_{m_e}\!\left(Q^{T,R1}_e\right).
+  A^{T,1}_{eI}=p^{T,1}_{eI}
+  +\sum_{d\in\mathcal D^{\mathrm{tar}}\cap I}r^{T,1}_{ed},
+  \qquad
+  \Phi^{T,balance,R1}=\sum_{e\in\mathcal E^T}\sum_I g(A^{T,1}_{eI},H_I(c_I)).
 \]
 
 \subsubsection{\texorpdfstring{$J^T_4$}{J4}：工作型態品質}
 
 \paragraph{連續工作區段長度（\texttt{CS04}）}
 T 的實際工作區段同樣由連續正常班或 \(X\) 組成，\(R\) 與 \(R1\) 都會結束
-區段。沿用 M 模型的 \(D(L)\)。令 \(\mathcal{B}^{T,work}_e\) 為承接歷史後的
+區段。除五日區段仍取 1 外，沿用 M 模型的長度懲罰：
+\[
+  D^T(L)=
+  \begin{cases}
+    1, & L=5,\\
+    D^M(L), & L\neq5.
+  \end{cases}
+\]
+令 \(\mathcal{B}^{T,work}_e\) 為承接歷史後的
 最大實際工作區段集合，則
 \[
   \Phi^{T,streak}
   =
   \sum_{e\in\mathcal{E}^{T}}
   \sum_{B\in\mathcal{B}^{T,work}_e:\ \max B\in\mathcal{D}^{\mathrm{tar}}}
-  D(|B|).
+  D^T(|B|).
 \]
 此規則控制合理工作區段長度；\(R休\) 與 R1 同樣會切斷工作區段，但不重置只有一般 \(R\) 才歸零的 \texttt{CH02}。
 
@@ -1171,7 +1199,7 @@ T 模型定義五個目標群組：
   J^T_3
   =
   \Phi^{T,month,R}
-  +\Phi^{T,month,R1},
+  +\Phi^{T,balance,R1},
 \]
 \[
   J^T_4
@@ -1235,7 +1263,7 @@ T 模型定義五個目標群組：
   \(\mathcal E^T\) & \texttt{TInput.Employees} & \texttt{IReadOnlyList<TEmployee>} \\
   \(\mathcal C,G_c,H_c\) & \texttt{RestCycles} & \texttt{RestCycle.Id/Start/End/}\newline\texttt{RequiredRest/RequiredSpecialRest} \\
   \(\overline R_{ec},\overline{R1}_{ec}\) & \texttt{UsageBeforeMonth} & \texttt{EmployeeCycleUsage.}\newline\texttt{RestUsed/SpecialRestUsed} \\
-  \(n_e,m_e\) & \texttt{ExpectedMonthlyRestCount(input, employee, special)} & 到職後目標月的六日數／國定假日數 \\
+  \(n_e\) & \texttt{ExpectedMonthlyGeneralRestCount(input, employee)} & 到職後目標月的六日數 \\
   \(h_e\) & \texttt{MEmployee.HomeStation} & \texttt{MContracts.cs} \\
   \(p_{ed}\) & \texttt{RequestedRests} & \texttt{RequestedRest(EmployeeId, Date)} \\
   \(k_e\) & \texttt{RequestedLeaveRestCount} & 需求列 \texttt{當月指定R休}；空白為 0 \\

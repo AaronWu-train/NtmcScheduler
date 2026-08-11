@@ -627,42 +627,37 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 因此偏離基準 0、1、2、3 日時，懲罰依序為 0、1、4、9。以下將此離散函數記為
 \(f_n(q)=|q-n|^2\)。
 
-\paragraph{每月 R1 分布（\texttt{CS03}）}
+\paragraph{八週累積 R1 餘額（\texttt{CS03}）}
 
-同理，令 \(Q^{R1}_e=\sum_{d\in\mathcal{D}^{M}}r^{1}_{ed}\)。以 \(m\) 為基準，定義
+對每個與目標月相交的 56 日區間 \(I\)，令 \(c_I\) 為月底與區間結束日的較早者，
+\(p^1_{eI}\) 為目標月前已使用或折抵的 \(R1\) 數，並定義
 \[
-  \Delta^{R1}_e=|Q^{R1}_e-m|,
-  \qquad
-  \Phi^{month,R1}=\sum_{e\in\mathcal{E}}(\Delta^{R1}_e)^2.
+  A^1_{eI}=p^1_{eI}+\sum_{d\in\mathcal D^M\cap I}r^1_{ed},
+  \qquad H_I(c_I)=|\{h\in\mathcal H_I:h\le c_I\}|.
 \]
-以下將對應的離散函數記為
-\(f_m(q)=|q-m|^2\)。上述平方懲罰可使用整數查表，
-或以絕對值、最大值與乘法等整數限制建立。兩項月休分布皆為軟性偏好，
-不取代八週週期的精確額度限制。此規則會抑制在單一月份過早使用過多週期額度，
-但因其仍為軟限制，必要時不保證一定保留固定數量至後續月份。\(R休\) 不計入兩項月休分布。
+令
+\[
+  g(a,h)=\max\{0,a-h\}^2+\max\{0,h-a-1\}^2,
+  \qquad
+  \Phi^{balance,R1}=\sum_e\sum_I g(A^1_{eI},H_I(c_I)).
+\]
+累積剛好或暫欠一日皆不懲罰；提前多休與超過一日的欠額按平方計分。餘額沿同一
+區間跨月承接，區間結束時仍由八週硬規則強制精確額度。
 
 \paragraph{外援人力（\texttt{MS01}）}
 
-外派班位違反量為
+令目標月外派班位總人次為
 \[
-  \Phi^{ext}
+  A^{ext}
   =
   \sum_{d\in\mathcal{D}^{M}}
   \sum_{l\in\mathcal{L}^{ext}}
   \sum_{s\in\mathcal{S}}a_{dls}.
 \]
-
-\paragraph{非所屬站指派（\texttt{MS02}）}
-
-定義人員 \(e\) 在日期 \(d\) 是否跨站支援為
+前 70 人次不計違反量，故
 \[
-  u_{ed}
-  =
-  \sum_{s\in\mathcal{S}}
-  \sum_{\substack{l\in\mathcal{A}_e\\l\neq h_e}}x_{edls}.
+  \Phi^{ext}=\max\{0,A^{ext}-70\}.
 \]
-非本站工作違反量為
-\(\Phi^{home}=\sum_{e\in\mathcal{E}}\sum_{d\in\mathcal{D}^{M}}u_{ed}\)。
 
 \paragraph{連續工作區段長度（\texttt{CS04}）}
 此規則避免工作日與休假過度零碎，或工作區段長期貼近六日上限。
@@ -672,24 +667,24 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 
 定義區段偏離函數
 \[
-  D(L)
+  D^M(L)
   =
   \begin{cases}
     4, & L=1,\\
-    2, & L=2,\\
+    1, & L=2,\\
     0, & L=3,\\
     0, & L=4,\\
-    1, & L=5,\\
+    0, & L=5,\\
     2(L-4), & L\geq 6.
   \end{cases}
 \]
-因此長度 1、2、3、4、5 的懲罰分別為 4、2、0、0、1；長度 6 以上為 \(2(L-4)\)。
+因此 M 長度 1、2、3、4、5 的懲罰分別為 4、1、0、0、0；長度 6 以上為 \(2(L-4)\)。
 
 令 \(c^{work}_{ed}\) 表示截至日期 \(d\) 的連續工作區段長度。其更新方式為：
 \begin{itemize}
   \item 若 \(w_{ed}=1\)，則 \(c^{work}_{ed}=c^{work}_{e,d-1}+1\)。
   \item 若 \(w_{ed}=0\)，則 \(c^{work}_{ed}=0\)；若前一日仍在工作區段中，
-    則該區段產生 \(D(c^{work}_{e,d-1})\) 的懲罰。
+    則該區段產生 \(D^M(c^{work}_{e,d-1})\) 的懲罰。
 \end{itemize}
 
 月初承接歷史區段長度。只有在目標月份內結束的區段才計入本月目標；月底仍
@@ -756,6 +751,18 @@ X[2026-09-03T22:00~2026-09-04T02:00|特殊勤務]
 當新的正常班別 \(s\) 與前一有效正常班別不同，且
 \((\eta_{e,d-1},s)\notin\mathcal{P}\)，則產生一次違反。總違反量記為
 \(\Phi^{rotate}\)。
+
+\paragraph{非所屬站指派（\texttt{MS02}）}
+
+定義人員 \(e\) 在日期 \(d\) 是否跨站支援為
+\[
+  u_{ed}
+  =
+  \sum_{s\in\mathcal{S}}
+  \sum_{\substack{l\in\mathcal{A}_e\\l\neq h_e}}x_{edls}.
+\]
+非本站工作違反量為
+\(\Phi^{home}=\sum_{e\in\mathcal{E}}\sum_{d\in\mathcal{D}^{M}}u_{ed}\)。
 
 以下公平性只比較目標月第一日已在職的人員。令
 \[
@@ -842,7 +849,7 @@ M 模型目前定義下列軟性違反量：
     \Phi^{R^*}        &:\text{未滿足指定休假 }(\texttt{CS01}),\\
     \Phi^{unusedL}    &:\text{未使用 }R休\text{ 額度},\\
     \Phi^{month,R}    &:\text{本月一般 }R\text{ 數量偏離 }(\texttt{CS02}),\\
-    \Phi^{month,R1}   &:\text{本月 }R1\text{ 數量偏離 }(\texttt{CS03}),\\
+    \Phi^{balance,R1} &:\text{八週累積 }R1\text{ 餘額 }(\texttt{CS03}),\\
     \Phi^{ext}        &:\text{外派班位 }(\texttt{MS01}),\\
     \Phi^{home}       &:\text{非本站工作 }(\texttt{MS02}),\\
     \Phi^{streak}     &:\text{連續工作區段長度 }(\texttt{CS04}),\\
@@ -870,10 +877,9 @@ M 模型目前定義下列軟性違反量：
     J_4={}&
     24\Phi^{ext}
     +24\Phi^{month,R}
-    +12\Phi^{month,R1}
-    +2\Phi^{home}\\
-    +4\Phi^{streak}
-    +15\Phi^{mixed}
+    +12\Phi^{balance,R1}
+    +4\Phi^{streak}\\
+    &+15\Phi^{mixed}
     +30\Phi^{NE}\\
     &+20\Phi^{NA}
     +7\Phi^{restswitch}
@@ -886,7 +892,8 @@ M 模型目前定義下列軟性違反量：
 \[
   J_5
   =
-  2\Phi^{weekday}
+  2\Phi^{home}
+  +2\Phi^{weekday}
   +4\Phi^{holiday}
   +3\Phi^{support}
   +\Phi^{shift,\mathrm E}
@@ -898,8 +905,8 @@ M 模型目前定義下列軟性違反量：
 
 \begin{itemize}
   \item \(J_1\)：優先滿足人員提出的指定休假。
-  \item \(J_4\)：共同權衡外援、月休分布、跨站、工作區段與班別模式。
-  \item \(J_5\)：最後改善群組內公平性。
+  \item \(J_4\)：共同權衡外援、月休分布、工作區段與班別模式。
+  \item \(J_5\)：最後改善非所屬站指派與群組內公平性。
 \end{itemize}
 
 完整最佳化目標為
@@ -935,7 +942,7 @@ M 模型目前定義下列軟性違反量：
   未滿足 \(R^*\)（\texttt{CS01}） & 申請人日 & \(0\leq\Phi^{R^*}\leq P\) & 通常為 0 至數十；可直接與申請數比較。 \\
   本月一般 \(R\)（\texttt{CS02}） & 與目標差額的平方懲罰 & 理論上至 \(N\max_q f_n(q)\) & 合法班表通常為 0 至數十；極端值可達數千以上，平方項可能主導同組目標。 \\
   本月 \(R1\)（\texttt{CS03}） & 與目標差額的平方懲罰 & 理論上至 \(N\max_q f_m(q)\) & 通常小於一般 \(R\)，但仍應避免與純計數規則直接使用相同權重。 \\
-  外派班位（\texttt{MS01}） & 班位數 & \(0\leq\Phi^{ext}\leq 6D\) & 上限約為 180--186。 \\
+  外派班位（\texttt{MS01}） & 超過 70 的班位數 & \(0\leq\Phi^{ext}\leq\max\{0,6D-70\}\) & 上限約為 110--116。 \\
   非本站工作（\texttt{MS02}） & 人日 & \(0\leq\Phi^{home}\leq ND\) & 上限約為 1080--1488。 \\
   連續工作區段（\texttt{CS04}） & 區段偏離值 & 約不超過 \(5N\lceil D/2\rceil\) & 實際通常遠低於粗略上限。 \\
   工作區段混合班型（\texttt{MS03}） & 混合班型的工作區段數 & 粗略上限約 \(N\lceil D/2\rceil\) & 與 CS04 使用相同區段邊界。 \\
@@ -1238,27 +1245,14 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
 \]
 因此偏離基準 0、1、2、3 日時，懲罰依序為 0、1、4、9。
 
-\paragraph{每月 R1 分布（\texttt{CS03}）}
+\paragraph{八週累積 R1 餘額（\texttt{CS03}）}
 
-同理，令
+T 沿用上述 \(g\)。令 \(p^{T,1}_{eI}\) 為目標月前已使用或折抵的 \(R1\) 數，則
 \[
-  Q^{T,R1}_e
-  =
-  \sum_{d\in\mathcal{D}^{M}}r^{T,1}_{ed},
-\]
-並以 \(m\) 為基準，定義
-\[
-  \Delta^{T,R1}_e
-  =
-  |Q^{T,R1}_e-m|,
+  A^{T,1}_{eI}=p^{T,1}_{eI}+\sum_{d\in\mathcal D^M\cap I}r^{T,1}_{ed},
   \qquad
-  \Phi^{T,month,R1}
-  =
-  \sum_{e\in\mathcal{E}^{T}}(\Delta^{T,R1}_e)^2.
+  \Phi^{T,balance,R1}=\sum_e\sum_I g(A^{T,1}_{eI},H_I(c_I)).
 \]
-兩項平方懲罰可使用有限整數查表或 \texttt{AddElement} 建立。它們只用於改善
-目標月份內的休假分布，不取代八週週期的精確額度限制；必要時仍可超出無懲罰
-區間，但會產生相應代價。
 
 \paragraph{月班別一致性（\texttt{TS06}）}
 
@@ -1350,7 +1344,8 @@ T 沿用 M 模型的一人一列、一天一欄寬表格式。固定欄位包含
 
 此規則避免工作與休假過度零碎，或長期貼近連續六日上限。T 的連續工作區段是
 連續曆日皆為正常班或 \(X\) 的最大區段；一般 \(R\)、\(R1\) 與 \(R休\) 都會結束區段。
-沿用 M 模型的區段偏離函數 \(D(L)\)，令已在目標月份內結束的每個工作區段依
+除五日區段仍取 1 外，沿用 M 模型的區段偏離函數 \(D^M(L)\)，令 T 的
+\(D^T(5)=1\)、\(D^T(L)=D^M(L)\ (L\neq5)\)。令已在目標月份內結束的每個工作區段依
 其長度產生懲罰，總違反量記為 \(\Phi^{T,streak}\)。月初承接歷史區段；月底仍
 未結束的區段不在本月作最終長度評分。
 
@@ -1470,7 +1465,7 @@ T 模型的軟性違反量為
     \Phi^{T,R^*}          &: \text{未滿足指定休假 }(\texttt{CS01}),\\
     \Phi^{T,nonmonthly}   &: \text{非月班別正常工作 }(\texttt{TS06}),\\
     \Phi^{T,month,R}      &: \text{本月一般 }R\text{ 數量偏離 }(\texttt{CS02}),\\
-    \Phi^{T,month,R1}     &: \text{本月 }R1\text{ 數量偏離 }(\texttt{CS03}),\\
+    \Phi^{T,balance,R1}   &: \text{八週累積 }R1\text{ 餘額 }(\texttt{CS03}),\\
     \Phi^{T,att}          &: \text{班組出勤不足 }(\texttt{TS01}),\\
     \Phi^{T,specialty}    &: \text{專業組別缺席 }(\texttt{TS02}),\\
     \Phi^{T,ability}      &: \text{高能力人員不足 }(\texttt{TS03}),\\
@@ -1502,7 +1497,7 @@ T 模型的軟性違反量為
   J^T_3
   =
   \Phi^{T,month,R}
-  +\Phi^{T,month,R1},
+  +\Phi^{T,balance,R1},
 \]
 
 \[
