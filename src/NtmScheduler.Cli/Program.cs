@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using NtmScheduler.Solvers;
@@ -6,7 +7,7 @@ namespace NtmScheduler.Cli;
 
 public static class Program
 {
-    public static int Main()
+    public static int Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
         using var cancellation = new CancellationTokenSource();
@@ -19,6 +20,7 @@ public static class Program
 
         try
         {
+            var mSearch = ReadMSearchOptions(args);
             var month = ReadMonth();
             var previousPath = Default(Ask("上月班表 CSV [previous.csv]："), "previous.csv");
             var demandPath = Default(Ask("本月需求 CSV [demand.csv]："), "demand.csv");
@@ -33,11 +35,22 @@ public static class Program
             var input = new ScheduleInput(previous, demand, ScheduleCsv.ReadRestIntervals(intervalsPath), nonStandardShifts);
             var isT = DetectT(demand);
 
-            if (isT) return Finish(TSolver.Solve(input, cancellationToken: cancellation.Token));
+            if (isT)
+            {
+                if (args.Length > 0) throw new FormatException("--m-search 只適用於 M。");
+                var startedAt = Stopwatch.GetTimestamp();
+                var result = TSolver.Solve(input, cancellationToken: cancellation.Token);
+                return Finish(result, Stopwatch.GetElapsedTime(startedAt));
+            }
             var perpetualSchedulePath = Ask("M 八週萬年班表 CSV（留空不使用 hint）：");
-            return string.IsNullOrWhiteSpace(perpetualSchedulePath)
-                ? Finish(MSolver.Solve(input, cancellationToken: cancellation.Token))
-                : Finish(MSolver.Solve(input, ScheduleCsv.ReadMPerpetualSchedule(perpetualSchedulePath), cancellationToken: cancellation.Token));
+            var perpetualSchedule = string.IsNullOrWhiteSpace(perpetualSchedulePath)
+                ? null
+                : ScheduleCsv.ReadMPerpetualSchedule(perpetualSchedulePath);
+            Console.WriteLine($"M 多 seed 求解：seed 0–{mSearch.Seeds - 1} 並行，各 {mSearch.Seconds} 秒、{mSearch.Workers} workers（最多約 {(long)mSearch.Seeds * mSearch.Workers} workers）。");
+            var mStartedAt = Stopwatch.GetTimestamp();
+            var (mResult, selectedSeed) = SolveMPortfolio(input, perpetualSchedule, mSearch, cancellation.Token);
+            Console.WriteLine($"採用 seed：{selectedSeed}");
+            return Finish(mResult, Stopwatch.GetElapsedTime(mStartedAt));
         }
         catch (OperationCanceledException)
         {
@@ -60,9 +73,67 @@ public static class Program
         }
     }
 
-    private static int Finish(MSolveResult result)
+    private static (MSolveResult Result, int Seed) SolveMPortfolio(
+        ScheduleInput input,
+        MPerpetualSchedule? perpetualSchedule,
+        MSearchOptions search,
+        CancellationToken cancellationToken)
     {
-        Print(result.Status, result.Errors, result.Candidates.Select(candidate => candidate.Objectives).ToArray());
+        var runs = Enumerable.Range(0, search.Seeds).Select(seed => Task.Run(() =>
+        {
+            var options = new SolverOptions { TimeLimit = TimeSpan.FromSeconds(search.Seconds), RandomSeed = seed, WorkerCount = search.Workers };
+            var result = perpetualSchedule is null
+                ? MSolver.Solve(input, options, cancellationToken)
+                : MSolver.Solve(input, perpetualSchedule, options, cancellationToken);
+            return (Result: result, Seed: seed);
+        }, cancellationToken)).ToArray();
+        var results = Task.WhenAll(runs).GetAwaiter().GetResult();
+        var best = results[0];
+        for (var index = 1; index < results.Length; index++)
+            if (CompareMResults(results[index].Result, best.Result) < 0) best = results[index];
+        return best;
+    }
+
+    private static MSearchOptions ReadMSearchOptions(string[] args)
+    {
+        if (args.Length == 0) return new(4, 2, 180);
+        const string usage = "用法：--m-search workers=4,seeds=2,seconds=180";
+        if (args.Length != 2 || args[0] != "--m-search") throw new FormatException(usage);
+        var values = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var field in args[1].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var pair = field.Split('=', 2, StringSplitOptions.TrimEntries);
+            if (pair.Length != 2 || pair[0] is not ("workers" or "seeds" or "seconds") ||
+                !int.TryParse(pair[1], NumberStyles.None, CultureInfo.InvariantCulture, out var value) || value <= 0 ||
+                !values.TryAdd(pair[0], value))
+                throw new FormatException(usage);
+        }
+        if (values.Count != 3 || !values.ContainsKey("workers") || !values.ContainsKey("seeds") || !values.ContainsKey("seconds"))
+            throw new FormatException(usage);
+        return new(values["workers"], values["seeds"], values["seconds"]);
+    }
+
+    private static int CompareMResults(MSolveResult left, MSolveResult right)
+    {
+        if (left.Candidates.Count == 0 || right.Candidates.Count == 0)
+            return right.Candidates.Count.CompareTo(left.Candidates.Count);
+        var leftScores = left.Candidates[0].Objectives.OrderBy(score => score.Priority).ToArray();
+        var rightScores = right.Candidates[0].Objectives.OrderBy(score => score.Priority).ToArray();
+        if (leftScores.Length != rightScores.Length)
+            return rightScores.Length.CompareTo(leftScores.Length);
+        for (var index = 0; index < leftScores.Length; index++)
+        {
+            var comparison = leftScores[index].Value.CompareTo(rightScores[index].Value);
+            if (comparison != 0) return comparison;
+        }
+        return 0;
+    }
+
+    private sealed record MSearchOptions(int Workers, int Seeds, int Seconds);
+
+    private static int Finish(MSolveResult result, TimeSpan elapsed)
+    {
+        Print(result.Status, elapsed, result.Errors, result.Candidates.Select(candidate => candidate.Objectives).ToArray());
         if (result.Candidates.Count == 0) return 1;
         var firstNumber = NextAvailableCandidateNumber(result.Candidates.Count);
         for (var index = 0; index < result.Candidates.Count; index++)
@@ -76,9 +147,9 @@ public static class Program
         return 0;
     }
 
-    private static int Finish(TSolveResult result)
+    private static int Finish(TSolveResult result, TimeSpan elapsed)
     {
-        Print(result.Status, result.Errors, result.Candidates.Select(candidate => candidate.Objectives).ToArray());
+        Print(result.Status, elapsed, result.Errors, result.Candidates.Select(candidate => candidate.Objectives).ToArray());
         if (result.Candidates.Count == 0) return 1;
         var firstNumber = NextAvailableCandidateNumber(result.Candidates.Count);
         for (var index = 0; index < result.Candidates.Count; index++)
@@ -87,9 +158,10 @@ public static class Program
         return 0;
     }
 
-    private static void Print(SolveStatus status, IReadOnlyList<InputError> errors, IReadOnlyList<IReadOnlyList<ObjectiveScore>> candidates)
+    private static void Print(SolveStatus status, TimeSpan elapsed, IReadOnlyList<InputError> errors, IReadOnlyList<IReadOnlyList<ObjectiveScore>> candidates)
     {
         Console.WriteLine($"狀態：{StatusText(status)}");
+        Console.WriteLine($"求解耗時：{elapsed.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture)} 秒");
         foreach (var error in errors) Console.Error.WriteLine($"{error.Field}: {error.Message}");
         Console.WriteLine($"候選數量：{candidates.Count}");
         for (var index = 0; index < candidates.Count; index++)
@@ -131,16 +203,13 @@ public static class Program
         "ExternalStaffing" => "外援人力",
         "MonthlyRest" => "每月一般 R 偏差",
         "SpecialRestBalance" => "八週累積 R1 餘額",
-        "NonHomeStation" => "非所屬站指派",
         "WorkStreak" => "連續工作區段",
         "MixedShiftWorkStreak" => "工作區段混合班型",
         "NightRestEarly" => "夜休早",
         "NightRestAfternoon" => "夜休午",
         "ShiftChangeWithoutRest" => "未休假直接換班",
-        "NonPreferredRotation" => "非偏好輪轉",
         "WeekdayRestFairness" => "平日休假公平",
         "HolidayRestFairness" => "假日休假公平",
-        "SupportFairness" => "跨站支援公平",
         "EarlyShiftFairness" => "早班次數公平",
         "AfternoonShiftFairness" => "午班次數公平",
         "NightShiftFairness" => "夜班次數公平",
@@ -160,16 +229,13 @@ public static class Program
         "ExternalStaffing" => "原三站外援超過 70 的部分，加上 LB09 超過 4 人次的部分",
         "MonthlyRest" => "各人實際 R 數與當月週末日目標差額平方的合計",
         "SpecialRestBalance" => "各人八週區間截至月底的累積 R1 超額，或超過一日容許量的欠額平方合計",
-        "NonHomeStation" => "員工不在所屬站工作的總日數",
         "WorkStreak" => "各已結束連續工作區段依長度罰分表計算後的合計",
         "MixedShiftWorkStreak" => "包含兩種以上正常班型的已結束工作區段數",
         "NightRestEarly" => "夜班、休假、早班三日組合的次數",
         "NightRestAfternoon" => "夜班、休假、午班三日組合的次數",
         "ShiftChangeWithoutRest" => "兩個正常班之間沒有休假且班別不同的次數",
-        "NonPreferredRotation" => "班別改變不符合早、午、夜循環方向的次數",
         "WeekdayRestFairness" => "各比較群組內平日休假次數的正規化絕對偏差合計（以 0.1 為單位）",
         "HolidayRestFairness" => "各比較群組內假日休假次數的正規化絕對偏差合計（以 0.1 為單位）",
-        "SupportFairness" => "各三站群組內跨站支援次數的正規化絕對偏差合計（以 0.1 為單位）",
         "EarlyShiftFairness" => "各三站群組內早班次數的正規化絕對偏差合計（以 0.1 為單位）",
         "AfternoonShiftFairness" => "各三站群組內午班次數的正規化絕對偏差合計（以 0.1 為單位）",
         "NightShiftFairness" => "各三站群組內夜班次數的正規化絕對偏差合計（以 0.1 為單位）",

@@ -48,7 +48,7 @@ internal static class SolverAcceptanceAssertions
         AssertObjectiveStructure(candidate.Objectives,
         [
             (1, "RequestedRest", [("RequestedRest", 3), ("UnusedLeaveRest", 1)]),
-            (4, "ScheduleQualityAndFairness", [("ExternalStaffing", 100), ("MonthlyRest", 240), ("SpecialRestBalance", 120), ("WorkStreak", 40), ("MixedShiftWorkStreak", 30), ("NightRestEarly", 400), ("NightRestAfternoon", 300), ("ShiftChangeWithoutRest", 5), ("NonPreferredRotation", 0), ("NonHomeStation", 0), ("WeekdayRestFairness", 5), ("HolidayRestFairness", 5), ("SupportFairness", 0), ("EarlyShiftFairness", 2), ("AfternoonShiftFairness", 2), ("NightShiftFairness", 10)])
+            (4, "ScheduleQualityAndFairness", [("ExternalStaffing", 100), ("MonthlyRest", 240), ("SpecialRestBalance", 120), ("WorkStreak", 40), ("MixedShiftWorkStreak", 30), ("NightRestEarly", 400), ("NightRestAfternoon", 300), ("ShiftChangeWithoutRest", 5), ("WeekdayRestFairness", 5), ("HolidayRestFairness", 5), ("EarlyShiftFairness", 2), ("AfternoonShiftFairness", 2), ("NightShiftFairness", 10)])
         ]);
 
         Expect(candidate.Objectives, "RequestedRest", RequestedRestViolations(input, candidate.Schedule));
@@ -58,7 +58,6 @@ internal static class SolverAcceptanceAssertions
             Math.Max(0, candidate.ExternalAssignments.Where(item => item.Station == "LB09").Sum(item => item.Count) - 4));
         Expect(candidate.Objectives, "MonthlyRest", MonthlyRestPenalty(input, candidate.Schedule, AssignmentKind.Rest));
         Expect(candidate.Objectives, "SpecialRestBalance", SpecialRestBalancePenalty(input, candidate.Schedule));
-        Expect(candidate.Objectives, "NonHomeStation", candidate.Schedule.Employees.Sum(employee => employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Work && cell.Station != employee.Affiliation)));
 
         var completedStreakPenalty = CompletedWorkStreakPenalty(input, candidate.Schedule, false);
         Assert.IsGreaterThanOrEqualTo(completedStreakPenalty, Component(candidate.Objectives, "WorkStreak").Value);
@@ -75,10 +74,8 @@ internal static class SolverAcceptanceAssertions
         Assert.IsGreaterThan(0, afternoonPatterns);
 
         Expect(candidate.Objectives, "ShiftChangeWithoutRest", ShiftChangesWithoutRest(input, candidate.Schedule));
-        Expect(candidate.Objectives, "NonPreferredRotation", NonPreferredRotations(input, candidate.Schedule));
         Expect(candidate.Objectives, "WeekdayRestFairness", MRestFairness(input, candidate.Schedule, false));
         Expect(candidate.Objectives, "HolidayRestFairness", MRestFairness(input, candidate.Schedule, true));
-        Expect(candidate.Objectives, "SupportFairness", MSupportFairness(input, candidate.Schedule));
         Expect(candidate.Objectives, "EarlyShiftFairness", MShiftFairness(input, candidate.Schedule, Shift.Early));
         Expect(candidate.Objectives, "AfternoonShiftFairness", MShiftFairness(input, candidate.Schedule, Shift.Afternoon));
         Expect(candidate.Objectives, "NightShiftFairness", MShiftFairness(input, candidate.Schedule, Shift.Night));
@@ -326,31 +323,10 @@ internal static class SolverAcceptanceAssertions
         return total;
     }
 
-    private static long NonPreferredRotations(ScheduleInput input, MonthlySchedule schedule)
-    {
-        HashSet<(Shift, Shift)> preferred = [(Shift.Early, Shift.Afternoon), (Shift.Afternoon, Shift.Night), (Shift.Night, Shift.Early)];
-        var total = 0L;
-        foreach (var employee in schedule.Employees)
-        {
-            Shift? previous = History(input, employee.EmployeeId).LastOrDefault(cell => cell.Kind == AssignmentKind.Work)?.Shift;
-            foreach (var cell in employee.Assignments.OrderBy(pair => pair.Key).Select(pair => pair.Value).Where(cell => cell.Kind == AssignmentKind.Work))
-            {
-                if (previous is not null && previous != cell.Shift && !preferred.Contains((previous.Value, cell.Shift!.Value))) total++;
-                previous = cell.Shift;
-            }
-        }
-        return total;
-    }
-
     private static long MRestFairness(ScheduleInput input, MonthlySchedule schedule, bool holiday) => MGroupDeviationTenths(
         input.DemandMonth.Employees.Where(employee => IsActive(employee, input.DemandMonth.MonthStart)).GroupBy(employee => StationGroup(employee.Affiliation)),
         schedule,
         employee => employee.Assignments.Count(pair => IsHoliday(input, pair.Key) == holiday && IsRest(pair.Value)));
-
-    private static long MSupportFairness(ScheduleInput input, MonthlySchedule schedule) => MGroupDeviationTenths(
-        input.DemandMonth.Employees.Where(employee => IsActive(employee, input.DemandMonth.MonthStart)).GroupBy(employee => StationGroup(employee.Affiliation)),
-        schedule,
-        employee => employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Work && cell.Station != employee.Affiliation));
 
     private static long MShiftFairness(ScheduleInput input, MonthlySchedule schedule, Shift shift) => MGroupDeviationTenths(
         input.DemandMonth.Employees.Where(employee => IsActive(employee, input.DemandMonth.MonthStart)).GroupBy(employee => StationGroup(employee.Affiliation)),

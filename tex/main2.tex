@@ -608,29 +608,7 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 \texttt{MS03} 不同：\texttt{MS03} 判斷同一工作區段內是否混合班型，\texttt{MS06}
 只判斷換班前有沒有休假。
 
-\paragraph{偏好班別輪轉（\texttt{MS07}）}
-令偏好轉移集合為
-\[
-  \mathcal{P}
-  =
-  \{(\mathrm{E},\mathrm{A}),(\mathrm{A},\mathrm{N}),(\mathrm{N},\mathrm{E})\}.
-\]
-依正常班別序列比較相鄰兩個有效正常班；\(R\)、\(R1\)、\(R休\)、\(X\) 均不影響比較。
-若班別改變且轉移不屬於 \(\mathcal{P}\)，則產生一次違反。總違反量記為
-\[
-  \Phi^{M,rotate}.
-\]
-此規則只判斷換班方向，與換班前是否休假無關。
-
 \subsubsection{\texorpdfstring{$J^M_5$}{J5}：站務配置與公平性}
-
-\paragraph{非所屬站指派（\texttt{MS02}）}
-\[
-  \Phi^{M,home}
-  =
-  \sum_{e\in\mathcal{E}^{M}}
-  \sum_{d\in\mathcal{D}^{\mathrm{tar}}}u_{ed}.
-\]
 
 以下公平性只比較目標月第一日已在職的人員。令
 \[
@@ -679,20 +657,6 @@ $Z_g=\sum_{e\in\mathcal E^{full}_g}z_e$，並定義十分之一為單位的正�
   \sum_{g\in\mathcal{G}}F_g(R^{M,hol}).
 \]
 
-\paragraph{跨站支援公平（\texttt{MS08}）}
-令
-\[
-  S^{M}_{e}
-  =
-  \sum_{d\in\mathcal{D}^{\mathrm{tar}}}u_{ed}.
-\]
-則
-\[
-  \Phi^{M,support}
-  =
-  \sum_{g\in\mathcal{G}}F_g(S^{M}).
-\]
-
 \paragraph{班別次數公平（\texttt{MS09}）}
 \[
   C^{M,s}_e=\sum_{d\in\mathcal{D}^{\mathrm{tar}}}y^{M}_{eds}.
@@ -720,17 +684,14 @@ M 模型定義下列目標函數：
     &+3\Phi^{M,mixed}
     +40\Phi^{M,NE}\\
     &+30\Phi^{M,NA}
-    +0.5\Phi^{M,restswitch}
-    +0\Phi^{M,rotate},
+    +0.5\Phi^{M,restswitch},
   \end{aligned}
 \]
 \[
   J^M_5
   =
-  0\Phi^{M,home}
-  +5\Phi^{M,weekday}
+  5\Phi^{M,weekday}
   +5\Phi^{M,holiday}
-  +0\Phi^{M,support}
   +2\Phi^{M,shift,\mathrm E}
   +2\Phi^{M,shift,\mathrm A}
   +10\Phi^{M,shift,\mathrm N}.
@@ -1330,7 +1291,6 @@ M/T 若可比較格數為 \(N_{cell}\)，定義最低差異格數
   \(c^{work}_{ed}\) & 函數內 \texttt{IntVar count} & \texttt{WorkStreakViolation} \\
   \((\beta_{ed},\mu_{ed})\) & 函數內 \texttt{lastShift/mixed} & \texttt{CountMixedShiftWorkStreaks} \\
   \(\gamma_{ed}\) & 函數內 \texttt{state} & \texttt{ShiftChangeWithoutRestViolation} \\
-  \(\eta_{ed}\) & 函數內 \texttt{state} & \texttt{NonPreferredRotationViolation} \\
   \(J^M_1,J^M_{4+5}\) & \texttt{objectives} 中的 \texttt{LinearExpr Total} & \texttt{BuildObjectiveGroups}；權重直接寫在同一函數 \\
   \bottomrule
 \end{longtable}

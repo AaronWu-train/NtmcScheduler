@@ -21,6 +21,47 @@ public sealed class MSolverTests
     }
 
     [TestMethod]
+    public void CliPortfolioPrefersCompleteThenLexicographicallyBetterMResult()
+    {
+        var schedule = ValidInput().DemandMonth;
+        MSolveResult Result(params ObjectiveScore[] scores) => new(
+            SolveStatus.TimeLimit,
+            [new MCandidate(schedule, [], scores)],
+            []);
+        var compare = typeof(Program).GetMethod(
+            "CompareMResults",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        int Compare(MSolveResult left, MSolveResult right) => (int)compare.Invoke(null, [left, right])!;
+
+        var incomplete = Result(new ObjectiveScore(1, "RequestedRest", 0, []));
+        var complete = Result(
+            new ObjectiveScore(1, "RequestedRest", 0, []),
+            new ObjectiveScore(4, "ScheduleQualityAndFairness", 200, []));
+        var better = Result(
+            new ObjectiveScore(1, "RequestedRest", 0, []),
+            new ObjectiveScore(4, "ScheduleQualityAndFairness", 100, []));
+
+        Assert.IsLessThan(0, Compare(complete, incomplete));
+        Assert.IsLessThan(0, Compare(better, complete));
+    }
+
+    [TestMethod]
+    public void CliMSearchOptionParsesWorkersSeedsAndSeconds()
+    {
+        var parse = typeof(Program).GetMethod(
+            "ReadMSearchOptions",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var options = parse.Invoke(null, [new[] { "--m-search", "workers=3,seeds=4,seconds=90" }])!;
+        var type = options.GetType();
+
+        Assert.AreEqual(3, type.GetProperty("Workers")!.GetValue(options));
+        Assert.AreEqual(4, type.GetProperty("Seeds")!.GetValue(options));
+        Assert.AreEqual(90, type.GetProperty("Seconds")!.GetValue(options));
+        Assert.ThrowsExactly<System.Reflection.TargetInvocationException>(() =>
+            parse.Invoke(null, [new[] { "--m-search", "workers=3,seeds=0,seconds=90" }]));
+    }
+
+    [TestMethod]
     [DataRow(0, 1, 0L)]
     [DataRow(0, 2, 1L)]
     [DataRow(0, 3, 4L)]

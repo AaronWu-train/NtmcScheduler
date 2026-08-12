@@ -19,16 +19,13 @@ public static partial class MSolver
         var externalStaffing = MeasureExternalStaffingAboveAllowance(model, targetDates, variables);
         var monthlyRest = MeasureMonthlyRestDeviation(model, input, targetDates, variables.Rest);
         var specialRestBalance = MeasureSpecialRestBalance(model, input, targetDates, variables.SpecialRest);
-        var nonHomeStation = CountCrossStationAssignments(input, targetDates, variables);
         var workStreak = MeasureWorkStreakPenalties(model, input, targetDates, modelDates, variables);
         var mixedShiftWorkStreak = CountMixedShiftWorkStreaks(model, input, targetDates, modelDates, variables);
         var nightRestEarly = CountNightRestShiftPatterns(model, input, variables, Shift.Early, "night_rest_early");
         var nightRestAfternoon = CountNightRestShiftPatterns(model, input, variables, Shift.Afternoon, "night_rest_afternoon");
         var shiftChangeWithoutRest = CountShiftChangesWithoutRest(model, input, modelDates, variables);
-        var rotation = CountNonPreferredRotations(model, input, modelDates, variables);
         var weekdayFairness = MeasureRestCountDeviationByStationGroup(model, input, targetDates.Where(date => !IsWeekendOrNationalHoliday(input, date)), variables, "weekday_fairness");
         var holidayFairness = MeasureRestCountDeviationByStationGroup(model, input, targetDates.Where(date => IsWeekendOrNationalHoliday(input, date)), variables, "holiday_fairness");
-        var supportFairness = MeasureSupportCountDeviationByStationGroup(model, input, targetDates, variables);
         var earlyShiftFairness = MeasureShiftCountDeviationByStationGroup(model, input, targetDates, variables, Shift.Early);
         var afternoonShiftFairness = MeasureShiftCountDeviationByStationGroup(model, input, targetDates, variables, Shift.Afternoon);
         var nightShiftFairness = MeasureShiftCountDeviationByStationGroup(model, input, targetDates, variables, Shift.Night);
@@ -60,11 +57,8 @@ public static partial class MSolver
                     ("NightRestEarly", 40 * objectiveScale, nightRestEarly),
                     ("NightRestAfternoon", 30 * objectiveScale, nightRestAfternoon),
                     ("ShiftChangeWithoutRest", 5, shiftChangeWithoutRest),
-                    ("NonPreferredRotation", 0, rotation),
-                    ("NonHomeStation", 0, nonHomeStation),
                     ("WeekdayRestFairness", 5, weekdayFairness),
                     ("HolidayRestFairness", 5, holidayFairness),
-                    ("SupportFairness", 0, supportFairness),
                     ("EarlyShiftFairness", 2, earlyShiftFairness),
                     ("AfternoonShiftFairness", 2, afternoonShiftFairness),
                     ("NightShiftFairness", 10, nightShiftFairness)
@@ -161,12 +155,6 @@ public static partial class MSolver
         var penalizedDeviation = balance > 0 ? balance : Math.Max(0, -balance - 1);
         return (long)penalizedDeviation * penalizedDeviation;
     }
-
-    // 非所屬站指派——計算不在員工所屬站工作的日數。
-    private static LinearExpr CountCrossStationAssignments(ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables) =>
-        LinearExpr.Sum(from employee in input.DemandMonth.Employees
-            from date in targetDates
-            select variables.SupportsOtherStation[(employee.EmployeeId, date)]);
 
     // 連續工作區段——計算已結束的實際工作區段；R、R1、R休會結束區段。
     private static LinearExpr MeasureWorkStreakPenalties(
@@ -356,62 +344,6 @@ public static partial class MSolver
         return LinearExpr.Sum(violations);
     }
 
-    // 偏好班別輪轉——早 -> 午 -> 夜 -> 早；序列略過 R/R1/R休/X。
-    private static LinearExpr CountNonPreferredRotations(
-        CpModel model,
-        ScheduleInput input,
-        IReadOnlyList<DateOnly> modelDates,
-        ModelVariables variables)
-    {
-        var preferred = new HashSet<(Shift From, Shift To)>
-        {
-            (Shift.Early, Shift.Afternoon),
-            (Shift.Afternoon, Shift.Night),
-            (Shift.Night, Shift.Early)
-        };
-        var targetEnd = input.DemandMonth.MonthStart.AddMonths(1).AddDays(-1);
-        var violations = new List<BoolVar>();
-
-        foreach (var employee in input.DemandMonth.Employees)
-        {
-            LinearExpr previous = LinearExpr.Constant(ShiftStateCode(HistoricalLastNormalShift(input, employee.EmployeeId)));
-            foreach (var date in modelDates)
-            {
-                var hasNormal = model.NewBoolVar($"rotation_has_normal_{employee.EmployeeId}_{date:yyyyMMdd}");
-                model.Add(hasNormal == LinearExpr.Sum(Shifts.Select(shift => variables.WorksShift[(employee.EmployeeId, date, shift)])));
-                var previousByShift = new Dictionary<Shift, BoolVar>();
-                foreach (var shift in Shifts)
-                {
-                    var wasShift = model.NewBoolVar($"rotation_previous_{employee.EmployeeId}_{date:yyyyMMdd}_{shift}");
-                    model.Add(previous == ShiftStateCode(shift)).OnlyEnforceIf(wasShift);
-                    model.Add(previous != ShiftStateCode(shift)).OnlyEnforceIf(wasShift.Not());
-                    previousByShift[shift] = wasShift;
-                }
-
-                if (date <= targetEnd)
-                {
-                    foreach (var current in Shifts)
-                        foreach (var prior in Shifts.Where(prior => prior != current && !preferred.Contains((prior, current))))
-                        {
-                            var currentWork = variables.WorksShift[(employee.EmployeeId, date, current)];
-                            var violation = model.NewBoolVar($"nonpreferred_rotation_{employee.EmployeeId}_{date:yyyyMMdd}_{prior}_{current}");
-                            model.Add(violation <= currentWork);
-                            model.Add(violation <= previousByShift[prior]);
-                            model.Add(violation >= currentWork + previousByShift[prior] - 1);
-                            violations.Add(violation);
-                        }
-                }
-
-                var state = model.NewIntVar(0, 3, $"rotation_last_{employee.EmployeeId}_{date:yyyyMMdd}");
-                model.Add(state == previous).OnlyEnforceIf(hasNormal.Not());
-                foreach (var shift in Shifts)
-                    model.Add(state == ShiftStateCode(shift)).OnlyEnforceIf(variables.WorksShift[(employee.EmployeeId, date, shift)]);
-                previous = state;
-            }
-        }
-        return LinearExpr.Sum(violations);
-    }
-
     // 休假公平——只比較同站群組且目標月全月在職的人員。
     private static LinearExpr MeasureRestCountDeviationByStationGroup(
         CpModel model,
@@ -434,30 +366,6 @@ public static partial class MSolver
             }).ToArray();
             if (counts.Length < 2) continue;
             deviations.Add(MeasureNormalizedCountDeviationTenths(model, counts, selectedDates.Length, $"{name}_{group.Key}"));
-        }
-        return LinearExpr.Sum(deviations);
-    }
-
-    // 跨站支援公平——只比較同站群組且全月在職人員的跨站支援數。
-    private static LinearExpr MeasureSupportCountDeviationByStationGroup(
-        CpModel model,
-        ScheduleInput input,
-        IReadOnlyList<DateOnly> targetDates,
-        ModelVariables variables)
-    {
-        var deviations = new List<LinearExpr>();
-        foreach (var group in input.DemandMonth.Employees
-                     .Where(employee => IsEmployedOn(employee, input.DemandMonth.MonthStart))
-                     .GroupBy(employee => StationGroupIndex(employee.Affiliation)))
-        {
-            var counts = group.Select(employee =>
-            {
-                var count = model.NewIntVar(0, targetDates.Count, $"support_fairness_{employee.EmployeeId}");
-                model.Add(count == LinearExpr.Sum(targetDates.Select(date => variables.SupportsOtherStation[(employee.EmployeeId, date)])));
-                return count;
-            }).ToArray();
-            if (counts.Length < 2) continue;
-            deviations.Add(MeasureNormalizedCountDeviationTenths(model, counts, targetDates.Count, $"support_fairness_{group.Key}"));
         }
         return LinearExpr.Sum(deviations);
     }

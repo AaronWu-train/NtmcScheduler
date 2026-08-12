@@ -22,7 +22,7 @@ TSolveResult TSolver.Solve(
 
 `CancellationToken` 是呼叫端中止信號，不是班表資料。取消時 solver 呼叫 `StopSearch` 並丟出 `OperationCanceledException`，不回傳部分結果。
 
-`SolverOptions` 預設為五分鐘、random seed 0、單 worker。正常時間上限到期不丟例外。
+`SolverOptions` 預設為五分鐘、random seed 0、8 workers。正常時間上限到期不丟例外。
 
 ## 原始碼流程
 
@@ -88,7 +88,15 @@ M 候選另包含外派日期、車站、班別與人數。
 dotnet run --project src/NtmScheduler.Cli
 ```
 
-CLI 依序詢問目標月、上月 CSV、本月 CSV、八週區間 CSV 與非常態班型 CSV；偵測為 M 後再詢問可留白的八週萬年班表 CSV。CSV 只由 CLI 解析；solver 收到 typed snapshot。Ctrl+C 傳入 cancellation token。
+CLI 依序詢問目標月、上月 CSV、本月 CSV、八週區間 CSV 與非常態班型 CSV；偵測為 M 後再詢問可留白的八週萬年班表 CSV。CSV 只由 CLI 解析；solver 收到 typed snapshot。Ctrl+C 傳入 cancellation token。T 維持單次預設求解；M 使用 `--m-search workers=4,seeds=2,seconds=180` 控制每個 seed 的 workers、並行 seed 數與各次超時秒數，省略時採該組預設。Seed 固定使用 `0..seeds-1`，CLI 輸出第一候選具名目標字典序較佳的整批結果。結果摘要另以小數一位顯示 portfolio 的實際 wall time，不包含互動輸入、CSV 讀取與候選檔寫入時間。
+
+透過 `dotnet run` 時，開關放在參數分隔符號之後：
+
+```bash
+dotnet run --project src/NtmScheduler.Cli -- --m-search workers=4,seeds=2,seconds=180
+```
+
+`workers` 是每個 seed 的 worker 數，因此最大並行 worker 數約為 `workers × seeds`。三個值都必須是正整數；未知、缺漏或重複欄位視為格式錯誤。此開關只適用於 M。
 
 輸出為目前目錄的 `candidate-N.csv`。M 有外派時另寫同編號的 `candidate-N-external.csv`。若預定編號已有主檔或外派檔，CLI 不詢問也不覆寫，整批改用下一段連續可用編號。
 
