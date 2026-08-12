@@ -2,9 +2,9 @@
 
 ## Goal
 
-Rebalance the combined M schedule-quality and fairness objective so that the solver can trade minor work-pattern preferences for materially better staffing and fairness. The intended order inside fairness is rest fairness, then night-shift fairness, then early- and afternoon-shift fairness.
+Rebalance the combined M schedule-quality and fairness objective so that the solver can trade minor work-pattern preferences for materially better staffing and fairness. Night-shift fairness is the strongest fairness term, followed by holiday and weekday rest fairness, then early- and afternoon-shift fairness.
 
-This change does not alter hard constraints, violation formulas, requested-rest priority, or T solver behavior.
+This change does not alter hard constraints, requested-rest priority, or T solver behavior. The six M fairness measurements use normalized absolute deviation so that every employee's deviation contributes instead of only the two extremes.
 
 ## Problem
 
@@ -33,20 +33,24 @@ M continues to optimize requested rest first. Its second objective is one direct
 | Night-rest-afternoon pattern | 20 |
 | Shift change without rest | 2 |
 | Non-preferred rotation | 1 |
-| Non-home-station assignment | 1 |
+| Non-home-station assignment | 0.1 |
 | Weekday rest fairness | 10 |
 | Holiday rest fairness | 20 |
 | Cross-station support fairness | 1 |
 | Early-shift count fairness | 2 |
 | Afternoon-shift count fairness | 2 |
-| Night-shift count fairness | 8 |
+| Night-shift count fairness | 30 |
 
 The shared unpenalized external-staffing allowance for LB02, LB04, and LB11 changes from 70 to 60 assignments. LB09 remains penalized from its first external assignment.
 
+Because CP-SAT objective coefficients and the existing objective output use integers, implementation multiplies ordinary M weights by 10, so non-home station 0.1 is reported as 1. Each fairness measurement is already reported in tenths, so its displayed weight remains the readable table value, including night-shift fairness 30. Both products use the same ten-times objective scale.
+
+For each station group, let `n` be the employee count, `cᵢ` an employee's count, and `T` the group total. Each M fairness component adds `floor(10 × Σ|n × cᵢ − T| ÷ n)` for that group. Dividing by `n` normalizes group size, multiplying by 10 preserves one decimal place with integer CP-SAT expressions, and summing every absolute deviation distinguishes distributions that share the same minimum and maximum.
+
 ## Rationale
 
-- Rest fairness is deliberately strongest among fairness terms: holiday rest has weight 20 and weekday rest has weight 10.
-- Night-shift fairness has weight 8, above early and afternoon fairness at 2 each, because uneven night work has the greater practical burden.
+- Holiday and weekday rest fairness retain substantial weights of 20 and 10.
+- Night-shift fairness has weight 30, above early and afternoon fairness at 2 each, because uneven night work has the greater practical burden.
 - Cross-station support fairness has weight 1. It only breaks otherwise similar solutions, while still discouraging the solver from concentrating all support work on a few employees.
 - Mixed-shift work streaks, changes without rest, and non-preferred rotations fall to 3, 2, and 1. These remain tie-breaking preferences but should not justify obvious staffing or fairness defects.
 - Night-rest-early and night-rest-afternoon retain weights 30 and 20 because avoiding those recovery patterns remains more important than ordinary shift consistency.

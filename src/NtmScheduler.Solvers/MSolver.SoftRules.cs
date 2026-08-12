@@ -13,7 +13,7 @@ public static partial class MSolver
         IReadOnlyList<DateOnly> modelDates,
         ModelVariables variables)
     {
-        const int scheduleQualityMultiplier = 1000;
+        const int objectiveScale = 10; // Scales ordinary violations; fairness measurements are already reported in tenths.
         var requestedRest = CountUnfulfilledRequestedRests(input, targetDates, variables);
         var unusedLeaveRest = MeasureUnusedLeaveRests(model, input, targetDates, variables);
         var externalStaffing = MeasureExternalStaffingAboveAllowance(model, targetDates, variables);
@@ -26,46 +26,51 @@ public static partial class MSolver
         var nightRestAfternoon = CountNightRestShiftPatterns(model, input, variables, Shift.Afternoon, "night_rest_afternoon");
         var shiftChangeWithoutRest = CountShiftChangesWithoutRest(model, input, modelDates, variables);
         var rotation = CountNonPreferredRotations(model, input, modelDates, variables);
-        var weekdayFairness = MeasureRestCountRangeByStationGroup(model, input, targetDates.Where(date => !IsWeekendOrNationalHoliday(input, date)), variables, "weekday_fairness");
-        var holidayFairness = MeasureRestCountRangeByStationGroup(model, input, targetDates.Where(date => IsWeekendOrNationalHoliday(input, date)), variables, "holiday_fairness");
-        var supportFairness = MeasureSupportCountRangeByStationGroup(model, input, targetDates, variables);
-        var earlyShiftFairness = MeasureShiftCountRangeByStationGroup(model, input, targetDates, variables, Shift.Early);
-        var afternoonShiftFairness = MeasureShiftCountRangeByStationGroup(model, input, targetDates, variables, Shift.Afternoon);
-        var nightShiftFairness = MeasureShiftCountRangeByStationGroup(model, input, targetDates, variables, Shift.Night);
+        var weekdayFairness = MeasureRestCountDeviationByStationGroup(model, input, targetDates.Where(date => !IsWeekendOrNationalHoliday(input, date)), variables, "weekday_fairness");
+        var holidayFairness = MeasureRestCountDeviationByStationGroup(model, input, targetDates.Where(date => IsWeekendOrNationalHoliday(input, date)), variables, "holiday_fairness");
+        var supportFairness = MeasureSupportCountDeviationByStationGroup(model, input, targetDates, variables);
+        var earlyShiftFairness = MeasureShiftCountDeviationByStationGroup(model, input, targetDates, variables, Shift.Early);
+        var afternoonShiftFairness = MeasureShiftCountDeviationByStationGroup(model, input, targetDates, variables, Shift.Afternoon);
+        var nightShiftFairness = MeasureShiftCountDeviationByStationGroup(model, input, targetDates, variables, Shift.Night);
 
         return
         [
             new(1, "RequestedRest", requestedRest * 3 + unusedLeaveRest,
                 [("RequestedRest", 3, requestedRest), ("UnusedLeaveRest", 1, unusedLeaveRest)]),
             new(4, "ScheduleQualityAndFairness",
-                externalStaffing * (24 * scheduleQualityMultiplier)
-                    + monthlyRest * (24 * scheduleQualityMultiplier)
-                    + specialRestBalance * (12 * scheduleQualityMultiplier)
-                    + workStreak * (4 * scheduleQualityMultiplier)
-                    + mixedShiftWorkStreak * (15 * scheduleQualityMultiplier)
-                    + nightRestEarly * (30 * scheduleQualityMultiplier)
-                    + nightRestAfternoon * (20 * scheduleQualityMultiplier)
-                    + shiftChangeWithoutRest * (7 * scheduleQualityMultiplier)
-                    + rotation * (7 * scheduleQualityMultiplier)
-                    + nonHomeStation + weekdayFairness * 6 + holidayFairness * 12 + supportFairness * 9
-                    + earlyShiftFairness * 3 + afternoonShiftFairness * 3 + nightShiftFairness * 6,
+                externalStaffing * (24 * objectiveScale)
+                    + monthlyRest * (24 * objectiveScale)
+                    + specialRestBalance * (12 * objectiveScale)
+                    + workStreak * (4 * objectiveScale)
+                    + mixedShiftWorkStreak * (3 * objectiveScale)
+                    + nightRestEarly * (30 * objectiveScale)
+                    + nightRestAfternoon * (20 * objectiveScale)
+                    + shiftChangeWithoutRest * (2 * objectiveScale)
+                    + rotation * objectiveScale
+                    + nonHomeStation
+                    + weekdayFairness * 10
+                    + holidayFairness * 20
+                    + supportFairness
+                    + earlyShiftFairness * 2
+                    + afternoonShiftFairness * 2
+                    + nightShiftFairness * 30,
                 [
-                    ("ExternalStaffing", 24 * scheduleQualityMultiplier, externalStaffing),
-                    ("MonthlyRest", 24 * scheduleQualityMultiplier, monthlyRest),
-                    ("SpecialRestBalance", 12 * scheduleQualityMultiplier, specialRestBalance),
-                    ("WorkStreak", 4 * scheduleQualityMultiplier, workStreak),
-                    ("MixedShiftWorkStreak", 15 * scheduleQualityMultiplier, mixedShiftWorkStreak),
-                    ("NightRestEarly", 30 * scheduleQualityMultiplier, nightRestEarly),
-                    ("NightRestAfternoon", 20 * scheduleQualityMultiplier, nightRestAfternoon),
-                    ("ShiftChangeWithoutRest", 7 * scheduleQualityMultiplier, shiftChangeWithoutRest),
-                    ("NonPreferredRotation", 7 * scheduleQualityMultiplier, rotation),
+                    ("ExternalStaffing", 24 * objectiveScale, externalStaffing),
+                    ("MonthlyRest", 24 * objectiveScale, monthlyRest),
+                    ("SpecialRestBalance", 12 * objectiveScale, specialRestBalance),
+                    ("WorkStreak", 4 * objectiveScale, workStreak),
+                    ("MixedShiftWorkStreak", 3 * objectiveScale, mixedShiftWorkStreak),
+                    ("NightRestEarly", 30 * objectiveScale, nightRestEarly),
+                    ("NightRestAfternoon", 20 * objectiveScale, nightRestAfternoon),
+                    ("ShiftChangeWithoutRest", 2 * objectiveScale, shiftChangeWithoutRest),
+                    ("NonPreferredRotation", objectiveScale, rotation),
                     ("NonHomeStation", 1, nonHomeStation),
-                    ("WeekdayRestFairness", 6, weekdayFairness),
-                    ("HolidayRestFairness", 12, holidayFairness),
-                    ("SupportFairness", 9, supportFairness),
-                    ("EarlyShiftFairness", 3, earlyShiftFairness),
-                    ("AfternoonShiftFairness", 3, afternoonShiftFairness),
-                    ("NightShiftFairness", 6, nightShiftFairness)
+                    ("WeekdayRestFairness", 10, weekdayFairness),
+                    ("HolidayRestFairness", 20, holidayFairness),
+                    ("SupportFairness", 1, supportFairness),
+                    ("EarlyShiftFairness", 2, earlyShiftFairness),
+                    ("AfternoonShiftFairness", 2, afternoonShiftFairness),
+                    ("NightShiftFairness", 30, nightShiftFairness)
                 ])
         ];
     }
@@ -91,14 +96,14 @@ public static partial class MSolver
         return LinearExpr.Sum(unused);
     }
 
-    // 外援人力——原三站前 70 人次免罰；LB09 每一人次立即計算。
+    // 外援人力——原三站前 60 人次免罰；LB09 每一人次立即計算。
     private static LinearExpr MeasureExternalStaffingAboveAllowance(CpModel model, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
     {
         var target = variables.External.Where(x => targetDates.Contains(x.Key.Date)).ToArray();
         var legacy = target.Where(x => x.Key.Station != "LB09").Select(x => x.Value).ToArray();
         var lb09 = target.Where(x => x.Key.Station == "LB09").Select(x => x.Value);
         var aboveAllowance = model.NewIntVar(0, legacy.Length, "external_staffing_above_allowance");
-        model.AddMaxEquality(aboveAllowance, [LinearExpr.Sum(legacy) - 70, LinearExpr.Constant(0)]);
+        model.AddMaxEquality(aboveAllowance, [LinearExpr.Sum(legacy) - 60, LinearExpr.Constant(0)]);
         return aboveAllowance + LinearExpr.Sum(lb09);
     }
 
@@ -409,7 +414,7 @@ public static partial class MSolver
     }
 
     // 休假公平——只比較同站群組且目標月全月在職的人員。
-    private static LinearExpr MeasureRestCountRangeByStationGroup(
+    private static LinearExpr MeasureRestCountDeviationByStationGroup(
         CpModel model,
         ScheduleInput input,
         IEnumerable<DateOnly> dates,
@@ -417,7 +422,7 @@ public static partial class MSolver
         string name)
     {
         var selectedDates = dates.ToArray();
-        var ranges = new List<LinearExpr>();
+        var deviations = new List<LinearExpr>();
         foreach (var group in input.DemandMonth.Employees
                      .Where(employee => IsEmployedOn(employee, input.DemandMonth.MonthStart))
                      .GroupBy(employee => StationGroupIndex(employee.Affiliation)))
@@ -426,26 +431,22 @@ public static partial class MSolver
             {
                 var count = model.NewIntVar(0, selectedDates.Length, $"{name}_{employee.EmployeeId}");
                 model.Add(count == LinearExpr.Sum(selectedDates.Select(date => variables.AnyRest[(employee.EmployeeId, date)])));
-                return (LinearExpr)count;
+                return count;
             }).ToArray();
             if (counts.Length < 2) continue;
-            var maximum = model.NewIntVar(0, selectedDates.Length, $"{name}_max_{group.Key}");
-            var minimum = model.NewIntVar(0, selectedDates.Length, $"{name}_min_{group.Key}");
-            model.AddMaxEquality(maximum, counts);
-            model.AddMinEquality(minimum, counts);
-            ranges.Add(maximum - minimum);
+            deviations.Add(MeasureNormalizedCountDeviationTenths(model, counts, selectedDates.Length, $"{name}_{group.Key}"));
         }
-        return LinearExpr.Sum(ranges);
+        return LinearExpr.Sum(deviations);
     }
 
     // 跨站支援公平——只比較同站群組且全月在職人員的跨站支援數。
-    private static LinearExpr MeasureSupportCountRangeByStationGroup(
+    private static LinearExpr MeasureSupportCountDeviationByStationGroup(
         CpModel model,
         ScheduleInput input,
         IReadOnlyList<DateOnly> targetDates,
         ModelVariables variables)
     {
-        var ranges = new List<LinearExpr>();
+        var deviations = new List<LinearExpr>();
         foreach (var group in input.DemandMonth.Employees
                      .Where(employee => IsEmployedOn(employee, input.DemandMonth.MonthStart))
                      .GroupBy(employee => StationGroupIndex(employee.Affiliation)))
@@ -454,27 +455,23 @@ public static partial class MSolver
             {
                 var count = model.NewIntVar(0, targetDates.Count, $"support_fairness_{employee.EmployeeId}");
                 model.Add(count == LinearExpr.Sum(targetDates.Select(date => variables.SupportsOtherStation[(employee.EmployeeId, date)])));
-                return (LinearExpr)count;
+                return count;
             }).ToArray();
             if (counts.Length < 2) continue;
-            var maximum = model.NewIntVar(0, targetDates.Count, $"support_fairness_max_{group.Key}");
-            var minimum = model.NewIntVar(0, targetDates.Count, $"support_fairness_min_{group.Key}");
-            model.AddMaxEquality(maximum, counts);
-            model.AddMinEquality(minimum, counts);
-            ranges.Add(maximum - minimum);
+            deviations.Add(MeasureNormalizedCountDeviationTenths(model, counts, targetDates.Count, $"support_fairness_{group.Key}"));
         }
-        return LinearExpr.Sum(ranges);
+        return LinearExpr.Sum(deviations);
     }
 
-    // 班別次數公平——加總各全月在職站群的最多與最少班數差。
-    private static LinearExpr MeasureShiftCountRangeByStationGroup(
+    // 班別次數公平——計入各全月在職站群內每位人員偏離群組平均的程度。
+    private static LinearExpr MeasureShiftCountDeviationByStationGroup(
         CpModel model,
         ScheduleInput input,
         IReadOnlyList<DateOnly> targetDates,
         ModelVariables variables,
         Shift shift)
     {
-        var ranges = new List<LinearExpr>();
+        var deviations = new List<LinearExpr>();
         foreach (var group in input.DemandMonth.Employees
                      .Where(employee => IsEmployedOn(employee, input.DemandMonth.MonthStart))
                      .GroupBy(employee => StationGroupIndex(employee.Affiliation)))
@@ -487,13 +484,31 @@ public static partial class MSolver
                 model.Add(count == LinearExpr.Sum(targetDates.Select(date => variables.WorksShift[(employee.EmployeeId, date, shift)])));
                 return count;
             }).ToArray();
-            var maximum = model.NewIntVar(0, targetDates.Count, $"shift_fairness_max_{group.Key}_{shift}");
-            var minimum = model.NewIntVar(0, targetDates.Count, $"shift_fairness_min_{group.Key}_{shift}");
-            model.AddMaxEquality(maximum, counts);
-            model.AddMinEquality(minimum, counts);
-            ranges.Add(maximum - minimum);
+            deviations.Add(MeasureNormalizedCountDeviationTenths(model, counts, targetDates.Count, $"shift_fairness_{group.Key}_{shift}"));
         }
-        return LinearExpr.Sum(ranges);
+        return LinearExpr.Sum(deviations);
+    }
+
+    private static IntVar MeasureNormalizedCountDeviationTenths(
+        CpModel model,
+        IReadOnlyList<IntVar> counts,
+        int maximumCount,
+        string name)
+    {
+        var groupSize = counts.Count;
+        var total = model.NewIntVar(0, (long)groupSize * maximumCount, $"{name}_total");
+        model.Add(total == LinearExpr.Sum(counts));
+        var individualDeviations = counts.Select((count, index) =>
+        {
+            var deviation = model.NewIntVar(0, (long)groupSize * maximumCount, $"{name}_deviation_{index}");
+            model.AddAbsEquality(deviation, count * groupSize - total);
+            return deviation;
+        }).ToArray();
+        var rawDeviation = model.NewIntVar(0, (long)groupSize * groupSize * maximumCount, $"{name}_raw");
+        model.Add(rawDeviation == LinearExpr.Sum(individualDeviations));
+        var normalizedTenths = model.NewIntVar(0, 10L * groupSize * maximumCount, $"{name}_tenths");
+        model.AddDivisionEquality(normalizedTenths, rawDeviation * 10, groupSize);
+        return normalizedTenths;
     }
 
     // Returns a fixed historical value before the target month and a decision expression during the modeled month.

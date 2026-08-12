@@ -480,9 +480,9 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
   \sum_{d\in\mathcal{D}^{\mathrm{tar}}}
   \sum_{s\in\mathcal{S}}a_{d,\mathrm{LB09},s}.
 \]
-原三站前 70 人次不計違反量；LB09 每一人次立即計算，故
+原三站前 60 人次不計違反量；LB09 每一人次立即計算，故
 \[
-  \Phi^{M,ext}=\max\{0,A^{M,legacy}-70\}+A^{M,LB09}.
+  \Phi^{M,ext}=\max\{0,A^{M,legacy}-60\}+A^{M,LB09}.
 \]
 
 \paragraph{每月一般 R 分布（\texttt{CS02}）}
@@ -633,6 +633,18 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 \[
   \mathcal E^{full}_g=\{e:g(h_e)=g,\ e\text{ 於目標月第一日已在職}\}.
 \]
+對任一群組計數 $z_e$，令 $n_g=|\mathcal E^{full}_g|$、
+$Z_g=\sum_{e\in\mathcal E^{full}_g}z_e$，並定義十分之一為單位的正規化絕對偏差
+\[
+  F_g(z)
+  =
+  \left\lfloor
+    \frac{10}{n_g}
+    \sum_{e\in\mathcal E^{full}_g}|n_gz_e-Z_g|
+  \right\rfloor.
+\]
+除以 $n_g$ 可消除群組人數造成的直接尺度差異；乘以 10 讓 CP-SAT 以整數保留
+0.1 的解析度。人數少於 2 的群組其 $F_g(z)=0$。
 
 \paragraph{平日休假公平（\texttt{CS05}）}
 對每位人員定義目標月份平日休假數
@@ -646,12 +658,7 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 \[
   \Phi^{M,weekday}
   =
-  \sum_{g\in\mathcal{G}}
-  \left(
-    \max_{e\in\mathcal E^{full}_g}R^{M,wd}_{e}
-    -
-    \min_{e\in\mathcal E^{full}_g}R^{M,wd}_{e}
-  \right).
+  \sum_{g\in\mathcal{G}}F_g(R^{M,wd}).
 \]
 
 \paragraph{假日休假公平（\texttt{CS06}）}
@@ -666,12 +673,7 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 \[
   \Phi^{M,holiday}
   =
-  \sum_{g\in\mathcal{G}}
-  \left(
-    \max_{e\in\mathcal E^{full}_g}R^{M,hol}_{e}
-    -
-    \min_{e\in\mathcal E^{full}_g}R^{M,hol}_{e}
-  \right).
+  \sum_{g\in\mathcal{G}}F_g(R^{M,hol}).
 \]
 
 \paragraph{跨站支援公平（\texttt{MS08}）}
@@ -685,12 +687,7 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 \[
   \Phi^{M,support}
   =
-  \sum_{g\in\mathcal{G}}
-  \left(
-    \max_{e\in\mathcal E^{full}_g}S^{M}_{e}
-    -
-    \min_{e\in\mathcal E^{full}_g}S^{M}_{e}
-  \right).
+  \sum_{g\in\mathcal{G}}F_g(S^{M}).
 \]
 
 \paragraph{班別次數公平（\texttt{MS09}）}
@@ -700,18 +697,13 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 定義
 \[
   \Phi^{M,shift,s}
-  =\sum_{g\in\mathcal G}
-  \left(
-    \max_{e\in\mathcal E^{full}_g}C^{M,s}_e
-    -
-    \min_{e\in\mathcal E^{full}_g}C^{M,s}_e
-  \right).
+  =\sum_{g\in\mathcal G}F_g(C^{M,s}).
 \]
-此為各群組內最多者與最少者的班數差；\(X\) 與延伸日不計。
+此量計入群組內每位人員偏離群組平均的程度；\(X\) 與延伸日不計。
 
 \subsubsection{字典序目標}
 
-M 模型定義三個目標群組：
+M 模型定義下列目標函數：
 \[
   J^M_1=3\Phi^{M,R^*}+\Phi^{M,unusedL},
 \]
@@ -722,27 +714,30 @@ M 模型定義三個目標群組：
     +24\Phi^{M,month,R}
     +12\Phi^{M,balance,R1}
     +4\Phi^{M,streak}\\
-    &+15\Phi^{M,mixed}
+    &+3\Phi^{M,mixed}
     +30\Phi^{M,NE}\\
     &+20\Phi^{M,NA}
-    +7\Phi^{M,restswitch}
-    +7\Phi^{M,rotate},
+    +2\Phi^{M,restswitch}
+    +\Phi^{M,rotate},
   \end{aligned}
 \]
 \[
   J^M_5
   =
-  \Phi^{M,home}
-  +6\Phi^{M,weekday}
-  +12\Phi^{M,holiday}
-  +9\Phi^{M,support}
-  +3\Phi^{M,shift,\mathrm E}
-  +3\Phi^{M,shift,\mathrm A}
-  +6\Phi^{M,shift,\mathrm N}.
+  0.1\Phi^{M,home}
+  +10\Phi^{M,weekday}
+  +20\Phi^{M,holiday}
+  +\Phi^{M,support}
+  +2\Phi^{M,shift,\mathrm E}
+  +2\Phi^{M,shift,\mathrm A}
+  +30\Phi^{M,shift,\mathrm N}.
 \]
+實作時一般違反量的係數乘以 10，以 CP-SAT 整數係數精確表示非所屬站指派的
+相對權重 (0.1)；公平性違反量 $F_g$ 已乘以 10，故保留 $J^M_5$ 所列整數係數。
+兩者的加權分數皆位於相同的 10 倍尺度，不改變最佳化取捨。
 令
 \[
-  J^M_{4+5}=1000J^M_4+J^M_5.
+  J^M_{4+5}=J^M_4+J^M_5.
 \]
 完整目標為
 \[
