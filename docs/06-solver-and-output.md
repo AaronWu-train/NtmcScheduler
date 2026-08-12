@@ -1,5 +1,8 @@
 # Solver 流程、狀態與輸出
 
+本文件定義程式流程與輸出契約；完整問題定義、M/T 數學模型及解法見
+[`tex/main2.tex`](../tex/main2.tex)。
+
 ## 公開介面
 
 ```csharp
@@ -50,7 +53,7 @@ M 有萬年班表時，以模板加入 partial solution hint
 2. 對當前 Priority 設定 `Minimize`。
 3. 只有 CP-SAT 回傳 `Optimal` 時，加入 `objective == optimum`。
 4. 繼續下一 Priority。
-5. M 固定預留候選搜尋時間：總時限大於 60 秒時預留 30 秒，否則預留總時限的一半。任一組只得到 `Feasible` 時，保留當前 incumbent，並在預留時間內優先搜尋至少第二份不同候選；候選搜尋改為無品質目標的可行性搜尋，但每個具名目標分數都不得超過第一份的 120%。剩餘時間用完則回傳 `TimeLimit` 與已找到的候選，不再最佳化後續組；T 沿用原流程，不允許替代候選分數變差。
+5. M/T 都不預留固定候選時間；各 Priority 先共用每個 seed 的整體總時限，全部最佳化完成後才以剩餘時間搜尋候選。M 把進入候選搜尋當下的剩餘時間分半：前半先像 T 一樣搜尋同分候選；若尚未產生第二份，後半才放寬為每個具名目標分數不超過第一份的 120%。T 不套用 20% 放寬。
 6. 全部優先組證明最佳後，才搜尋替代候選。
 
 ## 候選差異
@@ -58,9 +61,9 @@ M 有萬年班表時，以模板加入 partial solution hint
 - 最多 3 份。
 - 只計算目標月、已到職、非固定的日格。
 - 未決定 `R*` 不是固定格；已填正常班、R、R1、`R*[R]`、`R*[R1]`、`R*[R休]` 與 X 是固定格。
-- M/T 每個新候選至少改變 `ceil(可比較格數 × 5%)`，並與每份既有候選分別達到門檻。M 在所有目標已證明最佳時維持相同目標分數；由 feasible incumbent 進入 TLE 備援搜尋時，每個 `ObjectiveScore.Value` 最多可比第一份高 20%，以整數不等式 `候選分數 × 5 <= 第一份分數 × 6` 判定。第一份分數為 0 時，替代候選該項也必須為 0。
+- M/T 每個新候選至少改變 `ceil(可比較格數 × 5%)`，並與每份既有候選分別達到門檻。M 先搜尋所有具名目標與第一份完全同分的候選；只有同分搜尋未產生第二份時，才允許每個 `ObjectiveScore.Value` 最多高 20%，以整數不等式 `候選分數 × 5 <= 第一份分數 × 6` 判定。第一份分數為 0 時，替代候選該項也必須為 0。
 - T 只在所有目標證明最佳且以等式固定後搜尋替代候選，因此每份 T 候選的 J1–J5 分數都與第一份相同，不套用 M 的 20% 放寬。
-- 替代候選搜尋用完剩餘時間時保留已找到的候選；若所有目標已證明最佳則狀態為 `Optimal`，若由 feasible incumbent 進入替代搜尋則維持 `TimeLimit`。若第一份尚無完整具名目標分數，或不存在同時符合硬限制、5% 差異門檻與 M 20% 分數上限的第二解，或預留時間不足，只輸出第一份。
+- 替代候選搜尋用完剩餘時間時保留已找到的候選；若所有目標已證明最佳則狀態為 `Optimal`，若由 feasible incumbent 進入替代搜尋則維持 `TimeLimit`。若第一份尚無完整具名目標分數，或不存在同時符合硬限制、5% 差異門檻與 M 20% 分數上限的第二解，或目標最佳化後剩餘時間不足，只輸出第一份。
 
 ## 狀態
 
@@ -88,15 +91,15 @@ M 候選另包含外派日期、車站、班別與人數。
 dotnet run --project src/NtmScheduler.Cli
 ```
 
-CLI 依序詢問目標月、上月 CSV、本月 CSV、八週區間 CSV 與非常態班型 CSV；偵測為 M 後再詢問可留白的八週萬年班表 CSV。CSV 只由 CLI 解析；solver 收到 typed snapshot。Ctrl+C 傳入 cancellation token。T 維持單次預設求解；M 使用 `--m-search workers=4,seeds=2,seconds=180` 控制每個 seed 的 workers、並行 seed 數與各次超時秒數，省略時採該組預設。Seed 固定使用 `0..seeds-1`，CLI 輸出第一候選具名目標字典序較佳的整批結果。結果摘要另以小數一位顯示 portfolio 的實際 wall time，不包含互動輸入、CSV 讀取與候選檔寫入時間。
+CLI 依序詢問目標月、上月 CSV、本月 CSV、八週區間 CSV 與非常態班型 CSV；偵測為 M 後再詢問可留白的八週萬年班表 CSV。CSV 只由 CLI 解析；solver 收到 typed snapshot。Ctrl+C 傳入 cancellation token。M/T 都使用 `--search workers=N,seeds=N,seconds=N` 控制每個 seed 的 workers、並行 seed 數與每個 seed 的整體總時限。M 省略時為 4／2／180；T 省略時維持 library 預設 8 workers、1 seed、300 秒。Seed 使用 `0..seeds-1`，CLI 輸出第一候選具名目標字典序較佳的整批結果。結果摘要另以小數一位顯示 portfolio 的實際 wall time，不包含互動輸入、CSV 讀取與候選檔寫入時間。
 
 透過 `dotnet run` 時，開關放在參數分隔符號之後：
 
 ```bash
-dotnet run --project src/NtmScheduler.Cli -- --m-search workers=4,seeds=2,seconds=180
+dotnet run --project src/NtmScheduler.Cli -- --search workers=4,seeds=2,seconds=180
 ```
 
-`workers` 是每個 seed 的 worker 數，因此最大並行 worker 數約為 `workers × seeds`。三個值都必須是正整數；未知、缺漏或重複欄位視為格式錯誤。此開關只適用於 M。
+`workers` 是每個 seed 的 worker 數，因此最大並行 worker 數約為 `workers × seeds`。`seconds` 是每個 seed 從初始可行解、目標最佳化到候選搜尋共用的總時限。三個值都必須是正整數；未知、缺漏或重複欄位視為格式錯誤。
 
 輸出為目前目錄的 `candidate-N.csv`。M 有外派時另寫同編號的 `candidate-N-external.csv`。若預定編號已有主檔或外派檔，CLI 不詢問也不覆寫，整批改用下一段連續可用編號。
 

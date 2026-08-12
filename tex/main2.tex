@@ -1,145 +1,117 @@
 % !TeX program = xelatex
-% !TeX options = -shell-escape
 % !TEX encoding = UTF-8
 
-% --------------------------------------------------------------
-% This is all preamble stuff that you don't have to worry about.
-% Head down to where it says "Start here"
-% --------------------------------------------------------------
+\documentclass[a4paper,12pt]{article}
+\usepackage[margin=2.2cm,headheight=16pt]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs,longtable,tabularx,array}
+\usepackage[AutoFakeBold,AutoFakeSlant,CJKmath=true]{xeCJK}
+\usepackage{fancyhdr}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{ragged2e}
+\usepackage{setspace}
+\usepackage[colorlinks=true,linkcolor=black,urlcolor=blue]{hyperref}
 
-\documentclass[12pt]{article}
-\usepackage[margin=2cm]{geometry} % 頁面邊距設置
-\usepackage{amsmath,amssymb,amsthm} % 數學相關套件
-\usepackage{graphicx} % 圖形插入
-\usepackage{booktabs} % 表格線條
-\usepackage[AutoFakeBold,AutoFakeSlant]{xeCJK} % 中文支援
-\usepackage{fancyhdr} % 頁首頁尾設置
-\usepackage{xcolor,changepage,mdframed} % 顏色與框線相關
-\usepackage{setspace} % 行距
-\usepackage{minted} % 程式碼高亮（需安裝 Python 套件 pygments）
-\usepackage{caption}
-\usepackage{tabularx}
-\usepackage{longtable}
-\usepackage{array}
-\usepackage{ulem}
-\usepackage[shortlabels]{enumitem} % 列表格式
-\usepackage[colorlinks=true,linkcolor=black,urlcolor=blue,citecolor=blue]{hyperref}
-\usepackage{multicol}
-\usepackage{parskip}
-\usepackage{paracol}
-\setlength{\parskip}{6pt plus 2pt minus 1pt} % 段落間距
-\graphicspath{{images}}
-\usepackage{tikz}
-\usetikzlibrary{arrows.meta, positioning}
-% 字體設定 (xeCJK)
 \setCJKmainfont{黑體-繁}
-\setCJKmonofont{Noto Sans Mono CJK TC}
+\setCJKsansfont{黑體-繁}
+\setCJKmonofont{黑體-繁}
 
-% 頁首/頁尾設定 (fancyhdr)
-\pagestyle{fancy}
-\fancyhead[L]{新北捷運公司} % 可以用 \leftmark 取代
-\fancyhead[R]{求解器數學模型}
-\fancyfoot[C]{\thepage}
-\renewcommand{\headrulewidth}{0.4pt}
-\renewcommand{\footrulewidth}{0pt}
-\setlength{\headheight}{15pt}
-\usepackage{siunitx}
-\sisetup{
-  round-mode=places,
-  round-precision=6,
-  table-number-alignment = center,
-  detect-mode,
-  detect-weight=true,
-  detect-family=true
+\definecolor{NtmBlue}{HTML}{1F4E79}
+\hypersetup{
+  pdftitle={新北捷運人員月排班問題：數學模型與 CP-SAT 解法},
+  pdfauthor={吳亞倫},
+  pdfsubject={站務 M 與檢測 T 月排班模型}
 }
 
-\captionsetup{width=0.45\textwidth}
-
-% tex-fmt: off
-% 自訂框線環境
-\newmdenv[
-  linewidth=2pt, linecolor=gray, backgroundcolor=gray!10,
-  topline=false, bottomline=false, rightline=false,
-  skipabove=10pt, skipbelow=10pt, innerleftmargin=10pt,
-  innerrightmargin=10pt, innertopmargin=5pt, innerbottommargin=5pt
-]{myquote}
-
-\newenvironment{mycolorbox}[1][gray]{
-  \renewmdenv[
-    linewidth=1pt, linecolor=#1, backgroundcolor=#1!15,
-    skipabove=10pt, skipbelow=10pt, innerleftmargin=10pt,
-    innerrightmargin=10pt, innertopmargin=10pt, innerbottommargin=10pt
-  ]{myquote}
-  \begin{myquote}
-}{\end{myquote}}
-
-\newtheorem*{theorem}{Theorem}
-\newenvironment{lemma}[2][Lemma]{\begin{trivlist}
-\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2.}]}{\end{trivlist}}
-\newenvironment{exercise}[2][Exercise]{\begin{trivlist}
-\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2.}]}{\end{trivlist}}
-\newenvironment{problem}[2][Problem]{\smallskip\begin{myquote}\begin{trivlist}
-\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2}]}{\end{trivlist}\end{myquote}}
-\newenvironment{question}[2][Question]{\begin{trivlist}
-\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2.}]}{\end{trivlist}}
-\newenvironment{corollary}[2][Corollary]{\begin{trivlist}
-\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2.}]}{\end{trivlist}}
-\newenvironment{solution}{\begin{proof}[Solution]}{\end{proof}}
-\newenvironment{answer}{\begin{proof}[Ans]}{\end{proof}}
-
-% 樣式設定
-
-\setminted{frame=lines, linenos, framesep=2mm, breaklines=true, breakanywhere=true, autogobble=true}
-
-\linespread{1.1}
-% \usemintedstyle{xcode}
-\AtBeginEnvironment{minted}{\vspace{-10pt}} % 可根據需求調整間距數值
-\setminted{breaklines=true, breakanywhere=true, autogobble=true}
-\newcolumntype{Y}{>{\centering\arraybackslash}X}
-\renewcommand\tabularxcolumn[1]{m{#1}} % 垂直置中
-\setlength{\extrarowheight}{2pt}       % 多一點行距
-\usepackage{ragged2e}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{新北捷運人員月排班問題}
+\fancyhead[R]{數學模型與 CP-SAT 解法}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\setstretch{1.16}
+\setlength{\parindent}{2em}
+\setlength{\parskip}{3pt plus 1pt minus 1pt}
+\setlist{itemsep=2pt,topsep=4pt}
+\setlength{\extrarowheight}{2pt}
 \renewcommand{\arraystretch}{1.2}
 \renewcommand\tabularxcolumn[1]{>{\RaggedRight\arraybackslash}p{#1}}
-\newcolumntype{P}[1]{>{\centering\arraybackslash}p{#1}}
+\newcolumntype{Y}{>{\centering\arraybackslash}X}
+\renewcommand{\abstractname}{摘要}
+\renewcommand{\contentsname}{目錄}
 
-% tex-fmt: on
 \begin{document}
-\thispagestyle{fancy}
+\begin{titlepage}
+  \centering
+  \vspace*{3.2cm}
+  {\Large\bfseries 新北捷運公司人員自動排班系統\par}
+  \vspace{1.2cm}
+  {\LARGE\bfseries\color{NtmBlue} 新北捷運人員月排班問題\par}
+  \vspace{0.4cm}
+  {\Large 數學模型與 CP-SAT 解法\par}
+  \vfill
+  \begin{tabular}{rl}
+    撰寫者：& 吳亞倫（1508S0342）\\
+    單位：& 企劃處\\
+    版本日期：& 2026 年 8 月 12 日
+  \end{tabular}
+  \vfill
+\end{titlepage}
 
-%------------------------------------------------------------
-%                         Start here
-% -----------------------------------------------------------
+\begin{abstract}
+  本文完整定義新北捷運第一版人員月排班問題，涵蓋站務 M 與檢測 T 兩個彼此獨立的
+  限制規劃模型。輸入包括前月完整班表、本月需求、八週休假區間、指定休假、固定勤務、
+  人員屬性與 M 萬年班表提示；輸出為最多三份合法候選班表及可解釋的違反量、權重與
+  加權分數。兩個模型皆以 Google OR-Tools CP-SAT 建立離散變數，先滿足每日唯一狀態、
+  十一小時工作間隔、七日一般休假與八週額度等硬限制，再以固定優先群組進行字典序
+  最佳化。M 著重站點覆蓋、外援、工作型態與站群內公平；T 著重班組人力、專業與能力、
+  跨月輪轉及休假公平。本文同時說明延伸七日、歷史邊界、萬年班表提示、時間上限、
+  多 seed portfolio 與差異候選的實作方法，使問題定義、數學式與現行程式保持可追溯。
+\end{abstract}
 
-\begin{center}
-  {\large \bfseries 新北捷運公司人員自動排班系統} \\
-  \vspace{1em}
-  {\Large \bfseries 求解器數學模型} \\
-\end{center}
+\noindent\textbf{關鍵詞：}人員排班、限制規劃、CP-SAT、字典序最佳化、休假公平、候選解
 
-\vspace{1em}
+\tableofcontents
+\clearpage
 
-\begin{tabular}{@{}l l}
-  \textbf{Intern:} & 吳亞倫 \\[-5pt]
-  \textbf{ID:} & 1508S0342  \\[-5pt]
-  \textbf{Department:} & 企劃處
-\end{tabular}
+\section{問題背景與研究範圍}
 
-\bigskip
-\section{Problem Statement}
-
-本研究建立站務人員 M 與檢修人員 T 的月排班數學模型。給定目標月份、
+本研究建立站務人員 M 與檢測人員 T 的月排班數學模型。給定目標月份、
 延伸日期、人員資料、歷史班表、指定休假、固定勤務、八週休假週期及各單位
 營運需求，模型決定每位人員每日的正常班別、一般休假 \(R\)、國定假日休假
 \(R1\)、自選休假 \(R休\) 或固定勤務 \(X\)。
 
 模型先滿足所有硬性限制，再依群組順序改善指定休假、月休分布、工作區段、
-班別安排及公平性。目標月份之後固定建立 \(K\) 日延伸日期，用來檢查月底安排
-是否能合法延續；延伸日期不計入目標月份統計與軟性目標。
+班別安排及公平性。目標月份之後固定建立七日延伸日期，用來檢查月底安排
+是否能合法延續；延伸日期不計入目標月份統計與正式輸出，只有明確定義為跨月的
+軟規則會讀取延伸日。
 
-\section{Methodology}
+第一版僅處理 M 與 T，不包含行控 S；兩者共用資料契約與法規性限制，但建立為
+兩個獨立 CP-SAT 模型，不以同一組變數或規則物件混合建模。班表由使用者選擇候選後
+成為目前班表，仍可人工調整並重新驗證；本版沒有審核或發布狀態機，也不做無解原因
+分析。所有時間皆以台北時間（UTC+8）解讀，跨午夜班別歸屬開始日期。
 
-\subsection{Optimization Structure}
+\subsection{輸入資料與邊界}
+
+求解器不直接讀取 CSV、Excel、資料庫或 UI，而接受單一型別化快照
+\texttt{ScheduleInput}。快照包括完整前月實際班表、本月唯一的人員與需求來源、
+連續的 56 日休假區間，以及把非常態班型別名解析成固定勤務 \(X\) 所需的班型表。
+既有人員必須有完整前月歷史；沒有歷史者必須是目標月內到職的新進人員。
+
+月班表的日格可表示正常班、\(R\)、\(R1\)、\(R休\)、\(R^*\) 或
+\(X[\mathrm{HH{:}mm-HH{:}mm}]\)。\(R^*\) 只是尚待決定的指定休假標記，求解後
+以 \(R^*[R]\)、\(R^*[R1]\) 或 \(R^*[R休]\) 保留申請記號與實際休假種類。
+\(R休\) 只可用在目標月的 \(R^*\)，每人輸入數量是上限而非必須值。
+
+輸出只含目標月份，並為每個具名目標列出違反量、權重與加權分。輸入邊界錯誤回傳
+\texttt{InvalidInput}；硬限制無解回傳 \texttt{Infeasible}；時間用完回傳
+\texttt{TimeLimit}，但可能仍帶合法 incumbent。\texttt{TimeLimit} 下的分數只是當前
+候選量測值，不表示每一優先群組都已證明最佳。
+
+\section{建模與求解方法}
+
+\subsection{CP-SAT 與字典序架構}
 
 令 \(\mathcal{F}\) 表示全部硬性限制所形成的可行域。每一條軟性規則定義一個
 非負違反量
@@ -165,18 +137,18 @@
 \texttt{TH}/\texttt{TS} 表示 T 規則。ID 僅存在於文件並識別規則本身，不表示
 優先順序；程式以有意義的英文函數名稱對應公式，不保存 Rule ID。
 
-\subsection{The M Problem}
+\section{站務 M 模型}
 
-\subsubsection{Input and Output}
+\subsection{輸入與輸出}
 
 M 模型的輸入包括：
 \begin{itemize}
-  \item 目標月份與固定延伸天數 \(K\)；
+  \item 目標月份與固定七日延伸區間；
   \item M 人員及其所屬車站；
   \item 指定休假 \(R^*\)、每人目標月 \(R休\) 使用上限、固定勤務 \(X\) 與其他固定指派；
   \item 八週週期的一般 \(R\) 與 \(R1\) 額度；
   \item 依每人在職日期推導的目標月份一般 \(R\) 與 \(R1\) 基準數量；
-  \item 月初前連續七個日曆日的歷史班表；
+  \item 完整前月實際班表，用以重建所有跨月邊界狀態；
   \item 建模開始前各人員、各八週週期已使用的 R 與 R1 數量；
   \item 國定假日集合。星期六與星期日由日期本身決定。
 \end{itemize}
@@ -185,12 +157,12 @@ M 模型的輸入包括：
 滿足 \(R^*\) 時，輸出仍保留申請標記，並同時記錄其底層實際使用的是 \(R\)、
 \(R1\) 或 \(R休\)。延伸日期只屬於模型內部決策，不列入正式輸出。
 
-\subsubsection{Sets and Indices}
+\subsection{集合與索引}
 
 \begin{description}
   \item[\(\mathcal{E}^{M}\)] M 人員集合，索引為 \(e\)。
   \item[\(\mathcal{D}^{\mathrm{tar}}\)] 目標月份內的日期集合，索引為 \(d\)。
-  \item[\(\mathcal{D}^{+}\)] 目標月份之後固定 \(K\) 日的延伸日期集合。
+  \item[\(\mathcal{D}^{+}\)] 目標月份之後固定七日的延伸日期集合。
   \item[\(\mathcal{D}\)] 完整建模日期集合，
     \(\mathcal{D}=\mathcal{D}^{\mathrm{tar}}\cup\mathcal{D}^{+}\)。
   \item[\(\mathcal{L}\)] 車站集合，索引為 \(l\)。
@@ -217,7 +189,7 @@ M 模型的輸入包括：
   \mathcal{L}^{ext}=\{\mathrm{LB02},\mathrm{LB04},\mathrm{LB09},\mathrm{LB11}\}.
 \]
 
-\subsubsection{Parameters}
+\subsection{參數}
 
 對每位人員 \(e\)，令 \(h_e\in\mathcal{L}\) 為所屬車站，\(g(l)\) 為車站
 \(l\) 的群組，並定義合法工作車站
@@ -256,11 +228,11 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 其中 \(n_e\) 是依當月實際月曆計算的一般 \(R\) 基準，不固定為 8；\(m_e\)
 為 \(R1\) 基準。
 
-月初前連續七日的歷史班表用來重建法規連續日數、尚未結束的實際工作區段、
+完整前月歷史班表用來重建法規連續日數、尚未結束的實際工作區段、
 該工作區段最近一次正常班型與是否已混合班型。八週 R/R1 已使用數量由獨立
 輸入提供，不從七日歷史推算；公平性不使用歷史累積值。
 
-\subsubsection{Variables}
+\subsection{決策變數與衍生狀態}
 
 主要決策變數為
 \[
@@ -315,7 +287,7 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 另定義三日模式指示變數
 \(\pi^{NE}_{ed},\pi^{NA}_{ed}\in\{0,1\}\)，分別表示夜--休--早與夜--休--午。
 
-\subsubsection{Constraints}
+\subsection{硬性限制}
 
 \paragraph{每日唯一指派（\texttt{CH01}）}
 每位人員每天恰好具有一個實際狀態：
@@ -399,9 +371,12 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
   0\leq q^{law}_{ed}\leq6.
 \]
 因此正常班、\(X\)、\(R1\) 與 \(R休\) 都會使計數增加；只有一般 \(R\) 會歸零。
-例如 \(\mathrm{E},\mathrm{E},\mathrm{E},R1,\mathrm{A},\mathrm{A},\mathrm{A}\)
-會得到計數 \(1,2,3,4,5,6,7\)，故不合法。若 \(R^*\) 以 \(R\) 滿足則歸零，
-以 \(R1\) 滿足則不歸零。
+例如下列序列的計數會到 7，故不合法：
+\[
+  (\mathrm{E},\mathrm{E},\mathrm{E},R1,\mathrm{A},\mathrm{A},\mathrm{A})
+  \longmapsto (1,2,3,4,5,6,7).
+\]
+若 \(R^*\) 以 \(R\) 滿足則歸零，以 \(R1\) 滿足則不歸零。
 
 \paragraph{八週休假額度（\texttt{CH04}）}
 對每個週期 \(c\)，令
@@ -449,6 +424,8 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 所有固定指派均不得由模型改寫。歷史班表決定建模區間第一日前的
 \(q^{law}\)、\(c^{work}\)、\((\beta,\mu)\)、\(\gamma\)、\(\eta\) 及週期
 累積值，這些值作為第一日狀態轉移的固定前置狀態。
+
+\subsection{軟性目標與權重}
 
 \subsubsection{\texorpdfstring{$J^M_1$}{J1}：指定休假}
 
@@ -571,7 +548,7 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 \]
 
 \paragraph{夜班--休假--早班型態（\texttt{MS04}）}
-對所有完全位於目標月份內的三日視窗，令
+對所有與目標月份相交的三日視窗（起日自月初前兩日至月底），令
 \[
   \pi^{NE}_{ed}=1
   \Longleftrightarrow
@@ -680,55 +657,49 @@ M 不計算平日休假公平。
 
 \subsubsection{字典序目標}
 
-M 模型定義下列目標函數：
+M 模型先定義指定休假的 Priority 1：
 \[
   J^M_1=3\Phi^{M,R^*}+\Phi^{M,unusedL},
 \]
+品質與公平性不再分成兩次求解，而以程式實際使用的整數係數直接合併為 Priority 4：
 \[
   \begin{aligned}
-    J^M_4={}&
-    10\Phi^{M,ext}
-    +24\Phi^{M,month,R}
-    +12\Phi^{M,balance,R1}
-    +4\Phi^{M,streak}\\
-    &+3\Phi^{M,mixed}
-    +40\Phi^{M,NE}\\
-    &+30\Phi^{M,NA}
-    +0.5\Phi^{M,restswitch},
+    J^M_{4+5}={}&
+    100\Phi^{M,ext}
+    +240\Phi^{M,month,R}
+    +120\Phi^{M,balance,R1}
+    +40\Phi^{M,streak}\\
+    &+30\Phi^{M,mixed}
+    +400\Phi^{M,NE}
+    +300\Phi^{M,NA}
+    +5\Phi^{M,restswitch}\\
+    &+5\Phi^{M,holiday}
+    +2\Phi^{M,EA}
+    +50\Phi^{M,N}.
   \end{aligned}
 \]
-\[
-  J^M_5
-  =
-  5\Phi^{M,holiday}
-  +2\Phi^{M,EA}
-  +10\Phi^{M,N}.
-\]
-實作時一般違反量的係數乘以 10，以 CP-SAT 整數係數精確表示未休假直接換班的
-相對權重 (0.5)；公平性保留 $J^M_5$ 所列整數係數。
-兩者的加權分數皆位於相同的 10 倍尺度，不改變最佳化取捨。
-令
-\[
-  J^M_{4+5}=J^M_4+J^M_5.
-\]
+文件中常以 10、24、12、4、3、40、30、0.5 表示前八項的相對權重；實作與
+輸出乘以 10，才能用 CP-SAT 整數係數精確表示 0.5。假日公平、早小差距與夜班
+目標則直接使用上式的 5、2、50。非偏好輪轉、非所屬站指派與跨站支援公平的
+量測函數雖保留在原始碼，但權重為 0 時不建立變數、不計分也不輸出。
 完整目標為
 \[
   \operatorname{lexmin}
   \left(J^M_1,J^M_{4+5}\right).
 \]
 
-\subsection{The T Problem}
+\section{檢測 T 模型}
 
-\subsubsection{Input and Output}
+\subsection{輸入與輸出}
 
 T 模型的輸入包括：
 \begin{itemize}
-  \item 目標月份與固定延伸天數 \(K\)；
+  \item 目標月份與固定七日延伸區間；
   \item T 人員、專業組別、能力分數及建模日期的固定班組；
   \item 指定休假 \(R^*\)、每人目標月 \(R休\) 使用上限、固定勤務 \(X\) 與其他固定指派；
   \item 八週週期的一般 \(R\) 與 \(R1\) 額度；
   \item 依每人在職日期推導的目標月份一般 \(R\) 與 \(R1\) 基準數量；
-  \item 月初前連續七個日曆日的歷史班表與跨月夜轉早休假數；
+  \item 完整前月實際班表，用以推導跨月夜轉早休假與連續狀態；
   \item 建模開始前各人員、各八週週期已使用的 R 與 R1 數量；
   \item 國定假日集合。
 \end{itemize}
@@ -738,12 +709,12 @@ T 模型的輸入包括：
 底層實際使用的是 \(R\)、\(R1\) 或 \(R休\)。上月歷史同樣記錄逐日實際班別；延伸日期
 不列入正式輸出。
 
-\subsubsection{Sets and Indices}
+\subsection{集合與索引}
 
 \begin{description}
   \item[\(\mathcal{E}^{T}\)] T 人員集合，索引為 \(e\)。
   \item[\(\mathcal{D}^{\mathrm{tar}}\)] 目標月份內的日期集合。
-  \item[\(\mathcal{D}^{+}\)] 目標月份之後固定 \(K\) 日的延伸日期集合。
+  \item[\(\mathcal{D}^{+}\)] 目標月份之後固定七日的延伸日期集合。
   \item[\(\mathcal{D}\)] 完整建模日期集合，
     \(\mathcal{D}=\mathcal{D}^{\mathrm{tar}}\cup\mathcal{D}^{+}\)。
   \item[\(\mathcal{S}\)] 班別集合，
@@ -753,12 +724,12 @@ T 模型的輸入包括：
   \item[\(\mathcal{E}_{ds}\)] 日期 \(d\) 固定屬於班別 \(s\) 的人員集合。
   \item[\(\mathcal{E}^{\mathrm{tar}}_s\)] 目標月份固定屬於班別 \(s\) 的人員集合。
   \item[\(\mathcal{S}^{\mathrm{tar}}\)] 目標月份實際有人員的班別集合。
-  \item[\(\mathcal{E}^{N\rightarrow E}\)] 前月固定夜班、目標月固定早班的人員集合。
+  \item[\(\mathcal{E}^{N\rightarrow E}\)] 目標月班別為早班且前月實際班表曾出現夜班的人員集合。
   \item[\(\mathcal{D}^{wd}\)] 星期一至星期五且不是國定假日的日期集合。
   \item[\(\mathcal{D}^{hol}\)] 星期六、星期日或國定假日的日期集合。
 \end{description}
 
-\subsubsection{Parameters}
+\subsection{參數}
 
 令 \(\sigma_{ed}\in\mathcal{S}\) 表示人員 \(e\) 在日期 \(d\) 的固定班組。
 目標月份與延伸日期都必須具有明確的 \(\sigma_{ed}\)。T 的班別時間為：早班
@@ -792,10 +763,10 @@ T 模型的輸入包括：
 令 \(d_0=\min\mathcal{D}^{\mathrm{tar}}-1\) 為目標月份前一日，令
 \(d_1=\min\mathcal{D}^{\mathrm{tar}}\) 為目標月份第一日。對
 \(e\in\mathcal{E}^{N\rightarrow E}\)，令 \(\beta_e\) 為最後一次實際夜班
-結束後至 \(d_1\) 之前已出現的實際休假日數。月初前連續七日歷史另用來
+結束後至 \(d_1\) 之前已出現的實際休假日數。完整前月歷史另用來
 重建法規連續日數與尚未結束的實際工作區段；公平性不使用歷史累積值。
 
-\subsubsection{Variables}
+\subsection{決策變數與衍生狀態}
 
 主要決策變數為
 \[
@@ -829,7 +800,7 @@ T 模型的輸入包括：
   \item \(\delta^{bridge}_{ed}\in\mathbb{Z}_{\geq0}\)：夜班轉早班的休假不足量。
 \end{itemize}
 
-\subsubsection{Constraints}
+\subsection{硬性限制}
 
 \paragraph{每日唯一指派（\texttt{CH01}）}
 \[
@@ -912,6 +883,8 @@ T 模型的輸入包括：
 \paragraph{固定指派與歷史邊界（\texttt{CH05}）}
 所有固定指派均不得由模型改寫。歷史班表決定建模區間第一日前的
 \(q^{T,law}\)、\(c^{T,work}\)、八週累積值與跨月夜轉早所需狀態。
+
+\subsection{軟性目標與權重}
 
 \subsubsection{\texorpdfstring{$J^T_1$}{J1}：指定休假}
 
@@ -1051,13 +1024,16 @@ T 模型的輸入包括：
 \subsubsection{\texorpdfstring{$J^T_4$}{J4}：工作型態品質}
 
 \paragraph{連續工作區段長度（\texttt{CS04}）}
-T 的實際工作區段同樣由連續正常班或 \(X\) 組成，\(R\) 與 \(R1\) 都會結束
-區段。除五日區段仍取 1 外，沿用 M 模型的長度懲罰：
+T 的實際工作區段同樣由連續正常班或 \(X\) 組成，\(R\)、\(R1\) 與 \(R休\)
+都會結束區段。其長度懲罰為：
 \[
   D^T(L)=
   \begin{cases}
+    4, & L=1,\\
+    1, & L=2,\\
+    0, & L\in\{3,4\},\\
     1, & L=5,\\
-    D^M(L), & L\neq5.
+    2(L-4), & L\geq6.
   \end{cases}
 \]
 令 \(\mathcal{B}^{T,work}_e\) 為承接歷史後的
@@ -1200,7 +1176,9 @@ T 模型定義五個目標群組：
   \left(J^T_1,J^T_2,J^T_3,J^T_4,J^T_5\right).
 \]
 
-\section{M Perpetual Schedule Hint}
+\section{求解流程與候選方案}
+
+\subsection{M 萬年班表提示}
 
 M 可選擇提供 56 日萬年班表。模板第 1 日對應每個 16R 八週區間的第一天；
 模板日可留白，留白日不提供 hint。對未固定且非指定休假的建模日，
@@ -1210,12 +1188,12 @@ M 可選擇提供 56 日萬年班表。模板第 1 日對應每個 16R 八週區
 \texttt{ClearHints} 清除模板，再把完整可行解加入 hint，才建立並依序最佳化各目標群組。
 因此上月實際班表與模板不一致不會使模型無解，最終候選也不保證遵循模板。
 
-\section{Alternative Candidates}
+\subsection{差異候選}
 
-每個模型最多輸出三份候選。M 在總時限大於 60 秒時預留最後 30 秒，否則預留
-總時限的一半搜尋替代候選。若當前目標只取得 feasible incumbent，替代候選可變差，
-但每個具名目標分數至多為第一份的 120\%。T 仍只在所有目標群組皆證明最優且
-以等式固定後搜尋替代候選，因此 T 候選維持同分。
+每個模型最多輸出三份候選。M/T 都不預留固定候選時間；初始可行解與所有目標最佳化先共用每個 seed 的總時限，
+只以完成後餘時搜尋候選。M 先與 T 一樣，以等式固定所有具名目標與第一份同分後搜尋；
+第一次同分搜尋使用當時餘時的一半。若仍無法產生第二份，才以另一半允許每個具名目標分數至多為第一份的 120\%。
+T 只在所有目標群組皆證明最優且以等式固定後搜尋，不套用此放寬。
 
 候選差異只比較目標月份中真正由求解器決定的 \((e,d)\) 格。固定正常班、
 固定 \(R\)、固定 \(R1\)、固定 \(R休\)、固定 \(X\) 與延伸日期均排除；指定休假 \(R^*\)
@@ -1227,7 +1205,7 @@ M/T 若可比較格數為 \(N_{cell}\)，定義最低差異格數
   \Delta_{min}=\left\lceil0.05N_{cell}\right\rceil.
 \]
 第二份候選與第一份至少相差 \(\Delta_{min}\) 格；第三份必須分別與前兩份
-達到相同門檻。若第一份 M 候選的具名目標分數為 \(V_j^{(1)}\)，則每份 TLE 備援
+達到相同門檻。若同分搜尋未找到第二份，且第一份 M 候選的具名目標分數為 \(V_j^{(1)}\)，則 fallback
 候選 \(k\) 尚須滿足
 \[
   5V_j^{(k)}\leq6V_j^{(1)},\qquad\forall j.
@@ -1235,103 +1213,76 @@ M/T 若可比較格數為 \(N_{cell}\)，定義最低差異格數
 第一份分數為 0 時，該項仍須維持 0。候選搜尋共用整次求解的剩餘時間；時間用完
 或找不到同時符合差異與品質上限的方案時，只保留已找到的候選。
 
-\section{Mathematical Symbols and C\# Variables}
+\section{數學模型與程式實作對照}
 
-本章是數學模型與 source-as-spec 實作的直接對照。Rule ID 不寫入程式；以下
-函數名稱就是公式在原始碼中的定位方式。公開資料型別位於
-\texttt{SolverContracts.cs}、\texttt{MContracts.cs} 與
-\texttt{TContracts.cs}，建模函數分別只位於 \texttt{MSolver.cs} 與
-\texttt{TSolver.cs}。
-
-\subsection{Input and Sets}
-
-\small
-\begin{longtable}{p{2.7cm}p{5.2cm}p{6.4cm}}
-  \toprule
-  數學符號 & C\# 資料 & 來源或建立位置 \\
-  \midrule
-  \endfirsthead
-  \toprule
-  數學符號 & C\# 資料 & 來源或建立位置 \\
-  \midrule
-  \endhead
-  \(\mathcal D^{\mathrm{tar}}\) & \texttt{DateOnly[] targetDates} & \texttt{TargetDates(input)} \\
-  \(\mathcal D^{+},\mathcal D\) & \texttt{DateOnly[] modelDates} & \texttt{ModelDates(input)}；目標月後 \texttt{ExtensionDays} 日 \\
-  \(\mathcal E^M\) & \texttt{MInput.Employees} & \texttt{IReadOnlyList<MEmployee>} \\
-  \(\mathcal E^T\) & \texttt{TInput.Employees} & \texttt{IReadOnlyList<TEmployee>} \\
-  \(\mathcal C,G_c,H_c\) & \texttt{RestCycles} & \texttt{RestCycle.Id/Start/End/}\newline\texttt{RequiredRest/RequiredSpecialRest} \\
-  \(\overline R_{ec},\overline{R1}_{ec}\) & \texttt{UsageBeforeMonth} & \texttt{EmployeeCycleUsage.}\newline\texttt{RestUsed/SpecialRestUsed} \\
-  \(n_e\) & \texttt{ExpectedMonthlyGeneralRestCount(input, employee)} & 到職後目標月的六日數 \\
-  \(h_e\) & \texttt{MEmployee.HomeStation} & \texttt{MContracts.cs} \\
-  \(p_{ed}\) & \texttt{RequestedRests} & \texttt{RequestedRest(EmployeeId, Date)} \\
-  \(k_e\) & \texttt{RequestedLeaveRestCount} & 需求列 \texttt{當月指定R休}；空白為 0 \\
-  \(z_{ed}\) & \texttt{WorkEvents} & 有相同人員與日期的 \texttt{WorkEvent} 即為 1 \\
-  \(\sigma_{ed}\) & \texttt{EmployeeMonthlySchedule.}\allowbreak\texttt{MonthlyShift} & \texttt{MonthlyShiftOnDate}\allowbreak\texttt{(employee, date, monthStart)} \\
-  \(\kappa_e,\alpha_e\) & \texttt{TEmployee.Specialty/Ability} & \texttt{TContracts.cs} \\
-  \(\beta_e\) & \texttt{NightToEarlyHistory.}\newline\texttt{RestDaysAfterLastNight} & 只供前月夜班轉目標月早班者 \\
-  月初七日歷史 & \texttt{PreviousSevenDays} & \texttt{MHistoryDay} 或 \texttt{THistoryDay}；重建序列狀態，不重算八週額度 \\
-  \bottomrule
-\end{longtable}
-\normalsize
-
-\subsection{M Model}
-
-\small
-\begin{longtable}{p{2.7cm}p{5.2cm}p{6.4cm}}
-  \toprule
-  數學符號 & C\# 變數 & 建立或使用函數 \\
-  \midrule
-  \endfirsthead
-  \toprule
-  數學符號 & C\# 變數 & 建立或使用函數 \\
-  \midrule
-  \endhead
-  \(x^M_{edls}\) & \texttt{variables.Work[(e,d,l,s)]}，\texttt{BoolVar} & \texttt{CreateVariables} \\
-  \(r^M_{ed}\) & \texttt{variables.Rest[(e,d)]}，\texttt{BoolVar} & \texttt{CreateVariables} \\
-  \(r^{M,1}_{ed}\) & \texttt{variables.SpecialRest}\newline\texttt{[(e,d)]}，\texttt{BoolVar} & \texttt{CreateVariables} \\
-  \(r^{M,L}_{ed}\) & \texttt{variables.LeaveRest}\newline\texttt{[(e,d)]}，\texttt{BoolVar} & \texttt{CreateVariables} \\
-  \(a_{dls}\) & \texttt{variables.External[(d,l,s)]}，\texttt{IntVar} & \texttt{CreateDecisionVariables}、\texttt{RequireStationCoverage} \\
-  \(y^M_{eds}\) & \texttt{variables.WorksShift}\newline\texttt{[(e,d,s)]}，\texttt{BoolVar} & \texttt{CreateVariables} \\
-  \(w^M_{ed}\) & \texttt{variables.ActualWork}\newline\texttt{[(e,d)]}，\texttt{BoolVar} & 正常班或 \(X\) 為 1 \\
-  \(\rho^M_{ed}\) & \texttt{variables.AnyRest[(e,d)]}，\texttt{BoolVar} & \(R+R1+R休\) \\
-  \(u_{ed}\) & \texttt{variables.}\newline\texttt{SupportsOtherStation[(e,d)]}，\texttt{BoolVar} & 非本站正常班之和 \\
-  \(q^{law}_{ed}\) & 七日滑動視窗，未另建狀態 class & \texttt{AddMaximumSixDays}\newline\texttt{WithoutGeneralRest} \\
-  \(c^{work}_{ed}\) & 函數內 \texttt{IntVar count} & \texttt{WorkStreakViolation} \\
-  \((\beta_{ed},\mu_{ed})\) & 函數內 \texttt{lastShift/mixed} & \texttt{CountMixedShiftWorkStreaks} \\
-  \(\gamma_{ed}\) & 函數內 \texttt{state} & \texttt{ShiftChangeWithoutRestViolation} \\
-  \(J^M_1,J^M_{4+5}\) & \texttt{objectives} 中的 \texttt{LinearExpr Total} & \texttt{BuildObjectiveGroups}；權重直接寫在同一函數 \\
-  \bottomrule
-\end{longtable}
-\normalsize
-
-\subsection{T Model and Solver Control}
+數學文件中的短 Rule ID 只供跨文件查閱；C\# 不保存 Rule ID，而以有意義的函數名稱
+直接表達公式。公開資料契約位於 \path{SolverContracts.cs}、\path{MContracts.cs}
+與 \path{TContracts.cs}。M/T 各自維持 Main、Input、HardRules、SoftRules 四個
+source-as-spec partial 檔，不加入共用規則 catalog 或外部權重設定。
 
 \footnotesize
-\begin{longtable}{p{2.7cm}p{5.2cm}p{6.4cm}}
+\setlength{\tabcolsep}{3pt}
+\begin{longtable}{p{2.7cm}p{5.3cm}p{6.4cm}}
   \toprule
-  數學符號或概念 & C\# 變數 & 建立或使用函數 \\
+  數學概念 & C\# 資料或變數 & 現行實作位置 \\
   \midrule
   \endfirsthead
   \toprule
-  數學符號或概念 & C\# 變數 & 建立或使用函數 \\
+  數學概念 & C\# 資料或變數 & 現行實作位置 \\
   \midrule
   \endhead
-  \(x^T_{eds}\) & \texttt{variables.Work[(e,d,s)]}，\texttt{BoolVar} & \texttt{CreateVariables} \\
-  \(r^T_{ed},r^{T,1}_{ed},r^{T,L}_{ed}\) & \texttt{variables.Rest/SpecialRest/LeaveRest}\newline\texttt{[(e,d)]} & \texttt{CreateVariables} \\
-  \(w^T_{ed},\rho^T_{ed}\) & \texttt{variables.ActualWork/}\newline\texttt{AnyRest[(e,d)]} & \texttt{CreateVariables} \\
-  \(\delta^{att}_{ds}\) & 函數內 \texttt{IntVar deficit} & \texttt{AttendanceViolation} \\
-  \(\delta^{sp}_{dsq}\) & 函數內 \texttt{BoolVar absent} & \texttt{SpecialtyViolation} \\
-  \(H_{ds},\delta^{ability}_{ds}\) & 高能力出勤 \texttt{LinearExpr}／\texttt{IntVar deficit} & \texttt{MeasureAbilityShortfall} \\
-  \(f_{ed},\delta^{bridge}_{ed}\) & 函數內 \texttt{first/deficit} & \texttt{NightToEarlyRestViolation} \\
-  \(J^T_1,\ldots,J^T_5\) & \texttt{objectives} 中的 \texttt{LinearExpr Total} & \texttt{BuildObjectives}；權重直接寫在同一函數 \\
-  字典序固定 & \texttt{model.Add(objective.Total == optimum)} & \texttt{TSolver.Solve} 或 \texttt{MSolver.Solve} \\
-  總求解時限 & \texttt{SolverOptions.TimeLimit} & 每次 \texttt{Solve} 只使用剩餘秒數 \\
-  主動取消 & \texttt{CancellationToken} & 註冊 \texttt{CpSolver.StopSearch}；取消後拋出 \texttt{OperationCanceledException} \\
+  完整輸入 & \texttt{ScheduleInput} & 前月、本月、\texttt{RestInterval}、\texttt{NonStandardShiftTable} \\
+  \(\mathcal D^{\mathrm{tar}},\mathcal D\) & \texttt{targetDates}、\texttt{modelDates} & \texttt{TargetMonthDates}、\texttt{PlanningHorizonDates} \\
+  每人每日日格 & \texttt{EmployeeMonthlySchedule.}\newline\texttt{Assignments} & \texttt{ScheduleCell.Kind}、\texttt{RequestedRest}、\texttt{Station}、\texttt{Shift} \\
+  \(x^M_{edls},x^T_{eds}\) & \texttt{variables.Work} & \texttt{CreateDecisionVariables} \\
+  \(r_{ed},r^1_{ed},r^L_{ed}\) & \texttt{Rest}、\texttt{SpecialRest}、\texttt{LeaveRest} & \texttt{CreateDecisionVariables} \\
+  \(w_{ed},\rho_{ed}\) & \texttt{ActualWork/AnyRest} & 正常班或 X、以及 R/R1/R休 的衍生布林變數 \\
+  M 外援 \(a_{dls}\) & \texttt{variables.External} & \texttt{RequireStationCoverage} \\
+  共通硬限制 & CP-SAT 等式、不等式與條件式 & 各自的 \texttt{*.HardRules.cs} \\
+  M/T 違反量與權重 & \texttt{ObjectiveGroup.}\newline\texttt{Components} & 各自的 \texttt{BuildObjectiveGroups} \\
+  字典序固定 & \texttt{objective.Total}\newline\texttt{== optimum} & \texttt{MSolver.SolveCore}、\texttt{TSolver.Solve} \\
+  候選分數 & \texttt{ObjectiveScore}、\newline\texttt{ObjectiveComponent} & 同時保存違反量、權重與加權分 \\
   \bottomrule
 \end{longtable}
 \normalsize
+\setlength{\tabcolsep}{6pt}
 
-% -----------------------------------------------------------
-%    You don't have to mess with anything below this line.
-% -----------------------------------------------------------
+\subsection{實際求解程序}
+
+每個 seed 依下列順序使用同一份總時間預算：
+\begin{enumerate}
+  \item 複製並驗證輸入，建立目標月加七日延伸區間的變數與硬限制。
+  \item 先求一份只需滿足硬限制的可行解；M 若有萬年班表，只在此步使用提示。
+  \item 清除模板提示，將目前可行解改為 incumbent hint，再建立所有具名軟規則。
+  \item 依 Priority 逐組最小化。只有 CP-SAT 回傳 \texttt{Optimal}，才以等式固定該組值並進入下一組。
+  \item 全部群組完成後，以剩餘時間搜尋最多三份差異候選。
+\end{enumerate}
+
+Library 預設每 seed 為 300 秒、seed 0、8 workers。CLI 的共用參數形式為
+\[
+  \texttt{--search workers=N,seeds=N,seconds=N}.
+\]
+此參數同時適用 M/T；M 預設 4 workers、2 seeds、每 seed 180 秒，T 預設
+8 workers、1 seed、300 秒。
+portfolio 平行執行連續 seed，依第一候選的 Priority 字典序分數選出較佳的整批結果；
+最大同時 worker 數約為 \texttt{workers} \(\times\) \texttt{seeds}。
+
+\subsection{狀態解讀與限制}
+
+\begin{description}
+  \item[\texttt{Optimal}] 所有優先群組均已證明最佳；候選搜尋時間用完不改變此狀態。
+  \item[\texttt{TimeLimit}] 時間預算用完；可能附帶合法候選，但後續 Priority 的分數可能只是 incumbent 量測。
+  \item[\texttt{Infeasible}] 硬限制無法同時成立；第一版不回傳衝突核心或缺班分析。
+  \item[\texttt{InvalidInput}] 型別化資料的月份、人員、歷史、班別、時間或八週區間驗證失敗。
+\end{description}
+
+\section{結論}
+
+本模型把不可違反的法規與營運條件放入可行域，再以可解釋的具名違反量處理偏好。
+M 與 T 共用輸入語意與基礎休假規則，但保留獨立變數、限制與權重，避免不同單位的
+業務邏輯互相遮蔽。七日延伸區間與完整前月歷史處理跨月邊界，萬年班表只改善 M
+初始搜尋而不改變可行域，多 seed portfolio 與差異候選則在固定時間內增加取得實用
+方案的機會。最終輸出的每一項分數都可拆回違反量、權重與加權分，供使用者理解方案
+取捨；若狀態為 \texttt{TimeLimit}，則應明確視為目前最佳候選，而非完整最優性證明。
+
 \end{document}

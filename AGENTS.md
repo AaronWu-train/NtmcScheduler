@@ -19,7 +19,7 @@
 
 ## 文件索引
 
-一般產品規格以 `docs/` Markdown 與決策紀錄為準；solver 數學公式另以
+一般產品規格以 `docs/` Markdown 與決策紀錄為準；solver 數學公式另以單一報告
 [`tex/main2.tex`](tex/main2.tex) 為真相來源（決策 D-21）。原始規格書
 [docs/新北捷人員排班系統_完整開發規格書_v6.pdf](docs/新北捷人員排班系統_完整開發規格書_v6.pdf)
 應一併參考；若 PDF 與 Markdown／決策衝突，**以 Markdown 與決策為準**。

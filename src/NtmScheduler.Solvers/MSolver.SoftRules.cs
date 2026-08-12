@@ -150,6 +150,12 @@ public static partial class MSolver
         return (long)penalizedDeviation * penalizedDeviation;
     }
 
+    // Disabled at BuildObjectiveGroups while its weight is zero.
+    private static LinearExpr CountCrossStationAssignments(ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables) =>
+        LinearExpr.Sum(from employee in input.DemandMonth.Employees
+            from date in targetDates
+            select variables.SupportsOtherStation[(employee.EmployeeId, date)]);
+
     // 連續工作區段——計算已結束的實際工作區段；R、R1、R休會結束區段。
     private static LinearExpr MeasureWorkStreakPenalties(
         CpModel model,
@@ -338,6 +344,62 @@ public static partial class MSolver
         return LinearExpr.Sum(violations);
     }
 
+    // Disabled at BuildObjectiveGroups while its weight is zero.
+    private static LinearExpr CountNonPreferredRotations(
+        CpModel model,
+        ScheduleInput input,
+        IReadOnlyList<DateOnly> modelDates,
+        ModelVariables variables)
+    {
+        var preferred = new HashSet<(Shift From, Shift To)>
+        {
+            (Shift.Early, Shift.Afternoon),
+            (Shift.Afternoon, Shift.Night),
+            (Shift.Night, Shift.Early)
+        };
+        var targetEnd = input.DemandMonth.MonthStart.AddMonths(1).AddDays(-1);
+        var violations = new List<BoolVar>();
+
+        foreach (var employee in input.DemandMonth.Employees)
+        {
+            LinearExpr previous = LinearExpr.Constant(ShiftStateCode(HistoricalLastNormalShift(input, employee.EmployeeId)));
+            foreach (var date in modelDates)
+            {
+                var hasNormal = model.NewBoolVar($"rotation_has_normal_{employee.EmployeeId}_{date:yyyyMMdd}");
+                model.Add(hasNormal == LinearExpr.Sum(Shifts.Select(shift => variables.WorksShift[(employee.EmployeeId, date, shift)])));
+                var previousByShift = new Dictionary<Shift, BoolVar>();
+                foreach (var shift in Shifts)
+                {
+                    var wasShift = model.NewBoolVar($"rotation_previous_{employee.EmployeeId}_{date:yyyyMMdd}_{shift}");
+                    model.Add(previous == ShiftStateCode(shift)).OnlyEnforceIf(wasShift);
+                    model.Add(previous != ShiftStateCode(shift)).OnlyEnforceIf(wasShift.Not());
+                    previousByShift[shift] = wasShift;
+                }
+
+                if (date <= targetEnd)
+                {
+                    foreach (var current in Shifts)
+                    foreach (var prior in Shifts.Where(prior => prior != current && !preferred.Contains((prior, current))))
+                    {
+                        var currentWork = variables.WorksShift[(employee.EmployeeId, date, current)];
+                        var violation = model.NewBoolVar($"nonpreferred_rotation_{employee.EmployeeId}_{date:yyyyMMdd}_{prior}_{current}");
+                        model.Add(violation <= currentWork);
+                        model.Add(violation <= previousByShift[prior]);
+                        model.Add(violation >= currentWork + previousByShift[prior] - 1);
+                        violations.Add(violation);
+                    }
+                }
+
+                var state = model.NewIntVar(0, 3, $"rotation_last_{employee.EmployeeId}_{date:yyyyMMdd}");
+                model.Add(state == previous).OnlyEnforceIf(hasNormal.Not());
+                foreach (var shift in Shifts)
+                    model.Add(state == ShiftStateCode(shift)).OnlyEnforceIf(variables.WorksShift[(employee.EmployeeId, date, shift)]);
+                previous = state;
+            }
+        }
+        return LinearExpr.Sum(violations);
+    }
+
     // 休假公平——只比較同站群組且目標月全月在職的人員。
     private static LinearExpr MeasureRestCountDeviationByStationGroup(
         CpModel model,
@@ -360,6 +422,30 @@ public static partial class MSolver
             }).ToArray();
             if (counts.Length < 2) continue;
             deviations.Add(MeasureNormalizedCountDeviationTenths(model, counts, selectedDates.Length, $"{name}_{group.Key}"));
+        }
+        return LinearExpr.Sum(deviations);
+    }
+
+    // Disabled at BuildObjectiveGroups while its weight is zero.
+    private static LinearExpr MeasureSupportCountDeviationByStationGroup(
+        CpModel model,
+        ScheduleInput input,
+        IReadOnlyList<DateOnly> targetDates,
+        ModelVariables variables)
+    {
+        var deviations = new List<LinearExpr>();
+        foreach (var group in input.DemandMonth.Employees
+                     .Where(employee => IsEmployedOn(employee, input.DemandMonth.MonthStart))
+                     .GroupBy(employee => StationGroupIndex(employee.Affiliation)))
+        {
+            var counts = group.Select(employee =>
+            {
+                var count = model.NewIntVar(0, targetDates.Count, $"support_fairness_{employee.EmployeeId}");
+                model.Add(count == LinearExpr.Sum(targetDates.Select(date => variables.SupportsOtherStation[(employee.EmployeeId, date)])));
+                return count;
+            }).ToArray();
+            if (counts.Length < 2) continue;
+            deviations.Add(MeasureNormalizedCountDeviationTenths(model, counts, targetDates.Count, $"support_fairness_{group.Key}"));
         }
         return LinearExpr.Sum(deviations);
     }

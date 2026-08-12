@@ -87,7 +87,7 @@ public static partial class MSolver
         foreach (var objective in objectives)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!ConfigureRemainingSearchTime(solver, options, stopwatch, reserve: CandidateSearchReserve(options)))
+            if (!ConfigureRemainingSearchTime(solver, options, stopwatch))
             {
                 if (current is not null)
                 {
@@ -192,20 +192,45 @@ public static partial class MSolver
         var minimumDifference = (int)Math.Ceiling(comparable.Length * 0.05);
         var priorChoices = new List<BoolVar[]> { SelectedAssignmentVariables(candidates[^1], comparable, variables) };
         var baselineScores = candidates[0].Objectives.ToDictionary(objective => objective.Name, objective => objective.Value);
+        var exactScores = model.NewBoolVar("alternative_candidate_exact_scores");
         foreach (var objective in objectives)
+        {
+            model.Add(objective.Total == baselineScores[objective.Name]).OnlyEnforceIf(exactScores);
             model.Add(objective.Total * 5 <= baselineScores[objective.Name] * 6);
+        }
         model.Minimize(LinearExpr.Constant(0));
+        model.ClearAssumptions();
+        model.AddAssumption(exactScores);
 
         while (candidates.Count < 3)
         {
             cancellationToken.ThrowIfCancellationRequested();
             model.Add(LinearExpr.Sum(priorChoices[^1].Select(variable => 1 - variable)) >= minimumDifference);
+            var remainingCandidateTime = options.TimeLimit - stopwatch.Elapsed;
+            var fallbackReserve = candidates.Count == 1 && remainingCandidateTime > TimeSpan.Zero
+                ? remainingCandidateTime / 2
+                : TimeSpan.Zero;
+            if (!ConfigureRemainingSearchTime(solver, options, stopwatch, reserve: fallbackReserve)) break;
+            var status = solver.Solve(model);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (status is not (CpSolverStatus.Optimal or CpSolverStatus.Feasible)) break;
+            candidates.Add(ReadCandidate(solver, input, targetDates, variables, objectives));
+            priorChoices.Add(SelectedAssignmentVariables(candidates[^1], comparable, variables));
+        }
+
+        if (candidates.Count >= 2) return;
+        model.ClearAssumptions();
+        model.AddAssumption(exactScores.Not());
+        while (candidates.Count < 3)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             if (!ConfigureRemainingSearchTime(solver, options, stopwatch)) return;
             var status = solver.Solve(model);
             cancellationToken.ThrowIfCancellationRequested();
             if (status is not (CpSolverStatus.Optimal or CpSolverStatus.Feasible)) return;
             candidates.Add(ReadCandidate(solver, input, targetDates, variables, objectives));
             priorChoices.Add(SelectedAssignmentVariables(candidates[^1], comparable, variables));
+            model.Add(LinearExpr.Sum(priorChoices[^1].Select(variable => 1 - variable)) >= minimumDifference);
         }
     }
 
@@ -318,8 +343,4 @@ public static partial class MSolver
             $"max_time_in_seconds:{remaining.TotalSeconds} random_seed:{options.RandomSeed} num_search_workers:{workers}{(repairHint ? " repair_hint:true" : "")}");
         return true;
     }
-
-    private static TimeSpan CandidateSearchReserve(SolverOptions options) =>
-        options.TimeLimit > TimeSpan.FromMinutes(1) ? TimeSpan.FromSeconds(30) : options.TimeLimit / 2;
-
 }

@@ -21,6 +21,15 @@ public sealed class MSolverTests
     }
 
     [TestMethod]
+    public void ZeroWeightMRuleImplementationsRemainAvailableButDisabled()
+    {
+        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
+        Assert.IsNotNull(typeof(MSolver).GetMethod("CountCrossStationAssignments", flags));
+        Assert.IsNotNull(typeof(MSolver).GetMethod("CountNonPreferredRotations", flags));
+        Assert.IsNotNull(typeof(MSolver).GetMethod("MeasureSupportCountDeviationByStationGroup", flags));
+    }
+
+    [TestMethod]
     public void CliPortfolioPrefersCompleteThenLexicographicallyBetterMResult()
     {
         var schedule = ValidInput().DemandMonth;
@@ -46,19 +55,20 @@ public sealed class MSolverTests
     }
 
     [TestMethod]
-    public void CliMSearchOptionParsesWorkersSeedsAndSeconds()
+    public void CliSearchOptionParsesWorkersSeedsAndSeconds()
     {
         var parse = typeof(Program).GetMethod(
-            "ReadMSearchOptions",
+            "ReadSearchOptions",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
-        var options = parse.Invoke(null, [new[] { "--m-search", "workers=3,seeds=4,seconds=90" }])!;
+        var options = parse.Invoke(null, [new[] { "--search", "workers=3,seeds=4,seconds=90" }])!;
         var type = options.GetType();
 
         Assert.AreEqual(3, type.GetProperty("Workers")!.GetValue(options));
         Assert.AreEqual(4, type.GetProperty("Seeds")!.GetValue(options));
         Assert.AreEqual(90, type.GetProperty("Seconds")!.GetValue(options));
+        Assert.IsNull(parse.Invoke(null, [Array.Empty<string>()]));
         Assert.ThrowsExactly<System.Reflection.TargetInvocationException>(() =>
-            parse.Invoke(null, [new[] { "--m-search", "workers=3,seeds=0,seconds=90" }]));
+            parse.Invoke(null, [new[] { "--search", "workers=3,seeds=0,seconds=90" }]));
     }
 
     [TestMethod]
@@ -346,7 +356,7 @@ public sealed class MSolverTests
                 .Invoke(null, [employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Work && cell.Shift == Shift.Night)])!);
         var fairness = candidate.Objectives.Single(objective => objective.Name == "ScheduleQualityAndFairness").Components;
         Assert.AreEqual((EarlyAfternoonImbalance(), 2), (fairness.Single(component => component.Name == "EarlyAfternoonImbalance").Value, fairness.Single(component => component.Name == "EarlyAfternoonImbalance").Weight));
-        Assert.AreEqual((NightShiftTarget(), 10), (fairness.Single(component => component.Name == "NightShiftTarget").Value, fairness.Single(component => component.Name == "NightShiftTarget").Weight));
+        Assert.AreEqual((NightShiftTarget(), 50), (fairness.Single(component => component.Name == "NightShiftTarget").Value, fairness.Single(component => component.Name == "NightShiftTarget").Weight));
         SolverAcceptanceAssertions.AssertMHardRules(input, candidate);
         SolverAcceptanceAssertions.AssertMSoftRules(input, candidate);
 
