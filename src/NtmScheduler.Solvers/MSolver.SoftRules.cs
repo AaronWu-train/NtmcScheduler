@@ -38,39 +38,37 @@ public static partial class MSolver
             new(1, "RequestedRest", requestedRest * 3 + unusedLeaveRest,
                 [("RequestedRest", 3, requestedRest), ("UnusedLeaveRest", 1, unusedLeaveRest)]),
             new(4, "ScheduleQualityAndFairness",
-                externalStaffing * (24 * objectiveScale)
+                externalStaffing * (10 * objectiveScale)
                     + monthlyRest * (24 * objectiveScale)
                     + specialRestBalance * (12 * objectiveScale)
                     + workStreak * (4 * objectiveScale)
                     + mixedShiftWorkStreak * (3 * objectiveScale)
-                    + nightRestEarly * (30 * objectiveScale)
-                    + nightRestAfternoon * (20 * objectiveScale)
+                    + nightRestEarly * (40 * objectiveScale)
+                    + nightRestAfternoon * (30 * objectiveScale)
                     + shiftChangeWithoutRest * (2 * objectiveScale)
-                    + rotation * objectiveScale
                     + nonHomeStation
-                    + weekdayFairness * 10
-                    + holidayFairness * 20
-                    + supportFairness
+                    + weekdayFairness * 5
+                    + holidayFairness * 5
                     + earlyShiftFairness * 2
                     + afternoonShiftFairness * 2
-                    + nightShiftFairness * 30,
+                    + nightShiftFairness * 10,
                 [
-                    ("ExternalStaffing", 24 * objectiveScale, externalStaffing),
+                    ("ExternalStaffing", 10 * objectiveScale, externalStaffing),
                     ("MonthlyRest", 24 * objectiveScale, monthlyRest),
                     ("SpecialRestBalance", 12 * objectiveScale, specialRestBalance),
                     ("WorkStreak", 4 * objectiveScale, workStreak),
                     ("MixedShiftWorkStreak", 3 * objectiveScale, mixedShiftWorkStreak),
-                    ("NightRestEarly", 30 * objectiveScale, nightRestEarly),
-                    ("NightRestAfternoon", 20 * objectiveScale, nightRestAfternoon),
+                    ("NightRestEarly", 40 * objectiveScale, nightRestEarly),
+                    ("NightRestAfternoon", 30 * objectiveScale, nightRestAfternoon),
                     ("ShiftChangeWithoutRest", 2 * objectiveScale, shiftChangeWithoutRest),
-                    ("NonPreferredRotation", objectiveScale, rotation),
+                    ("NonPreferredRotation", 0, rotation),
                     ("NonHomeStation", 1, nonHomeStation),
-                    ("WeekdayRestFairness", 10, weekdayFairness),
-                    ("HolidayRestFairness", 20, holidayFairness),
-                    ("SupportFairness", 1, supportFairness),
+                    ("WeekdayRestFairness", 5, weekdayFairness),
+                    ("HolidayRestFairness", 5, holidayFairness),
+                    ("SupportFairness", 0, supportFairness),
                     ("EarlyShiftFairness", 2, earlyShiftFairness),
                     ("AfternoonShiftFairness", 2, afternoonShiftFairness),
-                    ("NightShiftFairness", 30, nightShiftFairness)
+                    ("NightShiftFairness", 10, nightShiftFairness)
                 ])
         ];
     }
@@ -96,15 +94,17 @@ public static partial class MSolver
         return LinearExpr.Sum(unused);
     }
 
-    // 外援人力——原三站前 60 人次免罰；LB09 每一人次立即計算。
+    // 外援人力——原三站前 70 人次免罰；LB09 前 4 人次免罰。
     private static LinearExpr MeasureExternalStaffingAboveAllowance(CpModel model, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
     {
         var target = variables.External.Where(x => targetDates.Contains(x.Key.Date)).ToArray();
         var legacy = target.Where(x => x.Key.Station != "LB09").Select(x => x.Value).ToArray();
-        var lb09 = target.Where(x => x.Key.Station == "LB09").Select(x => x.Value);
-        var aboveAllowance = model.NewIntVar(0, legacy.Length, "external_staffing_above_allowance");
-        model.AddMaxEquality(aboveAllowance, [LinearExpr.Sum(legacy) - 60, LinearExpr.Constant(0)]);
-        return aboveAllowance + LinearExpr.Sum(lb09);
+        var lb09 = target.Where(x => x.Key.Station == "LB09").Select(x => x.Value).ToArray();
+        var legacyAboveAllowance = model.NewIntVar(0, legacy.Length, "external_staffing_above_allowance");
+        var lb09AboveAllowance = model.NewIntVar(0, lb09.Length, "lb09_external_staffing_above_allowance");
+        model.AddMaxEquality(legacyAboveAllowance, [LinearExpr.Sum(legacy) - 70, LinearExpr.Constant(0)]);
+        model.AddMaxEquality(lb09AboveAllowance, [LinearExpr.Sum(lb09) - 4, LinearExpr.Constant(0)]);
+        return legacyAboveAllowance + lb09AboveAllowance;
     }
 
     // 每月一般 R 分布——依到職後的週末推導每人的一般 R 目標。

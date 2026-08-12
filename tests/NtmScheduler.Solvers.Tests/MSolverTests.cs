@@ -195,7 +195,7 @@ public sealed class MSolverTests
     }
 
     [TestMethod]
-    public void Solve_Lb09ExternalStaffingIsAllowedAndImmediatelyPenalized()
+    public void Solve_Lb09ExternalAllowanceUsesFourAssignmentThreshold()
     {
         var input = ValidInput();
         var date = input.DemandMonth.MonthStart;
@@ -224,12 +224,16 @@ public sealed class MSolverTests
             }
         };
 
-        var result = MSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(5) });
+        var result = MSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(10) });
 
         Assert.IsGreaterThanOrEqualTo(1, result.Candidates.Count);
         var candidate = result.Candidates[0];
         Assert.AreEqual(2, candidate.ExternalAssignments.Where(item => item.Date == date && item.Station == "LB09").Sum(item => item.Count));
-        Assert.IsGreaterThanOrEqualTo(2, candidate.Objectives.SelectMany(objective => objective.Components).Single(component => component.Name == "ExternalStaffing").Value);
+        var legacyTotal = candidate.ExternalAssignments.Where(item => item.Station != "LB09").Sum(item => item.Count);
+        var lb09Total = candidate.ExternalAssignments.Where(item => item.Station == "LB09").Sum(item => item.Count);
+        Assert.AreEqual(
+            Math.Max(0, legacyTotal - 70) + Math.Max(0, lb09Total - 4),
+            candidate.Objectives.SelectMany(objective => objective.Components).Single(component => component.Name == "ExternalStaffing").Value);
     }
 
     [TestMethod]
@@ -286,7 +290,7 @@ public sealed class MSolverTests
         var fairness = candidate.Objectives.Single(objective => objective.Name == "ScheduleQualityAndFairness").Components;
         Assert.AreEqual((ExpectedDeviationTenths(Shift.Early), 2), (fairness.Single(component => component.Name == "EarlyShiftFairness").Value, fairness.Single(component => component.Name == "EarlyShiftFairness").Weight));
         Assert.AreEqual((ExpectedDeviationTenths(Shift.Afternoon), 2), (fairness.Single(component => component.Name == "AfternoonShiftFairness").Value, fairness.Single(component => component.Name == "AfternoonShiftFairness").Weight));
-        Assert.AreEqual((ExpectedDeviationTenths(Shift.Night), 30), (fairness.Single(component => component.Name == "NightShiftFairness").Value, fairness.Single(component => component.Name == "NightShiftFairness").Weight));
+        Assert.AreEqual((ExpectedDeviationTenths(Shift.Night), 10), (fairness.Single(component => component.Name == "NightShiftFairness").Value, fairness.Single(component => component.Name == "NightShiftFairness").Weight));
         SolverAcceptanceAssertions.AssertMHardRules(input, candidate);
         SolverAcceptanceAssertions.AssertMSoftRules(input, candidate);
 

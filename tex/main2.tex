@@ -483,9 +483,9 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
   \sum_{d\in\mathcal{D}^{\mathrm{tar}}}
   \sum_{s\in\mathcal{S}}a_{d,\mathrm{LB09},s}.
 \]
-原三站前 60 人次不計違反量；LB09 每一人次立即計算，故
+原三站前 70 人次不計違反量；LB09 前 4 人次不計違反量，故
 \[
-  \Phi^{M,ext}=\max\{0,A^{M,legacy}-60\}+A^{M,LB09}.
+  \Phi^{M,ext}=\max\{0,A^{M,legacy}-70\}+\max\{0,A^{M,LB09}-4\}.
 \]
 
 \paragraph{每月一般 R 分布（\texttt{CS02}）}
@@ -713,27 +713,27 @@ M 模型定義下列目標函數：
 \[
   \begin{aligned}
     J^M_4={}&
-    24\Phi^{M,ext}
+    10\Phi^{M,ext}
     +24\Phi^{M,month,R}
     +12\Phi^{M,balance,R1}
     +4\Phi^{M,streak}\\
     &+3\Phi^{M,mixed}
-    +30\Phi^{M,NE}\\
-    &+20\Phi^{M,NA}
+    +40\Phi^{M,NE}\\
+    &+30\Phi^{M,NA}
     +2\Phi^{M,restswitch}
-    +\Phi^{M,rotate},
+    +0\Phi^{M,rotate},
   \end{aligned}
 \]
 \[
   J^M_5
   =
   0.1\Phi^{M,home}
-  +10\Phi^{M,weekday}
-  +20\Phi^{M,holiday}
-  +\Phi^{M,support}
+  +5\Phi^{M,weekday}
+  +5\Phi^{M,holiday}
+  +0\Phi^{M,support}
   +2\Phi^{M,shift,\mathrm E}
   +2\Phi^{M,shift,\mathrm A}
-  +30\Phi^{M,shift,\mathrm N}.
+  +10\Phi^{M,shift,\mathrm N}.
 \]
 實作時一般違反量的係數乘以 10，以 CP-SAT 整數係數精確表示非所屬站指派的
 相對權重 (0.1)；公平性違反量 $F_g$ 已乘以 10，故保留 $J^M_5$ 所列整數係數。

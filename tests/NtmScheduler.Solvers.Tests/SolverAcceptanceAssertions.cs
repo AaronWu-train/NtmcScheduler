@@ -48,14 +48,14 @@ internal static class SolverAcceptanceAssertions
         AssertObjectiveStructure(candidate.Objectives,
         [
             (1, "RequestedRest", [("RequestedRest", 3), ("UnusedLeaveRest", 1)]),
-            (4, "ScheduleQualityAndFairness", [("ExternalStaffing", 240), ("MonthlyRest", 240), ("SpecialRestBalance", 120), ("WorkStreak", 40), ("MixedShiftWorkStreak", 30), ("NightRestEarly", 300), ("NightRestAfternoon", 200), ("ShiftChangeWithoutRest", 20), ("NonPreferredRotation", 10), ("NonHomeStation", 1), ("WeekdayRestFairness", 10), ("HolidayRestFairness", 20), ("SupportFairness", 1), ("EarlyShiftFairness", 2), ("AfternoonShiftFairness", 2), ("NightShiftFairness", 30)])
+            (4, "ScheduleQualityAndFairness", [("ExternalStaffing", 100), ("MonthlyRest", 240), ("SpecialRestBalance", 120), ("WorkStreak", 40), ("MixedShiftWorkStreak", 30), ("NightRestEarly", 400), ("NightRestAfternoon", 300), ("ShiftChangeWithoutRest", 20), ("NonPreferredRotation", 0), ("NonHomeStation", 1), ("WeekdayRestFairness", 5), ("HolidayRestFairness", 5), ("SupportFairness", 0), ("EarlyShiftFairness", 2), ("AfternoonShiftFairness", 2), ("NightShiftFairness", 10)])
         ]);
 
         Expect(candidate.Objectives, "RequestedRest", RequestedRestViolations(input, candidate.Schedule));
         Expect(candidate.Objectives, "UnusedLeaveRest", UnusedLeaveRest(input, candidate.Schedule));
         Expect(candidate.Objectives, "ExternalStaffing",
-            Math.Max(0, candidate.ExternalAssignments.Where(item => item.Station != "LB09").Sum(item => item.Count) - 60) +
-            candidate.ExternalAssignments.Where(item => item.Station == "LB09").Sum(item => item.Count));
+            Math.Max(0, candidate.ExternalAssignments.Where(item => item.Station != "LB09").Sum(item => item.Count) - 70) +
+            Math.Max(0, candidate.ExternalAssignments.Where(item => item.Station == "LB09").Sum(item => item.Count) - 4));
         Expect(candidate.Objectives, "MonthlyRest", MonthlyRestPenalty(input, candidate.Schedule, AssignmentKind.Rest));
         Expect(candidate.Objectives, "SpecialRestBalance", SpecialRestBalancePenalty(input, candidate.Schedule));
         Expect(candidate.Objectives, "NonHomeStation", candidate.Schedule.Employees.Sum(employee => employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Work && cell.Station != employee.Affiliation)));
