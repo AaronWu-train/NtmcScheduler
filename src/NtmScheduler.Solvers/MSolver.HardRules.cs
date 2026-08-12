@@ -157,7 +157,7 @@ public static partial class MSolver
         }
     }
 
-    // 班位覆蓋——滿足各站各班的正需求；需求為零的班位仍禁止排人。
+    // 班位覆蓋——早、午至少滿足需求；夜班恰好滿足 0/1 人需求。
     private static void RequireMinimumStationCoverage(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
     {
         foreach (var date in dates)
@@ -175,7 +175,9 @@ public static partial class MSolver
                         coverage += external;
                     }
                     var required = RequiredHeadcount(station, shift);
-                    model.Add(required > 0 ? coverage >= required : coverage == 0);
+                    model.Add(shift == Shift.Night
+                        ? coverage == required
+                        : required > 0 ? coverage >= required : coverage == 0);
                 }
             }
         }

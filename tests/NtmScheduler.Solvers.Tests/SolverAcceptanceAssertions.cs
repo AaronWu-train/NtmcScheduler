@@ -31,6 +31,8 @@ internal static class SolverAcceptanceAssertions
                 Assert.IsGreaterThanOrEqualTo(required, employeeCount + externalCount, $"Coverage shortfall for {date:yyyy-MM-dd}/{station}/{shift}.");
             else
                 Assert.AreEqual(0, employeeCount + externalCount, $"Zero-demand position staffed for {date:yyyy-MM-dd}/{station}/{shift}.");
+            if (shift == Shift.Night)
+                Assert.IsLessThanOrEqualTo(1, employeeCount + externalCount, $"Night position has multiple workers for {date:yyyy-MM-dd}/{station}.");
         }
 
         Assert.IsTrue(candidate.ExternalAssignments.All(item => item.Station is "LB02" or "LB04" or "LB09" or "LB11"));

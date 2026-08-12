@@ -344,13 +344,16 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 因此人員只能在本站或同群組車站工作。
 
 \paragraph{班位覆蓋（\texttt{MH02}）}
-每個必要班位必須至少補足，需求為 0 的站班組合仍禁止排人：
+早、午班的必要班位至少補足；夜班不得多人，有需求時恰好一人；需求為 0 的站班
+組合仍禁止排人：
 \[
   \begin{cases}
     \displaystyle\sum_{e\in\mathcal{E}^{M}}x^{M}_{edls}+a_{dls}\geq b_{dls},
-    & b_{dls}>0,\\
+    & b_{dls}>0,\ s\in\{\mathrm E,\mathrm A\},\\
+    \displaystyle\sum_{e\in\mathcal{E}^{M}}x^{M}_{edls}+a_{dls}=b_{dls},
+    & s=\mathrm N,\\
     \displaystyle\sum_{e\in\mathcal{E}^{M}}x^{M}_{edls}+a_{dls}=0,
-    & b_{dls}=0,
+    & b_{dls}=0,\ s\in\{\mathrm E,\mathrm A\},
   \end{cases}
   \qquad
   \forall d\in\mathcal{D},\ l\in\mathcal{L},\ s\in\mathcal{S}.

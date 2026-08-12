@@ -376,6 +376,27 @@ public sealed class MSolverTests
             employee.Assignments[date].Shift == Shift.Early));
     }
 
+    [TestMethod]
+    public void Solve_TwoEmployeesInSameNightPosition_IsInfeasible()
+    {
+        var input = ValidInput();
+        var date = input.DemandMonth.MonthStart;
+        var fixedEmployees = new HashSet<string> { "M1-04", "M1-06" };
+        var employees = input.DemandMonth.Employees.Select(employee =>
+            fixedEmployees.Contains(employee.EmployeeId)
+                ? employee with
+                {
+                    Assignments = new Dictionary<DateOnly, ScheduleCell>(employee.Assignments)
+                    {
+                        [date] = new() { Kind = AssignmentKind.Work, Station = "LB01", Shift = Shift.Night }
+                    }
+                }
+                : employee).ToArray();
+        input = input with { DemandMonth = input.DemandMonth with { Employees = employees } };
+
+        Assert.AreEqual(SolveStatus.Infeasible, MSolver.Solve(input, ShortSolve).Status);
+    }
+
     internal static ScheduleInput ValidInput()
     {
         var month = new DateOnly(2026, 9, 1);
