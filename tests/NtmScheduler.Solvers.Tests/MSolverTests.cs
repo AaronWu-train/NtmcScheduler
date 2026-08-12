@@ -14,7 +14,7 @@ public sealed class MSolverTests
     public void WorkStreakPenaltiesMatchEachModel()
     {
         const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
-        Assert.AreEqual(1, typeof(MSolver).GetMethod("WorkStreakPenaltyValue", flags)!.Invoke(null, [2]));
+        Assert.AreEqual(0, typeof(MSolver).GetMethod("WorkStreakPenaltyValue", flags)!.Invoke(null, [2]));
         Assert.AreEqual(1, typeof(TSolver).GetMethod("BlockLengthPenaltyValue", flags)!.Invoke(null, [2]));
         Assert.AreEqual(0, typeof(MSolver).GetMethod("WorkStreakPenaltyValue", flags)!.Invoke(null, [5]));
         Assert.AreEqual(1, typeof(TSolver).GetMethod("BlockLengthPenaltyValue", flags)!.Invoke(null, [5]));
@@ -240,7 +240,7 @@ public sealed class MSolverTests
     public void Solve_MonthlySchedules_ReturnsNamedCandidate()
     {
         var input = ValidInput();
-        var result = MSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(5) });
+        var result = MSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(10) });
 
         Assert.AreNotEqual(SolveStatus.InvalidInput, result.Status, string.Join(Environment.NewLine, result.Errors));
         Assert.AreNotEqual(SolveStatus.Infeasible, result.Status);

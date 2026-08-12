@@ -45,8 +45,7 @@ public static partial class MSolver
                     + mixedShiftWorkStreak * (3 * objectiveScale)
                     + nightRestEarly * (40 * objectiveScale)
                     + nightRestAfternoon * (30 * objectiveScale)
-                    + shiftChangeWithoutRest * (2 * objectiveScale)
-                    + nonHomeStation
+                    + shiftChangeWithoutRest * 5
                     + weekdayFairness * 5
                     + holidayFairness * 5
                     + earlyShiftFairness * 2
@@ -60,9 +59,9 @@ public static partial class MSolver
                     ("MixedShiftWorkStreak", 3 * objectiveScale, mixedShiftWorkStreak),
                     ("NightRestEarly", 40 * objectiveScale, nightRestEarly),
                     ("NightRestAfternoon", 30 * objectiveScale, nightRestAfternoon),
-                    ("ShiftChangeWithoutRest", 2 * objectiveScale, shiftChangeWithoutRest),
+                    ("ShiftChangeWithoutRest", 5, shiftChangeWithoutRest),
                     ("NonPreferredRotation", 0, rotation),
-                    ("NonHomeStation", 1, nonHomeStation),
+                    ("NonHomeStation", 0, nonHomeStation),
                     ("WeekdayRestFairness", 5, weekdayFairness),
                     ("HolidayRestFairness", 5, holidayFairness),
                     ("SupportFairness", 0, supportFairness),
@@ -548,7 +547,7 @@ public static partial class MSolver
     {
         0 => 0,
         1 => 4,
-        2 => 1,
+        2 => 0,
         3 => 0,
         4 => 0,
         5 => 0,
