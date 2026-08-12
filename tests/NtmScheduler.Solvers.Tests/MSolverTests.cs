@@ -240,7 +240,27 @@ public sealed class MSolverTests
 
         Assert.AreNotEqual(SolveStatus.InvalidInput, result.Status, string.Join(Environment.NewLine, result.Errors));
         Assert.AreNotEqual(SolveStatus.Infeasible, result.Status);
+        Assert.AreEqual(SolveStatus.TimeLimit, result.Status);
         Assert.IsGreaterThanOrEqualTo(1, result.Candidates.Count);
+        var comparable = (from employee in input.DemandMonth.Employees
+                          from date in Enumerable.Range(0, 30).Select(input.DemandMonth.MonthStart.AddDays)
+                          where (employee.EmploymentStartDate is not { } start || date >= start) &&
+                                employee.Assignments.GetValueOrDefault(date)?.Kind is null
+                          select (employee.EmployeeId, Date: date)).ToArray();
+        var baselineScores = result.Candidates[0].Objectives.ToDictionary(objective => objective.Name, objective => objective.Value);
+        foreach (var alternative in result.Candidates.Skip(1))
+        {
+            var first = result.Candidates[0].Schedule.Employees.ToDictionary(employee => employee.EmployeeId);
+            var second = alternative.Schedule.Employees.ToDictionary(employee => employee.EmployeeId);
+            Assert.IsGreaterThanOrEqualTo(
+                (int)Math.Ceiling(comparable.Length * 0.05),
+                comparable.Count(cell => first[cell.EmployeeId].Assignments[cell.Date] != second[cell.EmployeeId].Assignments[cell.Date]));
+            foreach (var objective in alternative.Objectives)
+                Assert.IsLessThanOrEqualTo(
+                    baselineScores[objective.Name] * 6,
+                    objective.Value * 5,
+                    $"{objective.Name} exceeds the 20% M candidate quality allowance.");
+        }
         var candidate = result.Candidates[0];
         CollectionAssert.AreEqual(
             new[] { "RequestedRest", "ScheduleQualityAndFairness" },

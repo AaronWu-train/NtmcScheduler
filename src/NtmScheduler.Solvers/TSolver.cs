@@ -113,7 +113,7 @@ public static partial class TSolver
                           select (Employee: employee.EmployeeId, Date: date))
             .ToArray();
         if (comparable.Length == 0) return;
-        var minimumDifference = (int)Math.Ceiling(comparable.Length * 0.10);
+        var minimumDifference = (int)Math.Ceiling(comparable.Length * 0.05);
         var priorChoices = new List<BoolVar[]> { SelectedAssignmentVariables(solver, input, comparable, variables) };
         while (candidates.Count < 3)
         {

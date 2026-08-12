@@ -106,13 +106,14 @@ public static partial class MSolver
                 if (status == CpSolverStatus.Feasible)
                 {
                     current = ReadCandidate(solver, input, targetDates, variables, objectives);
-                    model.Add(objective.Total == solver.Value(objective.Total));
                     model.ClearHints();
                     AddSolutionHints(model, solver, variables);
                 }
-                if (current is not null) candidates.Add(current);
-                if (status == CpSolverStatus.Feasible)
+                if (current is not null)
+                {
+                    candidates.Add(current);
                     SearchAdditionalCandidates(model, solver, input, options, stopwatch, targetDates, variables, objectives, candidates, cancellationToken);
+                }
                 return new(SolveStatus.TimeLimit, candidates, []);
             }
 
@@ -186,8 +187,13 @@ public static partial class MSolver
                           select (Employee: employee.EmployeeId, Date: date))
             .ToArray();
         if (comparable.Length == 0) return;
-        var minimumDifference = (int)Math.Ceiling(comparable.Length * 0.10);
-        var priorChoices = new List<BoolVar[]> { SelectedAssignmentVariables(solver, comparable, variables) };
+        if (candidates[0].Objectives.Count != objectives.Count) return;
+        var minimumDifference = (int)Math.Ceiling(comparable.Length * 0.05);
+        var priorChoices = new List<BoolVar[]> { SelectedAssignmentVariables(candidates[^1], comparable, variables) };
+        var baselineScores = candidates[0].Objectives.ToDictionary(objective => objective.Name, objective => objective.Value);
+        foreach (var objective in objectives)
+            model.Add(objective.Total * 5 <= baselineScores[objective.Name] * 6);
+        model.Minimize(LinearExpr.Constant(0));
 
         while (candidates.Count < 3)
         {
@@ -198,22 +204,24 @@ public static partial class MSolver
             cancellationToken.ThrowIfCancellationRequested();
             if (status is not (CpSolverStatus.Optimal or CpSolverStatus.Feasible)) return;
             candidates.Add(ReadCandidate(solver, input, targetDates, variables, objectives));
-            priorChoices.Add(SelectedAssignmentVariables(solver, comparable, variables));
+            priorChoices.Add(SelectedAssignmentVariables(candidates[^1], comparable, variables));
         }
     }
 
     private static BoolVar[] SelectedAssignmentVariables(
-        CpSolver solver,
+        MCandidate candidate,
         IReadOnlyList<(string Employee, DateOnly Date)> cells,
         ModelVariables variables)
     {
         var selected = new List<BoolVar>(cells.Count);
+        var employees = candidate.Schedule.Employees.ToDictionary(employee => employee.EmployeeId);
         foreach (var cell in cells)
         {
-            if (solver.Value(variables.Rest[cell]) == 1) selected.Add(variables.Rest[cell]);
-            else if (solver.Value(variables.SpecialRest[cell]) == 1) selected.Add(variables.SpecialRest[cell]);
-            else if (solver.Value(variables.LeaveRest[cell]) == 1) selected.Add(variables.LeaveRest[cell]);
-            else selected.Add(variables.Work.Single(x => x.Key.Employee == cell.Employee && x.Key.Date == cell.Date && solver.Value(x.Value) == 1).Value);
+            var assignment = employees[cell.Employee].Assignments[cell.Date];
+            if (assignment.Kind == AssignmentKind.Rest) selected.Add(variables.Rest[cell]);
+            else if (assignment.Kind == AssignmentKind.SpecialRest) selected.Add(variables.SpecialRest[cell]);
+            else if (assignment.Kind == AssignmentKind.LeaveRest) selected.Add(variables.LeaveRest[cell]);
+            else selected.Add(variables.Work[(cell.Employee, cell.Date, assignment.Station!, assignment.Shift!.Value)]);
         }
         return selected.ToArray();
     }
@@ -311,6 +319,6 @@ public static partial class MSolver
     }
 
     private static TimeSpan CandidateSearchReserve(SolverOptions options) =>
-        options.TimeLimit > TimeSpan.FromSeconds(30) ? TimeSpan.FromSeconds(30) : TimeSpan.Zero;
+        options.TimeLimit > TimeSpan.FromMinutes(1) ? TimeSpan.FromSeconds(30) : options.TimeLimit / 2;
 
 }
