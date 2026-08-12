@@ -92,7 +92,7 @@ public static partial class MSolver
         AddExactlyOneAssignmentPerActiveDay(model, input, dates, variables);
         LimitRequestedLeaveRestCount(model, input, variables);
         FixSuppliedAssignments(model, input, variables);
-        RequireMinimumStationCoverage(model, input, dates, variables);
+        RequireStationCoverage(model, input, dates, variables);
         ForbidOverlappingOrInsufficientlySeparatedWork(model, input, dates, variables);
         RequireGeneralRestInEverySevenDayWindow(model, input, dates, variables);
         EnforceEightWeekRestQuotas(model, input, dates, variables);
@@ -157,8 +157,8 @@ public static partial class MSolver
         }
     }
 
-    // 班位覆蓋——早、午至少滿足需求；夜班恰好滿足 0/1 人需求。
-    private static void RequireMinimumStationCoverage(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
+    // 班位覆蓋——指定站早、午可多人，其餘站至多一人；夜班恰好滿足 0/1 人需求。
+    private static void RequireStationCoverage(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
     {
         foreach (var date in dates)
         {
@@ -175,9 +175,14 @@ public static partial class MSolver
                         coverage += external;
                     }
                     var required = RequiredHeadcount(station, shift);
-                    model.Add(shift == Shift.Night
-                        ? coverage == required
-                        : required > 0 ? coverage >= required : coverage == 0);
+                    if (shift == Shift.Night || required == 0 || !MultiStaffStations.Contains(station))
+                    {
+                        model.Add(coverage == required);
+                    }
+                    else
+                    {
+                        model.Add(coverage >= required);
+                    }
                 }
             }
         }

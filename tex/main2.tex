@@ -344,12 +344,15 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 因此人員只能在本站或同群組車站工作。
 
 \paragraph{班位覆蓋（\texttt{MH02}）}
-早、午班的必要班位至少補足；夜班不得多人，有需求時恰好一人；需求為 0 的站班
+令 \(\mathcal L^{multi}=\{\mathrm{LB01},\mathrm{LB06},\mathrm{LB07},\mathrm{LB12}\}\)。
+早、午班的必要班位至少補足；\(\mathcal L^{multi}\) 不設人數上限，其餘站各至多一人。夜班不得多人，有需求時恰好一人；需求為 0 的站班
 組合仍禁止排人：
 \[
   \begin{cases}
     \displaystyle\sum_{e\in\mathcal{E}^{M}}x^{M}_{edls}+a_{dls}\geq b_{dls},
-    & b_{dls}>0,\ s\in\{\mathrm E,\mathrm A\},\\
+    & b_{dls}>0,\ s\in\{\mathrm E,\mathrm A\},\ l\in\mathcal L^{multi},\\
+    \displaystyle\sum_{e\in\mathcal{E}^{M}}x^{M}_{edls}+a_{dls}=b_{dls},
+    & b_{dls}>0,\ s\in\{\mathrm E,\mathrm A\},\ l\notin\mathcal L^{multi},\\
     \displaystyle\sum_{e\in\mathcal{E}^{M}}x^{M}_{edls}+a_{dls}=b_{dls},
     & s=\mathrm N,\\
     \displaystyle\sum_{e\in\mathcal{E}^{M}}x^{M}_{edls}+a_{dls}=0,
@@ -614,6 +617,7 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 \[
   \mathcal E^{full}_g=\{e:g(h_e)=g,\ e\text{ 於目標月第一日已在職}\}.
 \]
+並令 \(\mathcal E^{full}=\bigcup_{g\in\mathcal G}\mathcal E^{full}_g\)。
 對任一群組計數 $z_e$，令 $n_g=|\mathcal E^{full}_g|$、
 $Z_g=\sum_{e\in\mathcal E^{full}_g}z_e$，並定義十分之一為單位的正規化絕對偏差
 \[
@@ -626,21 +630,6 @@ $Z_g=\sum_{e\in\mathcal E^{full}_g}z_e$，並定義十分之一為單位的正�
 \]
 除以 $n_g$ 可消除群組人數造成的直接尺度差異；乘以 10 讓 CP-SAT 以整數保留
 0.1 的解析度。人數少於 2 的群組其 $F_g(z)=0$。
-
-\paragraph{平日休假公平（\texttt{CS05}）}
-對每位人員定義目標月份平日休假數
-\[
-  R^{M,wd}_{e}
-  =
-  \sum_{d\in\mathcal{D}^{\mathrm{tar}}\cap\mathcal{D}^{wd}}
-  \rho^{M}_{ed}.
-\]
-同一車站群組內的公平性違反量為
-\[
-  \Phi^{M,weekday}
-  =
-  \sum_{g\in\mathcal{G}}F_g(R^{M,wd}).
-\]
 
 \paragraph{假日休假公平（\texttt{CS06}）}
 令
@@ -657,16 +646,37 @@ $Z_g=\sum_{e\in\mathcal E^{full}_g}z_e$，並定義十分之一為單位的正�
   \sum_{g\in\mathcal{G}}F_g(R^{M,hol}).
 \]
 
-\paragraph{班別次數公平（\texttt{MS09}）}
+M 不計算平日休假公平。
+
+\paragraph{個人早小班差距（\texttt{MS09}）}
 \[
   C^{M,s}_e=\sum_{d\in\mathcal{D}^{\mathrm{tar}}}y^{M}_{eds}.
 \]
-定義
+對每位整月在職人員定義
 \[
-  \Phi^{M,shift,s}
-  =\sum_{g\in\mathcal G}F_g(C^{M,s}).
+  \Phi^{M,EA}
+  =\sum_{e\in\mathcal E^{full}}
+  \max\left(0,\left|C^{M,\mathrm E}_e-C^{M,\mathrm A}_e\right|-4\right).
 \]
-此量計入群組內每位人員偏離群組平均的程度；\(X\) 與延伸日不計。
+因此早小班差 0--4 不罰，差 5 計 1，差 6 計 2，依此類推。
+
+\paragraph{個人夜班目標（\texttt{MS09}）}
+定義夜班罰分函數
+\[
+  P_N(c)=
+  \begin{cases}
+    10,&c=0,\\
+    5,&c=1,\\
+    1,&c=2,\\
+    0,&c\in\{3,4\},\\
+    4(c-4),&c\geq5.
+  \end{cases}
+\]
+則
+\[
+  \Phi^{M,N}=\sum_{e\in\mathcal E^{full}}P_N(C^{M,\mathrm N}_e).
+\]
+兩項班別違反量皆以個人目標計算，不再比較站群平均；\(X\) 與延伸日不計。
 
 \subsubsection{字典序目標}
 
@@ -690,14 +700,12 @@ M 模型定義下列目標函數：
 \[
   J^M_5
   =
-  5\Phi^{M,weekday}
-  +5\Phi^{M,holiday}
-  +2\Phi^{M,shift,\mathrm E}
-  +2\Phi^{M,shift,\mathrm A}
-  +10\Phi^{M,shift,\mathrm N}.
+  5\Phi^{M,holiday}
+  +2\Phi^{M,EA}
+  +10\Phi^{M,N}.
 \]
 實作時一般違反量的係數乘以 10，以 CP-SAT 整數係數精確表示未休假直接換班的
-相對權重 (0.5)；公平性違反量 $F_g$ 已乘以 10，故保留 $J^M_5$ 所列整數係數。
+相對權重 (0.5)；公平性保留 $J^M_5$ 所列整數係數。
 兩者的加權分數皆位於相同的 10 倍尺度，不改變最佳化取捨。
 令
 \[
@@ -1282,7 +1290,7 @@ M/T 若可比較格數為 \(N_{cell}\)，定義最低差異格數
   \(r^M_{ed}\) & \texttt{variables.Rest[(e,d)]}，\texttt{BoolVar} & \texttt{CreateVariables} \\
   \(r^{M,1}_{ed}\) & \texttt{variables.SpecialRest}\newline\texttt{[(e,d)]}，\texttt{BoolVar} & \texttt{CreateVariables} \\
   \(r^{M,L}_{ed}\) & \texttt{variables.LeaveRest}\newline\texttt{[(e,d)]}，\texttt{BoolVar} & \texttt{CreateVariables} \\
-  \(a_{dls}\) & \texttt{variables.External[(d,l,s)]}，\texttt{IntVar} & \texttt{CreateDecisionVariables}、\texttt{RequireMinimumStationCoverage} \\
+  \(a_{dls}\) & \texttt{variables.External[(d,l,s)]}，\texttt{IntVar} & \texttt{CreateDecisionVariables}、\texttt{RequireStationCoverage} \\
   \(y^M_{eds}\) & \texttt{variables.WorksShift}\newline\texttt{[(e,d,s)]}，\texttt{BoolVar} & \texttt{CreateVariables} \\
   \(w^M_{ed}\) & \texttt{variables.ActualWork}\newline\texttt{[(e,d)]}，\texttt{BoolVar} & 正常班或 \(X\) 為 1 \\
   \(\rho^M_{ed}\) & \texttt{variables.AnyRest[(e,d)]}，\texttt{BoolVar} & \(R+R1+R休\) \\

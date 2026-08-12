@@ -13,7 +13,7 @@ public static partial class MSolver
         IReadOnlyList<DateOnly> modelDates,
         ModelVariables variables)
     {
-        const int objectiveScale = 10; // Scales ordinary violations; fairness measurements are already reported in tenths.
+        const int objectiveScale = 10; // Scales ordinary violations; fairness weights use their documented output units.
         var requestedRest = CountUnfulfilledRequestedRests(input, targetDates, variables);
         var unusedLeaveRest = MeasureUnusedLeaveRests(model, input, targetDates, variables);
         var externalStaffing = MeasureExternalStaffingAboveAllowance(model, targetDates, variables);
@@ -24,11 +24,9 @@ public static partial class MSolver
         var nightRestEarly = CountNightRestShiftPatterns(model, input, variables, Shift.Early, "night_rest_early");
         var nightRestAfternoon = CountNightRestShiftPatterns(model, input, variables, Shift.Afternoon, "night_rest_afternoon");
         var shiftChangeWithoutRest = CountShiftChangesWithoutRest(model, input, modelDates, variables);
-        var weekdayFairness = MeasureRestCountDeviationByStationGroup(model, input, targetDates.Where(date => !IsWeekendOrNationalHoliday(input, date)), variables, "weekday_fairness");
         var holidayFairness = MeasureRestCountDeviationByStationGroup(model, input, targetDates.Where(date => IsWeekendOrNationalHoliday(input, date)), variables, "holiday_fairness");
-        var earlyShiftFairness = MeasureShiftCountDeviationByStationGroup(model, input, targetDates, variables, Shift.Early);
-        var afternoonShiftFairness = MeasureShiftCountDeviationByStationGroup(model, input, targetDates, variables, Shift.Afternoon);
-        var nightShiftFairness = MeasureShiftCountDeviationByStationGroup(model, input, targetDates, variables, Shift.Night);
+        var earlyAfternoonImbalance = MeasureEarlyAfternoonImbalance(model, input, targetDates, variables);
+        var nightShiftTarget = MeasureNightShiftTargetPenalty(model, input, targetDates, variables);
 
         return
         [
@@ -43,11 +41,9 @@ public static partial class MSolver
                     + nightRestEarly * (40 * objectiveScale)
                     + nightRestAfternoon * (30 * objectiveScale)
                     + shiftChangeWithoutRest * 5
-                    + weekdayFairness * 5
                     + holidayFairness * 5
-                    + earlyShiftFairness * 2
-                    + afternoonShiftFairness * 2
-                    + nightShiftFairness * 10,
+                    + earlyAfternoonImbalance * 2
+                    + nightShiftTarget * 50,
                 [
                     ("ExternalStaffing", 10 * objectiveScale, externalStaffing),
                     ("MonthlyRest", 24 * objectiveScale, monthlyRest),
@@ -57,11 +53,9 @@ public static partial class MSolver
                     ("NightRestEarly", 40 * objectiveScale, nightRestEarly),
                     ("NightRestAfternoon", 30 * objectiveScale, nightRestAfternoon),
                     ("ShiftChangeWithoutRest", 5, shiftChangeWithoutRest),
-                    ("WeekdayRestFairness", 5, weekdayFairness),
                     ("HolidayRestFairness", 5, holidayFairness),
-                    ("EarlyShiftFairness", 2, earlyShiftFairness),
-                    ("AfternoonShiftFairness", 2, afternoonShiftFairness),
-                    ("NightShiftFairness", 10, nightShiftFairness)
+                    ("EarlyAfternoonImbalance", 2, earlyAfternoonImbalance),
+                    ("NightShiftTarget", 50, nightShiftTarget)
                 ])
         ];
     }
@@ -370,31 +364,55 @@ public static partial class MSolver
         return LinearExpr.Sum(deviations);
     }
 
-    // 班別次數公平——計入各全月在職站群內每位人員偏離群組平均的程度。
-    private static LinearExpr MeasureShiftCountDeviationByStationGroup(
+    // 早小班差距——每人差距超過四班的部分才計罰。
+    private static LinearExpr MeasureEarlyAfternoonImbalance(
         CpModel model,
         ScheduleInput input,
         IReadOnlyList<DateOnly> targetDates,
-        ModelVariables variables,
-        Shift shift)
+        ModelVariables variables)
     {
-        var deviations = new List<LinearExpr>();
-        foreach (var group in input.DemandMonth.Employees
-                     .Where(employee => IsEmployedOn(employee, input.DemandMonth.MonthStart))
-                     .GroupBy(employee => StationGroupIndex(employee.Affiliation)))
+        var penalties = new List<IntVar>();
+        foreach (var employee in input.DemandMonth.Employees.Where(employee => IsEmployedOn(employee, input.DemandMonth.MonthStart)))
         {
-            var members = group.ToArray();
-            if (members.Length < 2) continue;
-            var counts = members.Select(employee =>
-            {
-                var count = model.NewIntVar(0, targetDates.Count, $"shift_fairness_count_{group.Key}_{shift}_{employee.EmployeeId}");
-                model.Add(count == LinearExpr.Sum(targetDates.Select(date => variables.WorksShift[(employee.EmployeeId, date, shift)])));
-                return count;
-            }).ToArray();
-            deviations.Add(MeasureNormalizedCountDeviationTenths(model, counts, targetDates.Count, $"shift_fairness_{group.Key}_{shift}"));
+            var difference = model.NewIntVar(0, targetDates.Count, $"early_afternoon_difference_{employee.EmployeeId}");
+            var penalty = model.NewIntVar(0, targetDates.Count, $"early_afternoon_imbalance_{employee.EmployeeId}");
+            var early = LinearExpr.Sum(targetDates.Select(date => variables.WorksShift[(employee.EmployeeId, date, Shift.Early)]));
+            var afternoon = LinearExpr.Sum(targetDates.Select(date => variables.WorksShift[(employee.EmployeeId, date, Shift.Afternoon)]));
+            model.AddAbsEquality(difference, early - afternoon);
+            model.AddMaxEquality(penalty, [difference - 4, LinearExpr.Constant(0)]);
+            penalties.Add(penalty);
         }
-        return LinearExpr.Sum(deviations);
+        return LinearExpr.Sum(penalties);
     }
+
+    // 夜班目標——三、四班不罰，其餘班數依指定函數計罰。
+    private static LinearExpr MeasureNightShiftTargetPenalty(
+        CpModel model,
+        ScheduleInput input,
+        IReadOnlyList<DateOnly> targetDates,
+        ModelVariables variables)
+    {
+        var penalties = new List<IntVar>();
+        var values = Enumerable.Range(0, targetDates.Count + 1).Select(NightShiftPenaltyValue).ToArray();
+        foreach (var employee in input.DemandMonth.Employees.Where(employee => IsEmployedOn(employee, input.DemandMonth.MonthStart)))
+        {
+            var count = model.NewIntVar(0, targetDates.Count, $"night_shift_count_{employee.EmployeeId}");
+            var penalty = model.NewIntVar(0, values.Max(), $"night_shift_target_{employee.EmployeeId}");
+            model.Add(count == LinearExpr.Sum(targetDates.Select(date => variables.WorksShift[(employee.EmployeeId, date, Shift.Night)])));
+            model.AddElement(count, values, penalty);
+            penalties.Add(penalty);
+        }
+        return LinearExpr.Sum(penalties);
+    }
+
+    private static long NightShiftPenaltyValue(int count) => count switch
+    {
+        0 => 10,
+        1 => 5,
+        2 => 1,
+        3 or 4 => 0,
+        _ => 4L * (count - 4)
+    };
 
     private static IntVar MeasureNormalizedCountDeviationTenths(
         CpModel model,

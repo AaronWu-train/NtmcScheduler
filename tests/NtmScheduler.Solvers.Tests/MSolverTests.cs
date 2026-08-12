@@ -74,6 +74,22 @@ public sealed class MSolverTests
     }
 
     [TestMethod]
+    [DataRow(0, 10L)]
+    [DataRow(1, 5L)]
+    [DataRow(2, 1L)]
+    [DataRow(3, 0L)]
+    [DataRow(4, 0L)]
+    [DataRow(5, 4L)]
+    [DataRow(6, 8L)]
+    [DataRow(7, 12L)]
+    [DataRow(8, 16L)]
+    public void NightShiftTargetPenaltyMatchesThreeToFourDayGoal(int count, long penalty)
+    {
+        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
+        Assert.AreEqual(penalty, typeof(MSolver).GetMethod("NightShiftPenaltyValue", flags)!.Invoke(null, [count]));
+    }
+
+    [TestMethod]
     public void Csv_MWorkAliasesNormalizeStationsAndSmallShift()
     {
         var root = Path.Combine(Path.GetTempPath(), $"ntm-{Guid.NewGuid():N}");
@@ -241,11 +257,11 @@ public sealed class MSolverTests
         var input = ValidInput();
         var date = input.DemandMonth.MonthStart;
         var group = input.DemandMonth.Employees.Where(employee => employee.Affiliation == "LB07").ToArray();
-        var fixedWork = new (string Station, Shift Shift)[]
+        ScheduleCell[] fixedAssignments =
         {
-            ("LB07", Shift.Early), ("LB07", Shift.Afternoon), ("LB08", Shift.Early),
-            ("LB08", Shift.Afternoon), ("LB08", Shift.Night), ("LB07", Shift.Early),
-            ("LB07", Shift.Early), ("LB07", Shift.Early), ("LB07", Shift.Early), ("LB07", Shift.Early)
+            Work("LB07", Shift.Early), Work("LB07", Shift.Afternoon),
+            Work("LB08", Shift.Early), Work("LB08", Shift.Afternoon),
+            Work("LB08", Shift.Night), Event(date), Event(date), Event(date), Event(date), Event(date)
         };
         input = input with
         {
@@ -258,7 +274,7 @@ public sealed class MSolverTests
                     {
                         Assignments = new Dictionary<DateOnly, ScheduleCell>(employee.Assignments)
                         {
-                            [date] = new() { Kind = AssignmentKind.Work, Station = fixedWork[index].Station, Shift = fixedWork[index].Shift }
+                            [date] = fixedAssignments[index]
                         }
                     };
                 }).ToArray()
@@ -267,7 +283,7 @@ public sealed class MSolverTests
 
         var result = MSolver.Solve(input, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(10) });
 
-        Assert.IsGreaterThanOrEqualTo(1, result.Candidates.Count);
+        Assert.IsGreaterThanOrEqualTo(1, result.Candidates.Count, $"Status: {result.Status}; {string.Join("; ", result.Errors.Select(error => error.Message))}");
         var candidate = result.Candidates[0];
         Assert.AreEqual(2, candidate.ExternalAssignments.Where(item => item.Date == date && item.Station == "LB09").Sum(item => item.Count));
         var legacyTotal = candidate.ExternalAssignments.Where(item => item.Station != "LB09").Sum(item => item.Count);
@@ -275,6 +291,8 @@ public sealed class MSolverTests
         Assert.AreEqual(
             Math.Max(0, legacyTotal - 70) + Math.Max(0, lb09Total - 4),
             candidate.Objectives.SelectMany(objective => objective.Components).Single(component => component.Name == "ExternalStaffing").Value);
+
+        static ScheduleCell Work(string station, Shift shift) => new() { Kind = AssignmentKind.Work, Station = station, Shift = shift };
     }
 
     [TestMethod]
@@ -320,18 +338,15 @@ public sealed class MSolverTests
             .SelectMany(value => value.Components)
             .Single(value => value.Name == "NightRestEarly").Value);
 
-        long ExpectedDeviationTenths(Shift shift) => candidate.Schedule.Employees
-            .GroupBy(employee => (int.Parse(employee.Affiliation[2..]) - 1) / 3)
-            .Sum(group =>
-            {
-                var counts = group.Select(employee => (long)employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Work && cell.Shift == shift)).ToArray();
-                var total = counts.Sum();
-                return 10 * counts.Sum(value => Math.Abs(counts.Length * value - total)) / counts.Length;
-            });
+        long EarlyAfternoonImbalance() => candidate.Schedule.Employees.Sum(employee => Math.Max(0,
+            Math.Abs(employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Work && cell.Shift == Shift.Early) -
+                     employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Work && cell.Shift == Shift.Afternoon)) - 4));
+        long NightShiftTarget() => candidate.Schedule.Employees.Sum(employee =>
+            (long)typeof(MSolver).GetMethod("NightShiftPenaltyValue", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+                .Invoke(null, [employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Work && cell.Shift == Shift.Night)])!);
         var fairness = candidate.Objectives.Single(objective => objective.Name == "ScheduleQualityAndFairness").Components;
-        Assert.AreEqual((ExpectedDeviationTenths(Shift.Early), 2), (fairness.Single(component => component.Name == "EarlyShiftFairness").Value, fairness.Single(component => component.Name == "EarlyShiftFairness").Weight));
-        Assert.AreEqual((ExpectedDeviationTenths(Shift.Afternoon), 2), (fairness.Single(component => component.Name == "AfternoonShiftFairness").Value, fairness.Single(component => component.Name == "AfternoonShiftFairness").Weight));
-        Assert.AreEqual((ExpectedDeviationTenths(Shift.Night), 10), (fairness.Single(component => component.Name == "NightShiftFairness").Value, fairness.Single(component => component.Name == "NightShiftFairness").Weight));
+        Assert.AreEqual((EarlyAfternoonImbalance(), 2), (fairness.Single(component => component.Name == "EarlyAfternoonImbalance").Value, fairness.Single(component => component.Name == "EarlyAfternoonImbalance").Weight));
+        Assert.AreEqual((NightShiftTarget(), 10), (fairness.Single(component => component.Name == "NightShiftTarget").Value, fairness.Single(component => component.Name == "NightShiftTarget").Weight));
         SolverAcceptanceAssertions.AssertMHardRules(input, candidate);
         SolverAcceptanceAssertions.AssertMSoftRules(input, candidate);
 
@@ -439,6 +454,54 @@ public sealed class MSolverTests
             employee.Assignments[date].Kind == AssignmentKind.Work &&
             employee.Assignments[date].Station == "LB01" &&
             employee.Assignments[date].Shift == Shift.Early));
+    }
+
+    [TestMethod]
+    public void Solve_ThreeEmployeesInLb01EarlyPosition_IsFeasible()
+    {
+        var input = ValidInput();
+        var date = input.DemandMonth.MonthStart;
+        var fixedEmployees = new HashSet<string> { "M1-04", "M1-06", "M1-08" };
+        var employees = input.DemandMonth.Employees.Select(employee =>
+            fixedEmployees.Contains(employee.EmployeeId)
+                ? employee with
+                {
+                    Assignments = new Dictionary<DateOnly, ScheduleCell>(employee.Assignments)
+                    {
+                        [date] = new() { Kind = AssignmentKind.Work, Station = "LB01", Shift = Shift.Early }
+                    }
+                }
+                : employee).ToArray();
+        input = input with { DemandMonth = input.DemandMonth with { Employees = employees } };
+
+        var result = MSolver.Solve(input, ShortSolve);
+
+        Assert.IsGreaterThanOrEqualTo(1, result.Candidates.Count);
+        Assert.IsGreaterThanOrEqualTo(3, result.Candidates[0].Schedule.Employees.Count(employee =>
+            employee.Assignments[date].Kind == AssignmentKind.Work &&
+            employee.Assignments[date].Station == "LB01" &&
+            employee.Assignments[date].Shift == Shift.Early));
+    }
+
+    [TestMethod]
+    public void Solve_TwoEmployeesInLb02EarlyPosition_IsInfeasible()
+    {
+        var input = ValidInput();
+        var date = input.DemandMonth.MonthStart;
+        var fixedEmployees = new HashSet<string> { "M1-04", "M1-06" };
+        var employees = input.DemandMonth.Employees.Select(employee =>
+            fixedEmployees.Contains(employee.EmployeeId)
+                ? employee with
+                {
+                    Assignments = new Dictionary<DateOnly, ScheduleCell>(employee.Assignments)
+                    {
+                        [date] = new() { Kind = AssignmentKind.Work, Station = "LB02", Shift = Shift.Early }
+                    }
+                }
+                : employee).ToArray();
+        input = input with { DemandMonth = input.DemandMonth with { Employees = employees } };
+
+        Assert.AreEqual(SolveStatus.Infeasible, MSolver.Solve(input, ShortSolve).Status);
     }
 
     [TestMethod]

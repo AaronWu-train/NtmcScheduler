@@ -31,8 +31,8 @@ internal static class SolverAcceptanceAssertions
                 Assert.IsGreaterThanOrEqualTo(required, employeeCount + externalCount, $"Coverage shortfall for {date:yyyy-MM-dd}/{station}/{shift}.");
             else
                 Assert.AreEqual(0, employeeCount + externalCount, $"Zero-demand position staffed for {date:yyyy-MM-dd}/{station}/{shift}.");
-            if (shift == Shift.Night)
-                Assert.IsLessThanOrEqualTo(1, employeeCount + externalCount, $"Night position has multiple workers for {date:yyyy-MM-dd}/{station}.");
+            if (shift == Shift.Night || station is not ("LB01" or "LB06" or "LB07" or "LB12"))
+                Assert.IsLessThanOrEqualTo(1, employeeCount + externalCount, $"Position exceeds its staffing limit for {date:yyyy-MM-dd}/{station}/{shift}.");
         }
 
         Assert.IsTrue(candidate.ExternalAssignments.All(item => item.Station is "LB02" or "LB04" or "LB09" or "LB11"));
@@ -48,7 +48,7 @@ internal static class SolverAcceptanceAssertions
         AssertObjectiveStructure(candidate.Objectives,
         [
             (1, "RequestedRest", [("RequestedRest", 3), ("UnusedLeaveRest", 1)]),
-            (4, "ScheduleQualityAndFairness", [("ExternalStaffing", 100), ("MonthlyRest", 240), ("SpecialRestBalance", 120), ("WorkStreak", 40), ("MixedShiftWorkStreak", 30), ("NightRestEarly", 400), ("NightRestAfternoon", 300), ("ShiftChangeWithoutRest", 5), ("WeekdayRestFairness", 5), ("HolidayRestFairness", 5), ("EarlyShiftFairness", 2), ("AfternoonShiftFairness", 2), ("NightShiftFairness", 10)])
+            (4, "ScheduleQualityAndFairness", [("ExternalStaffing", 100), ("MonthlyRest", 240), ("SpecialRestBalance", 120), ("WorkStreak", 40), ("MixedShiftWorkStreak", 30), ("NightRestEarly", 400), ("NightRestAfternoon", 300), ("ShiftChangeWithoutRest", 5), ("HolidayRestFairness", 5), ("EarlyAfternoonImbalance", 2), ("NightShiftTarget", 10)])
         ]);
 
         Expect(candidate.Objectives, "RequestedRest", RequestedRestViolations(input, candidate.Schedule));
@@ -74,11 +74,9 @@ internal static class SolverAcceptanceAssertions
         Assert.IsGreaterThan(0, afternoonPatterns);
 
         Expect(candidate.Objectives, "ShiftChangeWithoutRest", ShiftChangesWithoutRest(input, candidate.Schedule));
-        Expect(candidate.Objectives, "WeekdayRestFairness", MRestFairness(input, candidate.Schedule, false));
         Expect(candidate.Objectives, "HolidayRestFairness", MRestFairness(input, candidate.Schedule, true));
-        Expect(candidate.Objectives, "EarlyShiftFairness", MShiftFairness(input, candidate.Schedule, Shift.Early));
-        Expect(candidate.Objectives, "AfternoonShiftFairness", MShiftFairness(input, candidate.Schedule, Shift.Afternoon));
-        Expect(candidate.Objectives, "NightShiftFairness", MShiftFairness(input, candidate.Schedule, Shift.Night));
+        Expect(candidate.Objectives, "EarlyAfternoonImbalance", MEarlyAfternoonImbalance(input, candidate.Schedule));
+        Expect(candidate.Objectives, "NightShiftTarget", MNightShiftTarget(input, candidate.Schedule));
     }
 
     internal static void AssertTSoftRules(ScheduleInput input, TCandidate candidate)
@@ -328,10 +326,28 @@ internal static class SolverAcceptanceAssertions
         schedule,
         employee => employee.Assignments.Count(pair => IsHoliday(input, pair.Key) == holiday && IsRest(pair.Value)));
 
-    private static long MShiftFairness(ScheduleInput input, MonthlySchedule schedule, Shift shift) => MGroupDeviationTenths(
-        input.DemandMonth.Employees.Where(employee => IsActive(employee, input.DemandMonth.MonthStart)).GroupBy(employee => StationGroup(employee.Affiliation)),
-        schedule,
-        employee => employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Work && cell.Shift == shift));
+    private static long MEarlyAfternoonImbalance(ScheduleInput input, MonthlySchedule schedule) => EligibleMEmployees(input, schedule).Sum(employee =>
+        Math.Max(0,
+            Math.Abs(employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Work && cell.Shift == Shift.Early) -
+                     employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Work && cell.Shift == Shift.Afternoon)) - 4));
+
+    private static long MNightShiftTarget(ScheduleInput input, MonthlySchedule schedule) => EligibleMEmployees(input, schedule).Sum(employee =>
+        employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Work && cell.Shift == Shift.Night) switch
+        {
+            0 => 10,
+            1 => 5,
+            2 => 1,
+            3 or 4 => 0,
+            var count => 4L * (count - 4)
+        });
+
+    private static IEnumerable<EmployeeMonthlySchedule> EligibleMEmployees(ScheduleInput input, MonthlySchedule schedule)
+    {
+        var candidates = schedule.Employees.ToDictionary(employee => employee.EmployeeId);
+        return input.DemandMonth.Employees
+            .Where(employee => IsActive(employee, input.DemandMonth.MonthStart))
+            .Select(employee => candidates[employee.EmployeeId]);
+    }
 
     private static long MGroupDeviationTenths<TKey>(IEnumerable<IGrouping<TKey, EmployeeMonthlySchedule>> groups, MonthlySchedule schedule, Func<EmployeeMonthlySchedule, int> count)
     {

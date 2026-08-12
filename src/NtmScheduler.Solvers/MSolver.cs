@@ -20,6 +20,7 @@ public static partial class MSolver
     private static readonly Shift[] Shifts = [Shift.Early, Shift.Afternoon, Shift.Night];
     private static readonly HashSet<string> ExternalStations = ["LB02", "LB04", "LB09", "LB11"];
     private static readonly HashSet<string> NightStations = ["LB01", "LB06", "LB08", "LB12"];
+    private static readonly HashSet<string> MultiStaffStations = ["LB01", "LB06", "LB07", "LB12"];
 
     /// <summary>Validates input, optimizes each named objective in priority order, and returns up to three candidates.</summary>
     public static MSolveResult Solve(
