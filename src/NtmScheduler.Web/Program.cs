@@ -206,7 +206,7 @@ app.MapGet("/download/templates/{workspace}/{kind}.csv", (string workspace, stri
     };
     return header is null
         ? Results.NotFound()
-        : Results.File(new UTF8Encoding(true).GetBytes(header + Environment.NewLine), "text/csv; charset=utf-8", $"{workspaceCode.ToString().ToLowerInvariant()}-{kind}-template.csv");
+        : Results.File(Encoding.UTF8.GetBytes('\uFEFF' + header + Environment.NewLine), "text/csv; charset=utf-8", $"{workspaceCode.ToString().ToLowerInvariant()}-{kind}-template.csv");
 }).RequireAuthorization();
 
 app.MapStaticAssets();

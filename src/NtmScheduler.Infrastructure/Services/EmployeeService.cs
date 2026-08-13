@@ -162,8 +162,14 @@ public sealed class EmployeeService(NtmDbContext db) : IEmployeeService
             var code = fields[0].Trim();
             var name = fields[1].Trim();
             var affiliation = fields[2].Trim();
-            if (!DateOnly.TryParseExact(fields[3].Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var employmentStart))
-                throw new DomainValidationException($"員工 {code} 的到職日期必須使用 yyyy-MM-dd。");
+            var employmentStartText = fields[3].Trim();
+            DateOnly? employmentStart = null;
+            if (employmentStartText.Length > 0)
+            {
+                if (!DateOnly.TryParseExact(employmentStartText, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedEmploymentStart))
+                    throw new DomainValidationException($"員工 {code} 的到職日期必須使用 yyyy-MM-dd。");
+                employmentStart = parsedEmploymentStart;
+            }
             int? ability = null;
             if (workspace == WorkspaceCode.T)
             {
@@ -196,5 +202,5 @@ public sealed class EmployeeService(NtmDbContext db) : IEmployeeService
         return new Guid(SHA256.HashData(Encoding.UTF8.GetBytes(text)).AsSpan(0, 16));
     }
 
-    private sealed record EmployeeImportRecord(string EmployeeCode, string Name, string Affiliation, DateOnly EmploymentStartDate, int? Ability);
+    private sealed record EmployeeImportRecord(string EmployeeCode, string Name, string Affiliation, DateOnly? EmploymentStartDate, int? Ability);
 }

@@ -9,7 +9,7 @@
 @if (message is not null) { <p class="alert @messageClass" role="status">@message</p> }
 @if (canEdit)
 {
-    <section class="card"><h2>匯入員工 CSV</h2><p class="format-help">UTF-8（可含 BOM）、最大 5 MB。M 固定表頭：ID、姓名、所屬車站、到職日期；T 固定表頭：ID、姓名、專業分組、到職日期、能力。日期為 yyyy-MM-dd；匯入會新增或更新，未出現的既有員工不會封存，已封存 ID 不會自動恢復。</p><a class="button-link" href="/download/templates/@Workspace.ToLowerInvariant()/employees.csv">下載範本</a> <InputFile OnChange="PreviewImportAsync" accept=".csv,text/csv" /></section>
+    <section class="card"><h2>匯入員工 CSV</h2><p class="format-help">UTF-8（可含 BOM）、最大 5 MB。M 固定表頭：ID、姓名、所屬車站、到職日期；T 固定表頭：ID、姓名、專業分組、到職日期、能力。既有員工的到職日期可留空；有填寫時使用 yyyy-MM-dd。匯入會新增或更新，未出現的既有員工不會封存，已封存 ID 不會自動恢復。</p><a class="button-link" href="/download/templates/@Workspace.ToLowerInvariant()/employees.csv">下載範本</a> <InputFile OnChange="PreviewImportAsync" accept=".csv,text/csv" /></section>
     @if (importPreview is not null)
     {
         <section class="card"><h2>匯入預覽</h2>@foreach (var error in importPreview.Errors) { <p class="error-text">@error</p> }@foreach (var difference in importPreview.Differences) { <p>@difference</p> }@if (importPreview.IsValid) { <button class="primary" @onclick="ConfirmImportAsync">確認匯入</button> } <button @onclick="CancelImport">取消</button></section>
