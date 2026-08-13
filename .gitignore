@@ -25,7 +25,9 @@ coverage/
 ## Local secrets
 appsettings.Development.json
 *.pfx
+data-protection-keys/
 
 ## Playwright
+.playwright-cli/
 **/playwright/.cache/
 **/playwright-report/

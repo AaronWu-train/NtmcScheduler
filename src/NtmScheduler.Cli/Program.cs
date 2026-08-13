@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
+using NtmScheduler.Infrastructure.Csv;
 using NtmScheduler.Solvers;
 
 namespace NtmScheduler.Cli;

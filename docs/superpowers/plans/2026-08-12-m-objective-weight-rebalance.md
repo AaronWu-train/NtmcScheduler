@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Do not change M hard constraints, objective names, surplus-night behavior, or T solver behavior.
-- Keep `NtmScheduler.Core` free of OR-Tools and EF Core references.
+- Keep `NtmScheduler.Contracts` free of OR-Tools and EF Core references.
 - Update documentation and `docs/10-decisions.md` before production rule behavior.
 - Preserve unrelated edits in both example README files.
 - Do not commit until the user explicitly requests a commit.

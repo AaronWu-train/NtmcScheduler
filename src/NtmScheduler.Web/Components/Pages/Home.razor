@@ -1,0 +1,9 @@
+@page "/"
+@rendermode InteractiveServer
+@attribute [Authorize]
+<PageTitle>工作區</PageTitle>
+<div class="page-title"><div><h1>選擇工作區</h1><p>第一階段只提供 M 站務與 T 檢測。</p></div><PageHelp Title="工作區說明"><p>所有已登入者可檢視 M/T。只有取得對應編輯權或系統管理者可以修改資料、求解、標示採用版或封存班表。</p></PageHelp></div>
+<div class="workspace-grid">
+    <a class="workspace-card" href="/m/demand"><strong>M</strong><span>站務排班</span></a>
+    <a class="workspace-card" href="/t/demand"><strong>T</strong><span>檢測排班</span></a>
+</div>

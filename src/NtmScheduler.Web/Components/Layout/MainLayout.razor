@@ -1,0 +1,30 @@
+@inherits LayoutComponentBase
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+
+<header class="app-header">
+    <a class="brand" href="/">新北捷人員排班</a>
+    <AuthorizeView>
+        <Authorized Context="auth">
+            <NavMenu />
+            <span class="user-name">@auth.User.Identity?.Name</span>
+            <form action="/Account/Logout" method="post">
+                <AntiforgeryToken />
+                <button type="submit" class="link-button">登出</button>
+            </form>
+        </Authorized>
+    </AuthorizeView>
+</header>
+<main class="page-shell">
+    @Body
+</main>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+        if (user.Identity?.IsAuthenticated == true && user.FindFirst("must_change_password")?.Value == "true" &&
+            !Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("Account/ChangePassword", StringComparison.OrdinalIgnoreCase))
+            Navigation.NavigateTo("/Account/ChangePassword", forceLoad: true);
+    }
+}

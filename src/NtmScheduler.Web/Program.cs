@@ -1,0 +1,283 @@
+using System.Net;
+using System.Security.Claims;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
+using System.Text.Json;
+using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using NtmScheduler.Infrastructure;
+using NtmScheduler.Contracts;
+using NtmScheduler.Infrastructure.Data;
+using NtmScheduler.Infrastructure.Csv;
+using NtmScheduler.Web.Components;
+using NtmScheduler.Web.Services;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.ClearProviders();
+builder.Logging.AddJsonConsole(options => options.JsonWriterOptions = new JsonWriterOptions { Indented = false });
+builder.Services.AddRazorComponents().AddInteractiveServerComponents();
+builder.Services.AddAntiforgery(options =>
+{
+    options.Cookie.Name = "__Host-NtmAntiforgery";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+});
+builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<CurrentActorService>();
+builder.Services.AddScoped<IdentityRedirectManager>();
+builder.Services.AddSingleton<LoginRateLimiter>();
+builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
+
+var connectionString = builder.Configuration.GetConnectionString("Default")
+    ?? throw new InvalidOperationException("ConnectionStrings:Default is required.");
+var provider = builder.Configuration["DatabaseProvider"] ?? "Sqlite";
+builder.Services.AddNtmInfrastructure(options =>
+{
+    if (provider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase)) options.UseSqlServer(connectionString);
+    else if (provider.Equals("Sqlite", StringComparison.OrdinalIgnoreCase)) options.UseSqlite(connectionString);
+    else throw new InvalidOperationException("DatabaseProvider must be Sqlite or SqlServer.");
+});
+
+builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultScheme = IdentityConstants.ApplicationScheme;
+        options.DefaultSignInScheme = IdentityConstants.ExternalScheme;
+    })
+    .AddIdentityCookies(options =>
+    {
+        options.ApplicationCookie!.Configure(cookie =>
+        {
+            cookie.Cookie.Name = "__Host-NtmScheduler";
+            cookie.Cookie.HttpOnly = true;
+            cookie.Cookie.SameSite = SameSiteMode.Strict;
+            cookie.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+            cookie.LoginPath = "/Account/Login";
+            cookie.AccessDeniedPath = "/Account/AccessDenied";
+            cookie.ExpireTimeSpan = TimeSpan.FromMinutes(30);
+            cookie.SlidingExpiration = true;
+        });
+    });
+
+builder.Services.AddIdentityCore<ApplicationUser>(options =>
+    {
+        options.Password.RequiredLength = 8;
+        options.Password.RequiredUniqueChars = 2;
+        options.Password.RequireDigit = true;
+        options.Password.RequireLowercase = false;
+        options.Password.RequireUppercase = false;
+        options.Password.RequireNonAlphanumeric = false;
+        // TODO: Revisit and strengthen the password policy before production deployment.
+        options.Lockout.MaxFailedAccessAttempts = 5;
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+        options.SignIn.RequireConfirmedAccount = false;
+        options.User.RequireUniqueEmail = false;
+    })
+    .AddRoles<IdentityRole<Guid>>()
+    .AddEntityFrameworkStores<NtmDbContext>()
+    .AddSignInManager()
+    .AddDefaultTokenProviders();
+builder.Services.AddScoped<IUserClaimsPrincipalFactory<ApplicationUser>, NtmClaimsPrincipalFactory>();
+builder.Services.AddAuthorization();
+
+var keyPath = builder.Configuration["DataProtection:KeyPath"];
+if (string.IsNullOrWhiteSpace(keyPath)) throw new InvalidOperationException("DataProtection:KeyPath is required.");
+var keyDirectory = Path.GetFullPath(keyPath, builder.Environment.ContentRootPath);
+Directory.CreateDirectory(keyDirectory);
+var dataProtection = builder.Services.AddDataProtection()
+    .SetApplicationName("NtmScheduler")
+    .PersistKeysToFileSystem(new DirectoryInfo(keyDirectory));
+var certificatePath = builder.Configuration["DataProtection:CertificatePath"];
+if (!string.IsNullOrWhiteSpace(certificatePath))
+{
+    var password = builder.Configuration["DataProtection:CertificatePassword"];
+    var certificate = X509CertificateLoader.LoadPkcs12FromFile(certificatePath, password);
+    dataProtection.ProtectKeysWithCertificate(certificate);
+}
+else if (!builder.Environment.IsDevelopment())
+{
+    throw new InvalidOperationException("Production requires DataProtection:CertificatePath so persisted keys are encrypted at rest.");
+}
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
+    foreach (var value in builder.Configuration.GetSection("KnownProxies").Get<string[]>() ?? [])
+        if (IPAddress.TryParse(value, out var address)) options.KnownProxies.Add(address);
+});
+
+var app = builder.Build();
+await InitializeDatabaseAsync(app.Services);
+if (args is ["--init-admin", var initialUserName])
+{
+    await InitializeAdministratorAsync(app.Services, initialUserName);
+    return;
+}
+
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler("/Error", createScopeForErrors: true);
+    app.UseHsts();
+}
+app.UseForwardedHeaders();
+app.UseHttpsRedirection();
+app.Use(async (context, next) =>
+{
+    context.Response.OnStarting(() =>
+    {
+        context.Response.Headers.ContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' wss:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+        context.Response.Headers.XContentTypeOptions = "nosniff";
+        context.Response.Headers.XFrameOptions = "DENY";
+        context.Response.Headers["Referrer-Policy"] = "no-referrer";
+        context.Response.Headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
+        return Task.CompletedTask;
+    });
+    await next();
+});
+app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+app.UseAuthentication();
+app.Use(async (context, next) =>
+{
+    var mustChangePassword = context.User.Identity?.IsAuthenticated == true &&
+        context.User.FindFirstValue("must_change_password") == "true";
+    var allowed = context.Request.Path.StartsWithSegments("/Account/ChangePassword") ||
+        context.Request.Path.StartsWithSegments("/Account/Logout") ||
+        context.Request.Path.StartsWithSegments("/_framework") ||
+        context.Request.Path == "/app.css";
+    if (mustChangePassword && !allowed)
+    {
+        context.Response.Redirect("/Account/ChangePassword");
+        return;
+    }
+    await next();
+});
+app.UseAuthorization();
+app.UseAntiforgery();
+
+app.MapPost("/Account/Logout", async (HttpContext context, SignInManager<ApplicationUser> signInManager, IAntiforgery antiforgery) =>
+{
+    await antiforgery.ValidateRequestAsync(context);
+    await signInManager.SignOutAsync();
+    return Results.LocalRedirect("~/Account/Login");
+}).RequireAuthorization();
+
+app.MapGet("/download/schedules/{versionId:guid}.csv", async (
+    Guid versionId,
+    HttpContext context,
+    NtmDbContext db,
+    IScheduleService schedules,
+    CancellationToken cancellationToken) =>
+{
+    var actor = await CreateHttpActorAsync(context.User, context, db, cancellationToken);
+    var bytes = await schedules.ExportCsvAsync(versionId, actor, cancellationToken);
+    return Results.File(bytes, "text/csv; charset=utf-8", $"schedule-{versionId:N}.csv");
+}).RequireAuthorization();
+
+app.MapGet("/download/schedules/{versionId:guid}-external.csv", async (
+    Guid versionId,
+    HttpContext context,
+    NtmDbContext db,
+    IScheduleService schedules,
+    CancellationToken cancellationToken) =>
+{
+    var actor = await CreateHttpActorAsync(context.User, context, db, cancellationToken);
+    var bytes = await schedules.ExportExternalCsvAsync(versionId, actor, cancellationToken);
+    return Results.File(bytes, "text/csv; charset=utf-8", $"schedule-{versionId:N}-external.csv");
+}).RequireAuthorization();
+
+app.MapGet("/download/templates/{workspace}/{kind}.csv", (string workspace, string kind) =>
+{
+    if (!Enum.TryParse<WorkspaceCode>(workspace, true, out var workspaceCode)) return Results.NotFound();
+    var header = kind.ToLowerInvariant() switch
+    {
+        "employees" when workspaceCode == WorkspaceCode.M => "ID,姓名,所屬車站,到職日期",
+        "employees" when workspaceCode == WorkspaceCode.T => "ID,姓名,專業分組,到職日期,能力",
+        "demand" or "previous" => ScheduleCsv.MonthlyHeader,
+        "perpetual" when workspaceCode == WorkspaceCode.M => ScheduleCsv.MPerpetualHeader,
+        _ => null
+    };
+    return header is null
+        ? Results.NotFound()
+        : Results.File(new UTF8Encoding(true).GetBytes(header + Environment.NewLine), "text/csv; charset=utf-8", $"{workspaceCode.ToString().ToLowerInvariant()}-{kind}-template.csv");
+}).RequireAuthorization();
+
+app.MapStaticAssets();
+app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
+app.Run();
+
+static async Task InitializeDatabaseAsync(IServiceProvider services)
+{
+    await using var scope = services.CreateAsyncScope();
+    var db = scope.ServiceProvider.GetRequiredService<NtmDbContext>();
+    await db.Database.MigrateAsync();
+    var roles = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
+    if (!await roles.RoleExistsAsync("Administrator"))
+    {
+        var result = await roles.CreateAsync(new IdentityRole<Guid>("Administrator"));
+        if (!result.Succeeded) throw new InvalidOperationException(string.Join("; ", result.Errors.Select(x => x.Description)));
+    }
+}
+
+static async Task InitializeAdministratorAsync(IServiceProvider services, string userName)
+{
+    if (string.IsNullOrWhiteSpace(userName)) throw new InvalidOperationException("Usage: --init-admin USERNAME");
+    Console.Write("Temporary password: ");
+    var password = ReadSecret();
+    await using var scope = services.CreateAsyncScope();
+    var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+    if (await users.FindByNameAsync(userName) is not null) throw new InvalidOperationException("User already exists.");
+    var user = new ApplicationUser { Id = Guid.NewGuid(), UserName = userName.Trim(), MustChangePassword = true };
+    var created = await users.CreateAsync(user, password);
+    if (!created.Succeeded) throw new InvalidOperationException(string.Join("; ", created.Errors.Select(x => x.Description)));
+    var role = await users.AddToRoleAsync(user, "Administrator");
+    if (!role.Succeeded) throw new InvalidOperationException(string.Join("; ", role.Errors.Select(x => x.Description)));
+    var db = scope.ServiceProvider.GetRequiredService<NtmDbContext>();
+    var now = DateTimeOffset.UtcNow;
+    db.AuditLogs.Add(new AuditLog
+    {
+        AtUtc = now,
+        AtUtcTicks = now.UtcTicks,
+        ActorUserId = user.Id,
+        ActorName = user.UserName,
+        Action = "InitialAdministratorCreated",
+        ResourceType = "User",
+        ResourceId = user.Id.ToString(),
+        Succeeded = true,
+        CorrelationId = "init-admin"
+    });
+    await db.SaveChangesAsync();
+    Console.WriteLine($"Administrator '{user.UserName}' created. The password must be changed at first login.");
+}
+
+static string ReadSecret()
+{
+    if (Console.IsInputRedirected) return Console.ReadLine() ?? "";
+    var characters = new List<char>();
+    while (Console.ReadKey(intercept: true) is { } key && key.Key != ConsoleKey.Enter)
+    {
+        if (key.Key == ConsoleKey.Backspace && characters.Count > 0) characters.RemoveAt(characters.Count - 1);
+        else if (!char.IsControl(key.KeyChar)) characters.Add(key.KeyChar);
+    }
+    Console.WriteLine();
+    return new string(characters.ToArray());
+}
+
+static async Task<ActorContext> CreateHttpActorAsync(ClaimsPrincipal principal, HttpContext context, NtmDbContext db, CancellationToken cancellationToken)
+{
+    if (!Guid.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+        throw new UnauthorizedAccessException();
+    var workspaces = await db.WorkspacePermissions.AsNoTracking().Where(x => x.UserId == userId).Select(x => x.Workspace).ToListAsync(cancellationToken);
+    return new(userId, principal.Identity?.Name ?? "unknown", principal.IsInRole("Administrator"), workspaces.ToHashSet(),
+        context.TraceIdentifier, context.Connection.RemoteIpAddress?.ToString(), context.Request.Headers.UserAgent.ToString(),
+        principal.FindFirstValue("must_change_password") == "true");
+}
+
+public partial class Program;

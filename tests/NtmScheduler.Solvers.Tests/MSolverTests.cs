@@ -1,5 +1,6 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using NtmScheduler.Cli;
+using NtmScheduler.Infrastructure.Csv;
 
 [assembly: DoNotParallelize]
 
@@ -37,7 +38,7 @@ public sealed class MSolverTests
             SolveStatus.TimeLimit,
             [new MCandidate(schedule, [], scores)],
             []);
-        var compare = typeof(Program).GetMethod(
+        var compare = typeof(NtmScheduler.Cli.Program).GetMethod(
             "CompareMResults",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
         int Compare(MSolveResult left, MSolveResult right) => (int)compare.Invoke(null, [left, right])!;
@@ -57,7 +58,7 @@ public sealed class MSolverTests
     [TestMethod]
     public void CliSearchOptionParsesWorkersSeedsAndSeconds()
     {
-        var parse = typeof(Program).GetMethod(
+        var parse = typeof(NtmScheduler.Cli.Program).GetMethod(
             "ReadMSearchOptions",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
         var options = parse.Invoke(null, [new[] { "--search", "workers=3,seeds=4,seconds=90" }])!;

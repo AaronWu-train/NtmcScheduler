@@ -1,0 +1,17 @@
+@page "/admin/audit"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Administrator")]
+@inject IAuditQueryService Service
+@inject CurrentActorService CurrentActor
+
+<PageTitle>稽核紀錄</PageTitle>
+<div class="page-title"><div><h1>稽核紀錄</h1><p>永久保存的重要身分與資料異動。</p></div><PageHelp Title="稽核說明"><p>稽核紀錄不可由應用程式修改或刪除。畫面最多顯示最新 1000 筆；時間以台北時間呈現，關聯 ID 可對照系統結構化 Log。</p></PageHelp></div>
+<div class="card filters"><label>起日<input type="date" @bind="from" /></label><label>迄日<input type="date" @bind="to" /></label><label>工作區<select @bind="workspace"><option value="">全部</option><option>M</option><option>T</option></select></label><label>動作<input @bind="action" /></label><button @onclick="LoadAsync">查詢</button></div>
+<div class="table-scroll"><table><thead><tr><th>時間</th><th>操作者</th><th>工作區</th><th>動作</th><th>資源</th><th>結果</th><th>關聯 ID</th></tr></thead><tbody>
+@foreach (var row in logs) { <tr><td>@row.AtUtc.ToOffset(TimeSpan.FromHours(8)).ToString("yyyy-MM-dd HH:mm:ss")</td><td>@row.ActorName</td><td>@row.Workspace</td><td>@row.Action</td><td>@row.ResourceType / @row.ResourceId</td><td>@(row.Succeeded ? "成功" : "失敗")</td><td><code>@row.CorrelationId</code></td></tr> }
+</tbody></table></div>
+@code {
+    private DateOnly? from; private DateOnly? to; private string workspace = ""; private string action = ""; private IReadOnlyList<AuditLogDto> logs = [];
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+    private async Task LoadAsync() => logs = await Service.QueryAsync(from, to, Enum.TryParse<WorkspaceCode>(workspace, out var parsed) ? parsed : null, string.IsNullOrWhiteSpace(action) ? null : action, await CurrentActor.GetAsync());
+}

@@ -1,8 +1,8 @@
 # 新北捷人員排班系統（NtmScheduler）
 
 新北捷運公司內部的人員排班系統。輸入人員資料、指定休假（R\*）、每人本月 R休數、公務事件（X）與歷史班表後，
-系統以 OR-Tools CP-SAT 依規則產生月班表候選（最多 3 份），使用者挑選一份成為「目前班表」、
-可人工修改並自動驗證；可選建立快照，無審核／發布狀態機。
+系統以 OR-Tools CP-SAT 依規則產生月班表候選（最多 3 份），同月可永久保存多份版本並選一份 `★` 採用版；
+班表可人工修改並自動驗證，封存採軟刪除，無審核／發布狀態機。
 
 第一版只處理兩個單位：**站務 M**（12 個車站）與**檢測 T**（月班組輪值）。
 
@@ -12,9 +12,9 @@
 |---|---|
 | 框架 | ASP.NET Core Blazor Web App（Interactive Server），**.NET 10** |
 | 求解 | Google OR-Tools CP-SAT，M 與 T 分開建模 |
-| 資料庫 | EF Core。開發用 SQLite；正式環境為 PostgreSQL 或 SQL Server（尚未定案），因此**禁止使用 provider 專屬語法** |
+| 資料庫 | EF Core。開發用 SQLite；正式環境使用 SQL Server，仍**禁止使用 provider 專屬查詢語法** |
 | 套件 | 基於資安要求，**只允許 Microsoft 與 Google 官方套件** |
-| 登入 | 第一版**不做登入**；保留之後接公司 AD 的擴充點（見 `docs/07-architecture.md`） |
+| 登入 | ASP.NET Core Identity；Viewer、M/T Editor 與 Administrator，未來可替換為公司 AD／Entra |
 | 語言 | UI 文字一律繁體中文；程式識別字、註解使用英文 |
 
 ## 文件索引
@@ -43,7 +43,7 @@
 
 1. **遇到文件未定義的業務情況，回報規格缺口，不得自行補上業務假設。** 這是本專案的最高原則。
 2. Solver 的短 Rule ID 只存在於文件供交叉查閱；程式以有意義的英文函數與違反量名稱對應公式，不保存 Rule ID（決策 D-21）。
-3. `NtmScheduler.Core` **不得參考 OR-Tools 或 EF Core**。凡介面參數含
+3. `NtmScheduler.Contracts` **不得參考 OR-Tools 或 EF Core**。凡介面參數含
    `CpModel`、`BoolVar`、`IntVar`、`LinearExpr` 者，該介面必須位於 `NtmScheduler.Solvers`。
 4. Blazor 元件不得直接建立 OR-Tools 模型；驗證與求解一律由後端服務執行。
 5. 修改任何規則行為前，先更新對應的 `docs/` 文件，並在 `docs/10-decisions.md` 追加一筆決策紀錄。

@@ -1,0 +1,79 @@
+@page "/admin/users"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Administrator")]
+@inject IUserAdministrationService Service
+@inject CurrentActorService CurrentActor
+
+<PageTitle>帳號與權限</PageTitle>
+<div class="page-title"><div><h1>帳號與權限</h1><p>建立、停用與配置 M/T 編輯權。</p></div><PageHelp Title="帳號管理說明"><p>系統不開放註冊。一次性密碼至少 8 字元、至少 2 種不同字元，並包含數字；使用者首次登入必須修改。停用帳號會在最長五分鐘內中止既有登入狀態。</p></PageHelp></div>
+@if (message is not null) { <p class="alert @messageClass" role="status">@message</p> }
+<EditForm Model="newUser" OnValidSubmit="CreateAsync" class="card form-grid">
+    <DataAnnotationsValidator /><ValidationSummary />
+    <label>帳號<InputText @bind-Value="newUser.UserName" /></label>
+    <label>一次性密碼<InputText type="password" @bind-Value="newUser.Password" /></label>
+    <label><InputCheckbox @bind-Value="newUser.Administrator" /> Administrator</label>
+    <label><InputCheckbox @bind-Value="newUser.M" /> M 編輯</label>
+    <label><InputCheckbox @bind-Value="newUser.T" /> T 編輯</label>
+    <button type="submit" class="primary">建立帳號</button>
+</EditForm>
+<div class="table-scroll"><table><thead><tr><th>帳號</th><th>狀態</th><th>管理者</th><th>M</th><th>T</th><th>一次性密碼</th><th>操作</th></tr></thead><tbody>
+@foreach (var row in users)
+{
+    <tr><td>@row.UserName</td><td><label><input type="checkbox" @bind="row.IsDisabled" /> 停用</label></td><td><input type="checkbox" @bind="row.IsAdministrator" /></td><td><input type="checkbox" @bind="row.M" /></td><td><input type="checkbox" @bind="row.T" /></td><td><input type="password" @bind="row.ResetPassword" autocomplete="new-password" /></td><td><button @onclick="() => SaveAsync(row)">儲存</button> <button @onclick="() => ResetAsync(row)" disabled="@(string.IsNullOrWhiteSpace(row.ResetPassword))">重設密碼</button></td></tr>
+}
+</tbody></table></div>
+
+@code {
+    private readonly NewUserModel newUser = new();
+    private readonly List<UserRow> users = [];
+    private string? message;
+    private string messageClass = "success";
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+    private async Task ReloadAsync()
+    {
+        users.Clear();
+        users.AddRange((await Service.ListAsync(await CurrentActor.GetAsync())).Select(x => new UserRow(x)));
+    }
+    private async Task CreateAsync()
+    {
+        await RunAsync(async () =>
+        {
+            await Service.CreateAsync(new(newUser.UserName, newUser.Password, newUser.Administrator, Workspaces(newUser.M, newUser.T)), await CurrentActor.GetAsync());
+            newUser.UserName = newUser.Password = ""; newUser.Administrator = newUser.M = newUser.T = false;
+            await ReloadAsync();
+        }, "帳號已建立。");
+    }
+    private Task SaveAsync(UserRow row) => RunAsync(async () =>
+    {
+        await Service.UpdateAsync(row.Id, row.IsDisabled, row.IsAdministrator, Workspaces(row.M, row.T), row.RevisionToken, await CurrentActor.GetAsync());
+        await ReloadAsync();
+    }, "權限已更新。");
+    private Task ResetAsync(UserRow row) => RunAsync(async () =>
+    {
+        await Service.ResetPasswordAsync(row.Id, row.ResetPassword, row.RevisionToken, await CurrentActor.GetAsync());
+        row.ResetPassword = ""; await ReloadAsync();
+    }, "一次性密碼已重設。");
+    private async Task RunAsync(Func<Task> action, string success)
+    {
+        try { await action(); messageClass = "success"; message = success; }
+        catch (Exception exception) { messageClass = "error"; message = exception.Message; }
+    }
+    private static IReadOnlySet<WorkspaceCode> Workspaces(bool m, bool t)
+    {
+        var result = new HashSet<WorkspaceCode>(); if (m) result.Add(WorkspaceCode.M); if (t) result.Add(WorkspaceCode.T); return result;
+    }
+    private sealed class NewUserModel
+    {
+        [Required, StringLength(100)] public string UserName { get; set; } = "";
+        [Required, MinLength(8), DataType(DataType.Password)] public string Password { get; set; } = "";
+        public bool Administrator { get; set; } public bool M { get; set; } public bool T { get; set; }
+    }
+    private sealed class UserRow(UserAccountDto dto)
+    {
+        public Guid Id { get; } = dto.Id; public string UserName { get; } = dto.UserName;
+        public Guid RevisionToken { get; } = dto.RevisionToken;
+        public bool IsDisabled { get; set; } = dto.IsDisabled; public bool IsAdministrator { get; set; } = dto.IsAdministrator;
+        public bool M { get; set; } = dto.EditableWorkspaces.Contains(WorkspaceCode.M); public bool T { get; set; } = dto.EditableWorkspaces.Contains(WorkspaceCode.T);
+        public string ResetPassword { get; set; } = "";
+    }
+}

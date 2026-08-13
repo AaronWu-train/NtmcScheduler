@@ -1,4 +1,34 @@
-# Solver 與 CLI 驗收
+# 系統驗收
+
+## Web 身分與授權
+
+- 不存在註冊、忘記密碼與電子郵件重設路徑；管理者 CLI 建立首位管理者，管理頁建立其餘帳號與一次性密碼。
+- 首次登入強制修改至少 8 字元、至少 2 種不同字元且包含數字的密碼；五次失敗鎖定 15 分鐘，另以帳號與 IP 做登入限流，錯誤訊息不揭露帳號是否存在。正式上線前須重新檢視並提高密碼政策。
+- Viewer、M Editor、T Editor、同時 M/T Editor 與 Administrator 的頁面及 application service 寫入授權一致；猜測資源 GUID 不可越權修改。
+- 停用、重設密碼及權限異動更新 security stamp；不提供持久登入，Cookie 為 Secure、HttpOnly、SameSite=Strict，閒置 30 分鐘到期。
+
+## 共同設定、人員與 Demand
+
+- 共同設定各區間恰為 56 日且連續；假日合法，儲存建立不可變版本，current pointer 使用 revision token，舊 Demand／班表仍可讀取原快照。
+- M/T 員工主檔可新增、修改與封存；M 僅接受 LB01–LB12，T 能力為 1–5，既有月份不因主檔異動而改變。
+- 每單位月份僅一份 Demand 草稿；重開仍保留，所有寫入以 revision token 拒絕陳舊更新。
+- 建立 Demand 自動使用上月 `★`；不存在時求解前必須成功上傳 previous schedule。求解建立 immutable JSON input snapshot、hash、seed、程式版本與人員月快照。
+- 背景佇列一次只執行一個 solver；重啟將 Queued／Running 安全回復為 Queued，終態正確區分 Optimal、TimeLimit、Infeasible、InvalidInput、Failed。
+
+## 班表版本與編輯器
+
+- 同單位同月可有多份班表，以 `AdoptedSchedule` 主鍵保證最多一份 `★`；紅色錯誤阻擋標星、黃色警示不阻擋。
+- `★` 不可直接封存；改選後可封存。封存不刪除 assignments、快照與 audit。
+- R、R1、R休、R* 契約、M/T 正常班與 X 可編輯；X 使用台北時間、歸開始日、可跨午夜且不超過 24 小時。
+- 編輯後立即重算整月硬規則、Coverage、文件既有軟警示與每人統計；錯誤／警示都有圖示、文字、員工及日期定位，不只使用顏色。
+- M 底部依站、日期顯示內部早／小／夜及外派；T 顯示正常出勤、專業涵蓋與能力 4–5 人數。
+
+## 稽核、Log 與部署
+
+- 登入、權限、設定、人員、Demand、匯入、求解、逐格修改、標星、封存與下載均寫入 AuditLog；成功資料異動與 AuditLog 同 transaction。
+- AuditLog 有 UTC、actor snapshot、before/after、IP、User-Agent、CorrelationId，且不含密碼、Cookie、token、連線字串或 CSV 原文；應用程式沒有更新／刪除 AuditLog 的路徑。
+- 所有路由頁面右上有鍵盤可操作 `?`；上傳前顯示 UTF-8/BOM、5 MB、固定表頭、日期時間、合法值及僅接受 CSV。
+- SQLite 與 SQL Server 都能產生 migration SQL；Linux 測試環境需另完成 migration、備份／還原、持久化且加密的 Data Protection key ring、反向代理可信清單與一年 Log 保留驗收。
 
 ## 建置
 

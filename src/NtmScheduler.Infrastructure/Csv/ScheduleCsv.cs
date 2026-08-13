@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 using Microsoft.VisualBasic.FileIO;
 using NtmScheduler.Solvers;
 
-namespace NtmScheduler.Cli;
+namespace NtmScheduler.Infrastructure.Csv;
 
 public sealed class ScheduleCsvException(string field, string message) : Exception(message)
 {
@@ -22,6 +22,9 @@ public static partial class ScheduleCsv
         "當月R", "當月R1", "當月指定R休", "月底區間累計R", "月底區間累計R1", "本月班數"
     ];
     private static readonly string[] Headers = [.. LegacyHeaders, "萬年班表"];
+
+    public static string MonthlyHeader => Join(Headers);
+    public static string MPerpetualHeader => Join(["萬年班表", .. Enumerable.Range(1, 56).Select(day => day.ToString(CultureInfo.InvariantCulture))]);
 
     private static readonly TimeSpan TaipeiOffset = TimeSpan.FromHours(8);
 
@@ -385,7 +388,12 @@ public static partial class ScheduleCsv
     private static string MShiftText(Shift? shift) => shift == Shift.Afternoon ? "小" : ShiftText(shift);
 
     private static string Join(IEnumerable<string> values) => string.Join(',', values.Select(Escape));
-    private static string Escape(string value) => value.IndexOfAny([',', '"', '\r', '\n']) < 0 ? value : $"\"{value.Replace("\"", "\"\"")}\"";
+    private static string Escape(string value)
+    {
+        // Prevent spreadsheet programs from interpreting imported text as a formula.
+        if (value.Length > 0 && value[0] is '=' or '+' or '-' or '@' or '\t' or '\r') value = "'" + value;
+        return value.IndexOfAny([',', '"', '\r', '\n']) < 0 ? value : $"\"{value.Replace("\"", "\"\"")}\"";
+    }
 
     [GeneratedRegex(@"^X\[(\d{2}:\d{2})-(\d{2}:\d{2})\]$", RegexOptions.CultureInvariant)]
     private static partial Regex EventPattern();

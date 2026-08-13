@@ -2,11 +2,23 @@
 
 新北捷運人員排班系統。依人員資料、指定休假（R*）、公務事件（X）與歷史班表，以 OR-Tools CP-SAT 產生最多三份月班表候選。
 
-目前 repository 已完成站務（M）、檢測（T）的 Solver 與 CLI；Blazor、資料庫及目前班表管理仍是後續目標架構。
+目前 repository 已包含站務（M）、檢測（T）的 Solver、共用 CSV adapter、Blazor Interactive Server、EF Core／Identity、背景求解佇列與多版本班表管理。
 
 ## 環境需求
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
+
+## 快速開始：Web
+
+開發環境預設使用 SQLite。先建立資料庫與首位管理者，再啟動網站：
+
+```bash
+dotnet tool restore
+dotnet run --project src/NtmScheduler.Web -- --init-admin admin
+dotnet run --project src/NtmScheduler.Web
+```
+
+第一個命令只還原 repository-local Microsoft `dotnet-ef`；`--init-admin` 會在終端機安全讀取一次性密碼，首次登入必須修改。正式環境設定 `DatabaseProvider=SqlServer`、`ConnectionStrings__Default`、持久化 `DataProtection__KeyPath` 與 `DataProtection__CertificatePath`，secret 不寫入設定檔。
 
 ## 快速開始：CLI
 
@@ -143,7 +155,11 @@ dotnet test NtmScheduler.slnx
 | 想找什麼 | 路徑 |
 |---|---|
 | CLI 進入點 | `src/NtmScheduler.Cli/Program.cs` |
-| CSV 邊界 | `src/NtmScheduler.Cli/ScheduleCsv.cs` |
+| Web 入口與資安 middleware | `src/NtmScheduler.Web/Program.cs` |
+| Blazor 頁面 | `src/NtmScheduler.Web/Components/Pages/` |
+| EF 實體與 migration | `src/NtmScheduler.Infrastructure/Data/` |
+| Application services | `src/NtmScheduler.Infrastructure/Services/` |
+| CSV 邊界 | `src/NtmScheduler.Infrastructure/Csv/ScheduleCsv.cs` |
 | M 求解流程 | `src/NtmScheduler.Solvers/MSolver.cs` |
 | M 硬／軟規則 | `src/NtmScheduler.Solvers/MSolver.HardRules.cs`、`MSolver.SoftRules.cs` |
 | T 求解流程 | `src/NtmScheduler.Solvers/TSolver.cs` |
@@ -154,9 +170,9 @@ dotnet test NtmScheduler.slnx
 
 ## 技術棧
 
-- 目前實作：.NET 10 Solver class library＋CLI
+- .NET 10 Blazor Interactive Server＋Contracts／Infrastructure／Solver／CLI
 - Google OR-Tools CP-SAT（M／T 分開建模，依固定 Priority 群組做字典序最佳化）
-- 目標產品：ASP.NET Core Blazor（Interactive Server）＋EF Core；詳見 `docs/07-architecture.md`
+- ASP.NET Core Identity、EF Core（SQLite 開發、SQL Server 正式）；詳見 `docs/07-architecture.md`
 
 ## 文件
 

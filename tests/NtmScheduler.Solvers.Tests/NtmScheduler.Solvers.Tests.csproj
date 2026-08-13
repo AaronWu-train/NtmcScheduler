@@ -13,6 +13,8 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/NtmScheduler.Cli/NtmScheduler.Cli.csproj" />
+    <ProjectReference Include="../../src/NtmScheduler.Infrastructure/NtmScheduler.Infrastructure.csproj" />
     <ProjectReference Include="../../src/NtmScheduler.Solvers/NtmScheduler.Solvers.csproj" />
+    <ProjectReference Include="../../src/NtmScheduler.Web/NtmScheduler.Web.csproj" />
   </ItemGroup>
 </Project>

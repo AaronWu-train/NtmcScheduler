@@ -1,0 +1,13 @@
+<details class="help-container">
+    <summary class="help-button" aria-label="顯示或關閉本頁使用說明" title="使用說明">?</summary>
+    <section class="help-dialog" aria-labelledby="help-title">
+        <header><h2 id="help-title">@Title</h2></header>
+        <div>@ChildContent</div>
+        <p class="help-close-hint">再次按下 ? 可關閉說明。</p>
+    </section>
+</details>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "使用說明";
+    [Parameter, EditorRequired] public RenderFragment ChildContent { get; set; } = default!;
+}

@@ -1,0 +1,96 @@
+@page "/{Workspace}/employees"
+@rendermode InteractiveServer
+@attribute [Authorize]
+@inject IEmployeeService Service
+@inject CurrentActorService CurrentActor
+
+<PageTitle>@workspaceCode 員工列表</PageTitle>
+<div class="page-title"><div><h1>@workspaceCode 員工列表</h1><p>維護建立新月份 Demand 時使用的人員主檔。</p></div><PageHelp Title="員工列表說明"><p>員工主檔只會複製到之後新建的月份；修改不會回寫既有 Demand 或班表。封存不會刪除歷史。M 的所屬為 LB01–LB12；T 的所屬為專業分組，能力必須為 1–5。</p></PageHelp></div>
+@if (message is not null) { <p class="alert @messageClass" role="status">@message</p> }
+@if (canEdit)
+{
+    <section class="card"><h2>匯入員工 CSV</h2><p class="format-help">UTF-8（可含 BOM）、最大 5 MB。M 固定表頭：ID、姓名、所屬車站、到職日期；T 固定表頭：ID、姓名、專業分組、到職日期、能力。日期為 yyyy-MM-dd；匯入會新增或更新，未出現的既有員工不會封存，已封存 ID 不會自動恢復。</p><a class="button-link" href="/download/templates/@Workspace.ToLowerInvariant()/employees.csv">下載範本</a> <InputFile OnChange="PreviewImportAsync" accept=".csv,text/csv" /></section>
+    @if (importPreview is not null)
+    {
+        <section class="card"><h2>匯入預覽</h2>@foreach (var error in importPreview.Errors) { <p class="error-text">@error</p> }@foreach (var difference in importPreview.Differences) { <p>@difference</p> }@if (importPreview.IsValid) { <button class="primary" @onclick="ConfirmImportAsync">確認匯入</button> } <button @onclick="CancelImport">取消</button></section>
+    }
+    <EditForm Model="form" OnValidSubmit="SaveAsync" class="card form-grid">
+        <DataAnnotationsValidator /><ValidationSummary />
+        <label>員工 ID<InputText @bind-Value="form.EmployeeCode" /></label>
+        <label>姓名<InputText @bind-Value="form.Name" /></label>
+        <label>所屬<InputText @bind-Value="form.Affiliation" placeholder="@(workspaceCode == WorkspaceCode.M ? "LB01" : "專業分組")" /></label>
+        <label>到職日期<InputDate @bind-Value="form.EmploymentStartDate" /></label>
+        @if (workspaceCode == WorkspaceCode.T) { <label>能力<InputNumber @bind-Value="form.Ability" min="1" max="5" /></label> }
+        <button type="submit" class="primary">@(form.Id is null ? "新增員工" : "儲存修改")</button>
+        @if (form.Id is not null) { <button type="button" @onclick="ClearForm">取消編輯</button> }
+    </EditForm>
+}
+<div class="table-scroll"><table><thead><tr><th>ID</th><th>姓名</th><th>所屬</th><th>到職日期</th>@if (workspaceCode == WorkspaceCode.T) { <th>能力</th> }<th>操作</th></tr></thead><tbody>
+@foreach (var employee in employees)
+{
+    <tr><td>@employee.EmployeeCode</td><td>@employee.Name</td><td>@employee.Affiliation</td><td>@employee.EmploymentStartDate?.ToString("yyyy-MM-dd")</td>@if (workspaceCode == WorkspaceCode.T) { <td>@employee.Ability</td> }<td>@if (canEdit) { <button @onclick="() => Edit(employee)">編輯</button> <button class="danger" @onclick="() => ArchiveAsync(employee)">封存</button> }</td></tr>
+}
+</tbody></table></div>
+
+@code {
+    [Parameter] public string Workspace { get; set; } = "";
+    private WorkspaceCode workspaceCode;
+    private bool canEdit;
+    private IReadOnlyList<EmployeeDto> employees = [];
+    private EmployeeForm form = new();
+    private string? message;
+    private string messageClass = "success";
+    private byte[]? pendingImport;
+    private EmployeeImportPreviewDto? importPreview;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!Enum.TryParse<WorkspaceCode>(Workspace, true, out workspaceCode)) throw new DomainValidationException("工作區只支援 M 或 T。");
+        var actor = await CurrentActor.GetAsync();
+        canEdit = actor.CanEdit(workspaceCode) && !actor.MustChangePassword;
+        await ReloadAsync();
+    }
+    private async Task ReloadAsync() => employees = await Service.ListAsync(workspaceCode, await CurrentActor.GetAsync());
+    private void Edit(EmployeeDto employee) => form = new()
+    {
+        Id = employee.Id, RevisionToken = employee.RevisionToken, EmployeeCode = employee.EmployeeCode, Name = employee.Name,
+        Affiliation = employee.Affiliation, EmploymentStartDate = employee.EmploymentStartDate, Ability = employee.Ability
+    };
+    private void ClearForm() => form = new();
+    private async Task SaveAsync() => await RunAsync(async () =>
+    {
+        await Service.SaveAsync(new(form.Id, workspaceCode, form.EmployeeCode, form.Name, form.Affiliation, form.EmploymentStartDate,
+            workspaceCode == WorkspaceCode.T ? form.Ability : null, form.RevisionToken), await CurrentActor.GetAsync());
+        ClearForm(); await ReloadAsync();
+    }, "員工資料已儲存。");
+    private Task ArchiveAsync(EmployeeDto employee) => RunAsync(async () =>
+    {
+        await Service.ArchiveAsync(employee.Id, employee.RevisionToken, await CurrentActor.GetAsync()); await ReloadAsync();
+    }, "員工已封存，歷史資料仍保留。");
+    private Task PreviewImportAsync(InputFileChangeEventArgs args) => RunAsync(async () =>
+    {
+        await using var stream = args.File.OpenReadStream(5 * 1024 * 1024);
+        using var memory = new MemoryStream(); await stream.CopyToAsync(memory); pendingImport = memory.ToArray();
+        importPreview = await Service.PreviewImportAsync(workspaceCode, new MemoryStream(pendingImport), await CurrentActor.GetAsync());
+    }, "已完成員工 CSV 預覽。");
+    private Task ConfirmImportAsync() => RunAsync(async () =>
+    {
+        await Service.ImportAsync(workspaceCode, new MemoryStream(pendingImport!), importPreview!.RevisionToken, await CurrentActor.GetAsync());
+        CancelImport(); await ReloadAsync();
+    }, "員工 CSV 已匯入。");
+    private void CancelImport() { pendingImport = null; importPreview = null; }
+    private async Task RunAsync(Func<Task> action, string success)
+    {
+        try { await action(); messageClass = "success"; message = success; }
+        catch (Exception exception) { messageClass = "error"; message = exception.Message; }
+    }
+    private sealed class EmployeeForm
+    {
+        public Guid? Id { get; set; } public Guid? RevisionToken { get; set; }
+        [Required, StringLength(32)] public string EmployeeCode { get; set; } = "";
+        [Required, StringLength(100)] public string Name { get; set; } = "";
+        [Required, StringLength(64)] public string Affiliation { get; set; } = "";
+        public DateOnly? EmploymentStartDate { get; set; }
+        [Range(1, 5)] public int? Ability { get; set; }
+    }
+}

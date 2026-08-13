@@ -1,5 +1,6 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using NtmScheduler.Cli;
+using NtmScheduler.Infrastructure.Csv;
 
 namespace NtmScheduler.Solvers.Tests;
 

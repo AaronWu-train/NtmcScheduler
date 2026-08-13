@@ -6,6 +6,6 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../NtmScheduler.Solvers/NtmScheduler.Solvers.csproj" />
+    <ProjectReference Include="../NtmScheduler.Infrastructure/NtmScheduler.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

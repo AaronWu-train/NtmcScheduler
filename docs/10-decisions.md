@@ -1,5 +1,38 @@
 # 決策紀錄
 
+## 2026-08-13：Core 更名為 Contracts，Infrastructure 保留原名
+
+- `NtmScheduler.Core` 更名為 `NtmScheduler.Contracts`，明確表示其只承載 provider-neutral DTO、command、enum、例外與 application service 介面，不是 ASP.NET Core API 或可獨立執行的後端。
+- `NtmScheduler.Infrastructure` 保留原名，承載 application service 實作、EF Core／Identity、CSV、AuditLog 與背景求解工作。
+- 本次只調整專案、namespace 與文件名稱，不改變資料庫 schema、migration ID、服務契約或排班規則。
+
+## 2026-08-13：登入、工作區授權與資安邊界
+
+- 第一版改用 ASP.NET Core Identity 本機帳號，取代 D-04 的無登入設計；不開放註冊、忘記密碼或郵件重設。
+- 所有登入者可檢視 M/T；Administrator 管理帳號，M/T 編輯權分開授予。任一 Editor 可修改共同設定。
+- 密碼至少 14 字元、五次失敗鎖定 15 分鐘、Cookie 30 分鐘閒置到期且不提供記住登入。本階段不做 MFA。
+- S 仍不在第一階段範圍；不建立沒有業務規格的空殼頁面或 solver。
+
+## 2026-08-13：密碼改用一般強度規則
+
+- 開發階段密碼至少 8 字元、至少 2 種不同字元且包含數字；不強制大小寫英文字母或非英數符號。本決策取代同日「至少 14 字元」的密碼規則。
+- 此為開發階段的暫行設定，正式上線前必須依部署環境的資安要求重新檢視並提高密碼政策。
+- 首次登入強制修改密碼、五次失敗鎖定 15 分鐘及登入限流等既有安全措施不變。
+
+## 2026-08-13：Demand、班表多版本與採用指標
+
+- 每單位每月份一份自動保存的 Demand；建立時從員工主檔複製快照，後續主檔修改不回寫舊月份。
+- 每次求解候選保存成獨立且可編輯的 `ScheduleVersion`，取代 D-20 的單一目前班表。
+- 同單位同月份最多一份 `AdoptedSchedule`（畫面顯示 `★`）。紅色 P0／Coverage 違規不得採用；黃色軟規則警示不阻擋。
+- 班表刪除為軟刪除；採用版須先改選其他版本。所有版本內容與 AuditLog 永久保留。
+- 上月 `★` 自動成為 previous schedule；若不存在，求解前必須上傳完整 previous schedule。
+
+## 2026-08-13：共同設定版本與 Log
+
+- 八週區間、國定假日與非常態班型每次儲存建立不可變 `ConfigurationRevision`；既有 Demand、Run 與班表凍結在原設定版本。
+- AuditLog 以 append-only 資料表永久保存登入、權限、匯入、求解、班表修改、採用、封存與下載；禁止記錄密碼、Cookie、token 或連線字串。
+- 系統結構化 Log 交由正式環境 journald／container logging driver 按日輪替並保留一年。
+
 ## 2026-08-07：月班表成為 solver 資料邊界
 
 - CSV／Excel 的 domain 名稱是「月班表」，C# 使用 `MonthlySchedule` 與 `EmployeeMonthlySchedule`。

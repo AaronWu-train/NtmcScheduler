@@ -1,0 +1,102 @@
+@page "/schedules/{VersionId:guid}"
+@rendermode InteractiveServer
+@attribute [Authorize]
+@inject IScheduleService Service
+@inject ICommonConfigurationService ConfigurationService
+@inject CurrentActorService CurrentActor
+
+<PageTitle>班表編輯</PageTitle>
+@if (detail is null) { <p>載入中…</p> }
+else
+{
+    <div class="page-title"><div><h1>@detail.Version.Name @(detail.Version.IsAdopted ? "★" : "")</h1><p>@detail.Version.Workspace／@detail.Version.Month.ToString("yyyy-MM")｜@(detail.Version.IsArchived ? "已封存" : "可編輯")</p></div><PageHelp Title="班表編輯說明"><p>每列是一位員工，每欄是一天。點日格可選休假、正常班或 X；儲存後會立即重算整月規則。紅色是硬規則或 Coverage 違反，黃色是希望避免的軟性組合。警示清單可跳至相關日格。右側統計與底部每日人數會隨修改更新。</p></PageHelp></div>
+    @if (message is not null) { <p class="alert @messageClass" role="status">@message</p> }
+    <div class="toolbar"><a class="button-link" href="/download/schedules/@(VersionId).csv">下載 CSV</a>@if (detail.ExternalAssignments.Count > 0) { <a class="button-link" href="/download/schedules/@(VersionId)-external.csv">下載外派 CSV</a> }@if (canEdit && !detail.Version.IsArchived) { <button class="primary" disabled="@detail.Version.IsAdopted" @onclick="AdoptAsync">標示 ★</button><button class="danger" disabled="@detail.Version.IsAdopted" @onclick="ArchiveAsync">封存</button> }</div>
+    <div class="legend"><span class="cell rest">R 休假</span><span class="cell early">早</span><span class="cell afternoon">午／小</span><span class="cell night">夜</span><span class="cell event">X</span><span class="issue-error">● 紅色硬違規</span><span class="issue-warning">▲ 黃色警示</span></div>
+    <div class="table-scroll schedule-grid"><table><thead><tr><th class="sticky-col">員工</th>@foreach (var day in Days()) { <th>@day.Day<br /><small>@Weekday(day)</small></th> }<th>R</th><th>R1</th><th>R休</th><th>平日班</th><th>假日班</th><th>早</th><th>午/小</th><th>夜</th><th>其他</th></tr></thead><tbody>
+    @foreach (var employee in detail.Employees)
+    {
+        var stats = detail.EmployeeStats.Single(x => x.EmployeeCode == employee.EmployeeCode);
+        <tr><th class="sticky-col">@employee.EmployeeCode<br /><small>@employee.Name</small></th>
+        @foreach (var day in Days())
+        {
+            var cell = detail.Assignments.FirstOrDefault(x => x.EmployeeSnapshotId == employee.Id && x.Date == day);
+            var cellIssues = Issues(employee.EmployeeCode, day);
+            <td id="cell-@employee.EmployeeCode-@day.ToString("yyyyMMdd")">@if (cell is not null) { <button class="cell @CellClass(cell, cellIssues)" disabled="@(!canEdit || detail.Version.IsArchived)" title="@IssueText(cellIssues)" aria-label="@employee.Name @day.ToString("MM-dd") @CellText(cell) @IssueText(cellIssues)" @onclick="() => OpenCell(cell)">@IssueMark(cellIssues)@CellText(cell)</button> }</td>
+        }
+        <td>@stats.Rest</td><td>@stats.SpecialRest</td><td>@stats.LeaveRest</td><td>@stats.WeekdayWork</td><td>@stats.HolidayWork</td><td>@stats.Early</td><td>@stats.Afternoon</td><td>@stats.Night</td><td>@stats.Other</td></tr>
+    }
+    @if (detail.Version.Workspace == WorkspaceCode.M)
+    {
+        @foreach (var station in MStations)
+        {
+            <tr class="coverage-row"><th class="sticky-col">@station 人數</th>@foreach (var day in Days()) { var counts = MCounts(station, day); <td title="早/小/夜；外派另加">@counts.Total<br /><small>@counts.Early/@counts.Afternoon/@counts.Night @if (counts.External > 0) { <text>＋外 @counts.External</text> }</small></td> }<td colspan="9"></td></tr>
+        }
+    }
+    else
+    {
+        @foreach (var shift in new[] { "Early", "Afternoon", "Night" })
+        {
+            <tr class="coverage-row"><th class="sticky-col">@ShiftLabel(shift)品質</th>@foreach (var day in Days()) { var counts = TCounts(shift, day); <td title="正常出勤 / 專業組涵蓋 / 能力 4–5"><strong>@counts.Total</strong><br /><small>@counts.Specialties 組 / @counts.HighAbility 高</small></td> }<td colspan="9"></td></tr>
+        }
+    }
+    </tbody></table></div>
+
+    <section class="card"><h2>規則警示</h2>
+    @if (detail.Issues.Count == 0) { <p class="ok-text">目前沒有規則警示。</p> }
+    else { <ul class="issue-list">@foreach (var issue in detail.Issues) { <li class="@(issue.Severity == ValidationSeverity.Error ? "issue-error" : "issue-warning")"><strong>@(issue.Severity == ValidationSeverity.Error ? "●" : "▲") @issue.RuleName</strong>：@issue.Message @if (issue.EmployeeCode is not null && issue.Date is not null) { <a href="#cell-@issue.EmployeeCode-@issue.Date.Value.ToString("yyyyMMdd")">@issue.EmployeeCode／@issue.Date.Value.ToString("MM-dd")</a> }</li> }</ul> }
+    </section>
+}
+
+@if (editingCell is not null)
+{
+    <div class="modal-backdrop"></div><section class="editor-dialog" role="dialog" aria-modal="true"><h2>@editingCell.EmployeeName／@editingCell.Date.ToString("yyyy-MM-dd")</h2>
+    <label>狀態<select @bind="cellEdit.Value"><option value="Rest">R</option><option value="SpecialRest">R1</option><option value="LeaveRest">R休</option><option value="RequestedRest">R*</option><option value="RequestedSpecialRest">R1*</option><option value="RequestedLeaveRest">R休*</option><option value="WorkEarly">早</option><option value="WorkAfternoon">@(detail!.Version.Workspace == WorkspaceCode.M ? "小" : "午")</option><option value="WorkNight">夜</option><option value="WorkEvent">X</option></select></label>
+    @if (cellEdit.Value.StartsWith("Work", StringComparison.Ordinal) && cellEdit.Value != "WorkEvent" && detail!.Version.Workspace == WorkspaceCode.M) { <label>車站<select @bind="cellEdit.Station">@foreach (var station in MStations) { <option>@station</option> }</select></label> }
+    @if (cellEdit.Value == "WorkEvent") { <label>常用班型<select @onchange="ApplyNonStandard"><option value="">自行輸入</option>@foreach (var shift in configuration?.NonStandardShifts ?? []) { <option value="@shift.Code">@(shift.Name ?? shift.Code)（@(shift.StartTime.ToString("HH:mm"))–@(shift.EndTime.ToString("HH:mm"))）</option> }</select></label><label>開始<input type="datetime-local" @bind="cellEdit.Start" /></label><label>結束<input type="datetime-local" @bind="cellEdit.End" /></label><label>說明<input maxlength="500" @bind="cellEdit.Description" /></label> }
+    <div class="toolbar"><button class="primary" @onclick="SaveCellAsync">儲存</button><button @onclick="CloseEditor">取消</button></div></section>
+}
+
+@code {
+    [Parameter] public Guid VersionId { get; set; }
+    private static readonly string[] MStations = Enumerable.Range(1, 12).Select(x => $"LB{x:D2}").ToArray();
+    private ScheduleDetailDto? detail; private ConfigurationRevisionDto? configuration; private bool canEdit; private string? message; private string messageClass = "success";
+    private ScheduleAssignmentDto? editingCell; private readonly CellEdit cellEdit = new();
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+    private async Task LoadAsync()
+    {
+        var actor = await CurrentActor.GetAsync(); detail = await Service.GetAsync(VersionId, actor); configuration = await ConfigurationService.GetRevisionAsync(detail.Version.ConfigurationRevisionId, actor); canEdit = actor.CanEdit(detail.Version.Workspace) && !actor.MustChangePassword;
+    }
+    private IEnumerable<DateOnly> Days() => Enumerable.Range(0, DateTime.DaysInMonth(detail!.Version.Month.Year, detail.Version.Month.Month)).Select(detail.Version.Month.AddDays);
+    private IReadOnlyList<ValidationIssue> Issues(string employee, DateOnly day) => detail!.Issues.Where(x => x.EmployeeCode == employee && x.Date == day).ToArray();
+    private static string Weekday(DateOnly date) => "日一二三四五六"[(int)date.DayOfWeek].ToString();
+    private static string IssueText(IReadOnlyList<ValidationIssue> issues) => string.Join("；", issues.Select(x => x.Message));
+    private static string IssueMark(IReadOnlyList<ValidationIssue> issues) => issues.Any(x => x.Severity == ValidationSeverity.Error) ? "●" : issues.Count > 0 ? "▲" : "";
+    private static string CellClass(ScheduleAssignmentDto cell, IReadOnlyList<ValidationIssue> issues) => (issues.Any(x => x.Severity == ValidationSeverity.Error) ? "issue-cell-error " : issues.Count > 0 ? "issue-cell-warning " : "") + (cell.Kind switch { "Rest" or "SpecialRest" or "LeaveRest" => "rest", "Work" when cell.Shift == "Early" => "early", "Work" when cell.Shift == "Afternoon" => "afternoon", "Work" when cell.Shift == "Night" => "night", "WorkEvent" => "event", _ => "" });
+    private static string CellText(ScheduleAssignmentDto cell) => cell switch { { Kind: "Rest", RequestedRest: true } => "R*", { Kind: "SpecialRest", RequestedRest: true } => "R1*", { Kind: "LeaveRest", RequestedRest: true } => "R休*", { Kind: "Rest" } => "R", { Kind: "SpecialRest" } => "R1", { Kind: "LeaveRest" } => "R休", { Kind: "WorkEvent" } => "X", { Kind: "Work", Shift: "Early" } => "早", { Kind: "Work", Shift: "Afternoon" } => "午/小", { Kind: "Work", Shift: "Night" } => "夜", _ => "?" };
+
+    private void OpenCell(ScheduleAssignmentDto cell) { editingCell = cell; cellEdit.Value = cell switch { { Kind: "Rest", RequestedRest: true } => "RequestedRest", { Kind: "SpecialRest", RequestedRest: true } => "RequestedSpecialRest", { Kind: "LeaveRest", RequestedRest: true } => "RequestedLeaveRest", { Kind: "Work", Shift: "Early" } => "WorkEarly", { Kind: "Work", Shift: "Afternoon" } => "WorkAfternoon", { Kind: "Work", Shift: "Night" } => "WorkNight", _ => cell.Kind }; cellEdit.Station = cell.Station ?? detail!.Employees.Single(x => x.Id == cell.EmployeeSnapshotId).Affiliation; cellEdit.Start = LocalText(cell.EventStart); cellEdit.End = LocalText(cell.EventEnd); cellEdit.Description = cell.EventDescription ?? ""; }
+    private async Task SaveCellAsync() => await RunAsync(async () =>
+    {
+        var (kind, requested, shift) = cellEdit.Value switch { "RequestedRest" => ("Rest", true, (string?)null), "RequestedSpecialRest" => ("SpecialRest", true, null), "RequestedLeaveRest" => ("LeaveRest", true, null), "LeaveRest" => ("LeaveRest", true, null), "WorkEarly" => ("Work", false, "Early"), "WorkAfternoon" => ("Work", false, "Afternoon"), "WorkNight" => ("Work", false, "Night"), "WorkEvent" => ("WorkEvent", false, null), _ => (cellEdit.Value, false, null) };
+        detail = await Service.UpdateAssignmentAsync(VersionId, editingCell!.Id, kind, requested, detail!.Version.Workspace == WorkspaceCode.M ? cellEdit.Station : null, shift, Offset(cellEdit.Start), Offset(cellEdit.End), cellEdit.Description, detail.Version.RevisionToken, await CurrentActor.GetAsync()); CloseEditor();
+    }, "日格已自動儲存並完成整月驗證。");
+    private Task AdoptAsync() => RunAsync(async () => { await Service.AdoptAsync(VersionId, detail!.Version.RevisionToken, await CurrentActor.GetAsync()); await LoadAsync(); }, "已標示為 ★ 採用版本。");
+    private Task ArchiveAsync() => RunAsync(async () => { await Service.ArchiveAsync(VersionId, detail!.Version.RevisionToken, await CurrentActor.GetAsync()); await LoadAsync(); }, "班表已封存。");
+    private void ApplyNonStandard(ChangeEventArgs args) { var shift = configuration?.NonStandardShifts.FirstOrDefault(x => x.Code == args.Value?.ToString()); if (shift is null || editingCell is null) return; var endDate = shift.EndTime <= shift.StartTime ? editingCell.Date.AddDays(1) : editingCell.Date; cellEdit.Start = editingCell.Date.ToDateTime(shift.StartTime); cellEdit.End = endDate.ToDateTime(shift.EndTime); }
+    private static DateTimeOffset? Offset(DateTime? value) => value is null ? null : new DateTimeOffset(DateTime.SpecifyKind(value.Value, DateTimeKind.Unspecified), TimeSpan.FromHours(8));
+    private static DateTime? LocalText(DateTimeOffset? value) => value?.ToOffset(TimeSpan.FromHours(8)).DateTime;
+    private void CloseEditor() => editingCell = null;
+    private async Task RunAsync(Func<Task> action, string success) { try { await action(); messageClass = "success"; message = success; } catch (Exception exception) { messageClass = "error"; message = exception.Message; } }
+
+    private (int Total, int Early, int Afternoon, int Night, int External) MCounts(string station, DateOnly day)
+    {
+        var cells = detail!.Assignments.Where(x => x.Date == day && x.Kind == "Work" && x.Station == station).ToArray(); var external = detail.ExternalAssignments.Where(x => x.Date == day && x.Station == station).Sum(x => x.Count); return (cells.Length + external, cells.Count(x => x.Shift == "Early"), cells.Count(x => x.Shift == "Afternoon"), cells.Count(x => x.Shift == "Night"), external);
+    }
+    private (int Total, int Specialties, int HighAbility) TCounts(string shift, DateOnly day)
+    {
+        var workingIds = detail!.Assignments.Where(x => x.Date == day && x.Kind == "Work" && x.Shift == shift).Select(x => x.EmployeeSnapshotId).ToHashSet(); var employees = detail.Employees.Where(x => workingIds.Contains(x.Id)).ToArray(); return (employees.Length, employees.Select(x => x.Affiliation).Distinct().Count(), employees.Count(x => x.Ability >= 4));
+    }
+    private static string ShiftLabel(string shift) => shift switch { "Early" => "早班", "Afternoon" => "午班", "Night" => "夜班", _ => shift };
+    private sealed class CellEdit { public string Value { get; set; } = "Rest"; public string Station { get; set; } = "LB01"; public DateTime? Start { get; set; } public DateTime? End { get; set; } public string Description { get; set; } = ""; }
+}
