@@ -596,17 +596,15 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 \]
 並令 \(\mathcal E^{full}=\bigcup_{g\in\mathcal G}\mathcal E^{full}_g\)。
 對任一群組計數 $z_e$，令 $n_g=|\mathcal E^{full}_g|$、
-$Z_g=\sum_{e\in\mathcal E^{full}_g}z_e$，並定義十分之一為單位的正規化絕對偏差
+$Z_g=\sum_{e\in\mathcal E^{full}_g}z_e$、$\bar z_g=Z_g/n_g$，並定義
 \[
   F_g(z)
   =
-  \left\lfloor
-    \frac{10}{n_g}
-    \sum_{e\in\mathcal E^{full}_g}|n_gz_e-Z_g|
-  \right\rfloor.
+  \sum_{e\in\mathcal E^{full}_g}
+  \max\left(0,\left\lceil |z_e-\bar z_g|-\frac{3}{2}\right\rceil\right).
 \]
-除以 $n_g$ 可消除群組人數造成的直接尺度差異；乘以 10 讓 CP-SAT 以整數保留
-0.1 的解析度。人數少於 2 的群組其 $F_g(z)=0$。
+平均值不先四捨五入。個人計數位於平均值正負 $1.5$ 的閉區間時不罰；超出後，
+每遠離最近的免罰整數計數一天加 1。人數少於 2 的群組其 $F_g(z)=0$。
 
 \paragraph{假日休假公平（\texttt{CS06}）}
 令
@@ -1125,17 +1123,18 @@ T 的實際工作區段同樣由連續正常班或 \(X\) 組成，\(R\)、\(R1\)
   \sum_{d\in\mathcal{D}^{\mathrm{tar}}\cap\mathcal{D}^{hol}}
   \rho^{T}_{ed}.
 \]
-則
+對每個月班別 $s$，令 $n_s=|\mathcal E^{\mathrm{tar}}_s|$、
+$A_s=\sum_{e\in\mathcal E^{\mathrm{tar}}_s}R^{T,hol}_e/n_s$。則
 \[
   \Phi^{T,holiday}
   =
   \sum_{s\in\mathcal{S}^{\mathrm{tar}}}
-  \left(
-    \max_{e\in\mathcal{E}^{\mathrm{tar}}_s}R^{T,hol}_{e}
-    -
-    \min_{e\in\mathcal{E}^{\mathrm{tar}}_s}R^{T,hol}_{e}
+  \sum_{e\in\mathcal E^{\mathrm{tar}}_s}
+  \max\left(0,
+    \left\lceil |R^{T,hol}_e-A_s|-\frac{3}{2}\right\rceil
   \right).
 \]
+平均值不先四捨五入；個人計數位於平均值正負 $1.5$ 天內不罰，超出後按天線性增加。
 
 \subsubsection{字典序目標}
 

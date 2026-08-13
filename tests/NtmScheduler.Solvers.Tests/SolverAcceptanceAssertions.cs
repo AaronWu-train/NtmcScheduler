@@ -74,7 +74,7 @@ internal static class SolverAcceptanceAssertions
         Assert.IsGreaterThan(0, afternoonPatterns);
 
         Expect(candidate.Objectives, "ShiftChangeWithoutRest", ShiftChangesWithoutRest(input, candidate.Schedule));
-        Expect(candidate.Objectives, "HolidayRestFairness", MRestFairness(input, candidate.Schedule, true));
+        Expect(candidate.Objectives, "HolidayRestFairness", MHolidayRestFairness(input, candidate.Schedule));
         Expect(candidate.Objectives, "EarlyAfternoonImbalance", MEarlyAfternoonImbalance(input, candidate.Schedule));
         Expect(candidate.Objectives, "NightShiftTarget", MNightShiftTarget(input, candidate.Schedule));
     }
@@ -105,7 +105,7 @@ internal static class SolverAcceptanceAssertions
         Expect(candidate.Objectives, "NightToEarlyRest", TNightToEarly(input, candidate.Schedule));
         Expect(candidate.Objectives, "MonthBoundaryRestBalance", TBoundaryRestBalance(input, candidate.Schedule));
         Expect(candidate.Objectives, "WeekdayRestFairness", TRestFairness(input, candidate.Schedule, false));
-        Expect(candidate.Objectives, "HolidayRestFairness", TRestFairness(input, candidate.Schedule, true));
+        Expect(candidate.Objectives, "HolidayRestFairness", THolidayRestFairness(input, candidate.Schedule));
     }
 
     private static void AssertCommonHardRules(ScheduleInput input, MonthlySchedule schedule, bool t)
@@ -321,10 +321,10 @@ internal static class SolverAcceptanceAssertions
         return total;
     }
 
-    private static long MRestFairness(ScheduleInput input, MonthlySchedule schedule, bool holiday) => MGroupDeviationTenths(
+    private static long MHolidayRestFairness(ScheduleInput input, MonthlySchedule schedule) => HolidayRestPenalty(
         input.DemandMonth.Employees.Where(employee => IsActive(employee, input.DemandMonth.MonthStart)).GroupBy(employee => StationGroup(employee.Affiliation)),
         schedule,
-        employee => employee.Assignments.Count(pair => IsHoliday(input, pair.Key) == holiday && IsRest(pair.Value)));
+        employee => employee.Assignments.Count(pair => IsHoliday(input, pair.Key) && IsRest(pair.Value)));
 
     private static long MEarlyAfternoonImbalance(ScheduleInput input, MonthlySchedule schedule) => EligibleMEmployees(input, schedule).Sum(employee =>
         Math.Max(0,
@@ -349,7 +349,7 @@ internal static class SolverAcceptanceAssertions
             .Select(employee => candidates[employee.EmployeeId]);
     }
 
-    private static long MGroupDeviationTenths<TKey>(IEnumerable<IGrouping<TKey, EmployeeMonthlySchedule>> groups, MonthlySchedule schedule, Func<EmployeeMonthlySchedule, int> count)
+    private static long HolidayRestPenalty<TKey>(IEnumerable<IGrouping<TKey, EmployeeMonthlySchedule>> groups, MonthlySchedule schedule, Func<EmployeeMonthlySchedule, int> count)
     {
         var candidates = schedule.Employees.ToDictionary(employee => employee.EmployeeId);
         return groups.Sum(group =>
@@ -357,7 +357,11 @@ internal static class SolverAcceptanceAssertions
             var counts = group.Select(employee => (long)count(candidates[employee.EmployeeId])).ToArray();
             if (counts.Length < 2) return 0;
             var total = counts.Sum();
-            return 10 * counts.Sum(value => Math.Abs(counts.Length * value - total)) / counts.Length;
+            return counts.Sum(value =>
+            {
+                var excess = Math.Max(0, 2 * Math.Abs(counts.Length * value - total) - 3 * counts.Length);
+                return (excess + 2 * counts.Length - 1) / (2 * counts.Length);
+            });
         });
     }
 
@@ -432,6 +436,11 @@ internal static class SolverAcceptanceAssertions
         input.DemandMonth.Employees.Where(employee => IsActive(employee, input.DemandMonth.MonthStart)).GroupBy(employee => employee.MonthlyShift),
         schedule,
         employee => employee.Assignments.Count(pair => IsHoliday(input, pair.Key) == holiday && IsRest(pair.Value)));
+
+    private static long THolidayRestFairness(ScheduleInput input, MonthlySchedule schedule) => HolidayRestPenalty(
+        input.DemandMonth.Employees.Where(employee => IsActive(employee, input.DemandMonth.MonthStart)).GroupBy(employee => employee.MonthlyShift),
+        schedule,
+        employee => employee.Assignments.Count(pair => IsHoliday(input, pair.Key) && IsRest(pair.Value)));
 
     private static long GroupRange<TKey>(IEnumerable<IGrouping<TKey, EmployeeMonthlySchedule>> groups, MonthlySchedule schedule, Func<EmployeeMonthlySchedule, int> count)
     {
