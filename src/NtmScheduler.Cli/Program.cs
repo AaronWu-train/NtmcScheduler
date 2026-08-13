@@ -20,7 +20,6 @@ public static class Program
 
         try
         {
-            var requestedSearch = ReadSearchOptions(args);
             var month = ReadMonth();
             var previousPath = Default(Ask("上月班表 CSV [previous.csv]："), "previous.csv");
             var demandPath = Default(Ask("本月需求 CSV [demand.csv]："), "demand.csv");
@@ -37,19 +36,19 @@ public static class Program
 
             if (isT)
             {
-                var search = requestedSearch ?? new SearchOptions(4, 2, 300);
-                Console.WriteLine($"T 多 seed 求解：seed 0–{search.Seeds - 1} 並行，各 seed 總時限 {search.Seconds} 秒、{search.Workers} workers（最多約 {(long)search.Seeds * search.Workers} workers）。");
+                var search = ReadTSearchOptions(args);
+                var solverOptions = new SolverOptions { TimeLimit = TimeSpan.FromSeconds(search.Seconds), WorkerCount = search.Workers };
+                Console.WriteLine($"T 求解：總時限 {search.Seconds} 秒、{search.Workers} workers。");
                 var startedAt = Stopwatch.GetTimestamp();
-                var (result, tSelectedSeed) = SolveTPortfolio(input, search, cancellation.Token);
-                Console.WriteLine($"採用 seed：{tSelectedSeed}");
+                var result = TSolver.Solve(input, solverOptions, cancellation.Token);
                 return Finish(result, Stopwatch.GetElapsedTime(startedAt));
             }
-            var mSearch = requestedSearch ?? new SearchOptions(4, 2, 300);
+            var mSearch = ReadMSearchOptions(args);
             var perpetualSchedulePath = Ask("M 八週萬年班表 CSV（留空不使用 hint）：");
             var perpetualSchedule = string.IsNullOrWhiteSpace(perpetualSchedulePath)
                 ? null
                 : ScheduleCsv.ReadMPerpetualSchedule(perpetualSchedulePath);
-            Console.WriteLine($"M 多 seed 求解：seed 0–{mSearch.Seeds - 1} 並行，各 seed 總時限 {mSearch.Seconds} 秒、{mSearch.Workers} workers（最多約 {(long)mSearch.Seeds * mSearch.Workers} workers）。");
+            Console.WriteLine($"M 多 seed 求解：seed 0–{mSearch.Seeds - 1} 並行，各 {mSearch.Seconds} 秒、{mSearch.Workers} workers（最多約 {(long)mSearch.Seeds * mSearch.Workers} workers）。");
             var mStartedAt = Stopwatch.GetTimestamp();
             var (mResult, selectedSeed) = SolveMPortfolio(input, perpetualSchedule, mSearch, cancellation.Token);
             Console.WriteLine($"採用 seed：{selectedSeed}");
@@ -79,7 +78,7 @@ public static class Program
     private static (MSolveResult Result, int Seed) SolveMPortfolio(
         ScheduleInput input,
         MPerpetualSchedule? perpetualSchedule,
-        SearchOptions search,
+        MSearchOptions search,
         CancellationToken cancellationToken)
     {
         var runs = Enumerable.Range(0, search.Seeds).Select(seed => Task.Run(() =>
@@ -97,27 +96,10 @@ public static class Program
         return best;
     }
 
-    private static (TSolveResult Result, int Seed) SolveTPortfolio(
-        ScheduleInput input,
-        SearchOptions search,
-        CancellationToken cancellationToken)
+    private static MSearchOptions ReadMSearchOptions(string[] args)
     {
-        var runs = Enumerable.Range(0, search.Seeds).Select(seed => Task.Run(() =>
-        {
-            var options = new SolverOptions { TimeLimit = TimeSpan.FromSeconds(search.Seconds), RandomSeed = seed, WorkerCount = search.Workers };
-            return (Result: TSolver.Solve(input, options, cancellationToken), Seed: seed);
-        }, cancellationToken)).ToArray();
-        var results = Task.WhenAll(runs).GetAwaiter().GetResult();
-        var best = results[0];
-        for (var index = 1; index < results.Length; index++)
-            if (CompareTResults(results[index].Result, best.Result) < 0) best = results[index];
-        return best;
-    }
-
-    private static SearchOptions? ReadSearchOptions(string[] args)
-    {
-        if (args.Length == 0) return null;
-        const string usage = "用法：--search workers=4,seeds=2,seconds=180";
+        if (args.Length == 0) return new(4, 2, 300);
+        const string usage = "用法：--search workers=4,seeds=2,seconds=300";
         if (args.Length != 2 || args[0] != "--search") throw new FormatException(usage);
         var values = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var field in args[1].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
@@ -131,6 +113,25 @@ public static class Program
         if (values.Count != 3 || !values.ContainsKey("workers") || !values.ContainsKey("seeds") || !values.ContainsKey("seconds"))
             throw new FormatException(usage);
         return new(values["workers"], values["seeds"], values["seconds"]);
+    }
+
+    private static TSearchOptions ReadTSearchOptions(string[] args)
+    {
+        if (args.Length == 0) return new(8, 300);
+        const string usage = "用法：--search workers=8,seconds=300";
+        if (args.Length != 2 || args[0] != "--search") throw new FormatException(usage);
+        var values = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var field in args[1].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var pair = field.Split('=', 2, StringSplitOptions.TrimEntries);
+            if (pair.Length != 2 || pair[0] is not ("workers" or "seconds") ||
+                !int.TryParse(pair[1], NumberStyles.None, CultureInfo.InvariantCulture, out var value) || value <= 0 ||
+                !values.TryAdd(pair[0], value))
+                throw new FormatException(usage);
+        }
+        if (values.Count != 2 || !values.ContainsKey("workers") || !values.ContainsKey("seconds"))
+            throw new FormatException(usage);
+        return new(values["workers"], values["seconds"]);
     }
 
     private static int CompareMResults(MSolveResult left, MSolveResult right)
@@ -149,23 +150,8 @@ public static class Program
         return 0;
     }
 
-    private static int CompareTResults(TSolveResult left, TSolveResult right)
-    {
-        if (left.Candidates.Count == 0 || right.Candidates.Count == 0)
-            return right.Candidates.Count.CompareTo(left.Candidates.Count);
-        var leftScores = left.Candidates[0].Objectives.OrderBy(score => score.Priority).ToArray();
-        var rightScores = right.Candidates[0].Objectives.OrderBy(score => score.Priority).ToArray();
-        if (leftScores.Length != rightScores.Length)
-            return rightScores.Length.CompareTo(leftScores.Length);
-        for (var index = 0; index < leftScores.Length; index++)
-        {
-            var comparison = leftScores[index].Value.CompareTo(rightScores[index].Value);
-            if (comparison != 0) return comparison;
-        }
-        return 0;
-    }
-
-    private sealed record SearchOptions(int Workers, int Seeds, int Seconds);
+    private sealed record MSearchOptions(int Workers, int Seeds, int Seconds);
+    private sealed record TSearchOptions(int Workers, int Seconds);
 
     private static int Finish(MSolveResult result, TimeSpan elapsed)
     {

@@ -1190,7 +1190,7 @@ M 可選擇提供 56 日萬年班表。模板第 1 日對應每個 16R 八週區
 
 \subsection{差異候選}
 
-每個模型最多輸出三份候選。M/T 都不預留固定候選時間；初始可行解與所有目標最佳化先共用每個 seed 的總時限，
+每個模型最多輸出三份候選。M/T 都不預留固定候選時間；初始可行解與所有目標最佳化先共用每次求解的總時限，
 只以完成後餘時搜尋候選。M 先與 T 一樣，以等式固定所有具名目標與第一份同分後搜尋；
 第一次同分搜尋使用當時餘時的一半。若仍無法產生第二份，才以另一半允許每個具名目標分數至多為第一份的 120\%。
 T 只在所有目標群組皆證明最優且以等式固定後搜尋，不套用此放寬。
@@ -1258,14 +1258,13 @@ source-as-spec partial 檔，不加入共用規則 catalog 或外部權重設定
   \item 全部群組完成後，以剩餘時間搜尋最多三份差異候選。
 \end{enumerate}
 
-Library 預設每 seed 為 300 秒、seed 0、8 workers。CLI 的共用參數形式為
+Library 預設為 300 秒、seed 0、8 workers。CLI 的共用參數形式為
 \[
-  \texttt{--search workers=N,seeds=N,seconds=N}.
+  \texttt{--search workers=N,seconds=N}.
 \]
-此參數同時適用 M/T；M 預設 4 workers、2 seeds、每 seed 180 秒，T 預設
-8 workers、1 seed、300 秒。
-portfolio 平行執行連續 seed，依第一候選的 Priority 字典序分數選出較佳的整批結果；
-最大同時 worker 數約為 \texttt{workers} \(\times\) \texttt{seeds}。
+此參數同時適用 M/T，調整每次求解的 worker 數與總時限。M 可選加
+\texttt{seeds=N}，預設並行執行 2 seeds、每個 4 workers與 300 秒；portfolio 依第一候選的
+Priority 字典序分數選出較佳的整批結果。T 只執行 seed 0，預設 8 workers與 300 秒。
 
 \subsection{狀態解讀與限制}
 
@@ -1281,7 +1280,7 @@ portfolio 平行執行連續 seed，依第一候選的 Priority 字典序分數�
 本模型把不可違反的法規與營運條件放入可行域，再以可解釋的具名違反量處理偏好。
 M 與 T 共用輸入語意與基礎休假規則，但保留獨立變數、限制與權重，避免不同單位的
 業務邏輯互相遮蔽。七日延伸區間與完整前月歷史處理跨月邊界，萬年班表只改善 M
-初始搜尋而不改變可行域，多 seed portfolio 與差異候選則在固定時間內增加取得實用
+初始搜尋而不改變可行域，M 多 seed portfolio 與差異候選則在固定時間內增加取得實用
 方案的機會。最終輸出的每一項分數都可拆回違反量、權重與加權分，供使用者理解方案
 取捨；若狀態為 \texttt{TimeLimit}，則應明確視為目前最佳候選，而非完整最優性證明。
 

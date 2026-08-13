@@ -296,3 +296,8 @@
 - 刪除已過時的 `tex/main.tex`，只保留 `tex/main2.tex` 作為 D-21 指定的唯一數學模型真相來源，避免兩份公式與參數再次漂移。
 - 合併後的報告以中文論文格式整理問題背景、輸入邊界、M/T 變數、硬限制、軟性目標、權重、字典序求解、萬年班表提示、portfolio 與差異候選。
 - 報告中的 M 綜合目標直接列出實作整數係數；`TimeLimit` 候選分數明確標示為 incumbent 量測，不視為所有 Priority 的最佳性證明。
+
+## 2026-08-13：T 恢復單 seed，M 維持已 commit portfolio
+
+- T CLI 恢復為單一 seed 0，不接受 `seeds>1`；省略開關時為 8 workers、300 秒。
+- M 不改變已 commit 的 portfolio：預設 4 workers、2 seeds、每 seed 300 秒，比較各 seed 第一候選的 Priority 字典序分數後，只輸出較佳 seed 的整批候選。

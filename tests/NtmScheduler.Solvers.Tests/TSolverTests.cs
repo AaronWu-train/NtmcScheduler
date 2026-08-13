@@ -9,28 +9,18 @@ public sealed class TSolverTests
     private static readonly SolverOptions ShortSolve = new() { TimeLimit = TimeSpan.FromSeconds(3) };
 
     [TestMethod]
-    public void CliPortfolioPrefersCompleteThenLexicographicallyBetterTResult()
+    public void CliSearchOptionForTParsesWorkersAndSecondsButRejectsSeeds()
     {
-        var schedule = ValidInput().DemandMonth;
-        TSolveResult Result(params ObjectiveScore[] scores) => new(
-            SolveStatus.TimeLimit,
-            [new TCandidate(schedule, scores)],
-            []);
-        var compare = typeof(NtmScheduler.Cli.Program).GetMethod(
-            "CompareTResults",
+        var parse = typeof(NtmScheduler.Cli.Program).GetMethod(
+            "ReadTSearchOptions",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
-        int Compare(TSolveResult left, TSolveResult right) => (int)compare.Invoke(null, [left, right])!;
+        var options = parse.Invoke(null, [new[] { "--search", "workers=3,seconds=90" }])!;
+        var type = options.GetType();
 
-        var incomplete = Result(new ObjectiveScore(1, "RequestedRest", 0, []));
-        var complete = Result(
-            new ObjectiveScore(1, "RequestedRest", 0, []),
-            new ObjectiveScore(2, "StaffingQuality", 200, []));
-        var better = Result(
-            new ObjectiveScore(1, "RequestedRest", 0, []),
-            new ObjectiveScore(2, "StaffingQuality", 100, []));
-
-        Assert.IsLessThan(0, Compare(complete, incomplete));
-        Assert.IsLessThan(0, Compare(better, complete));
+        Assert.AreEqual(3, type.GetProperty("Workers")!.GetValue(options));
+        Assert.AreEqual(90, type.GetProperty("Seconds")!.GetValue(options));
+        Assert.ThrowsExactly<System.Reflection.TargetInvocationException>(() =>
+            parse.Invoke(null, [new[] { "--search", "workers=3,seeds=2,seconds=90" }]));
     }
 
     [TestMethod]

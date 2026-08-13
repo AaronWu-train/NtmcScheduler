@@ -58,7 +58,7 @@ public sealed class MSolverTests
     public void CliSearchOptionParsesWorkersSeedsAndSeconds()
     {
         var parse = typeof(Program).GetMethod(
-            "ReadSearchOptions",
+            "ReadMSearchOptions",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
         var options = parse.Invoke(null, [new[] { "--search", "workers=3,seeds=4,seconds=90" }])!;
         var type = options.GetType();
@@ -66,7 +66,10 @@ public sealed class MSolverTests
         Assert.AreEqual(3, type.GetProperty("Workers")!.GetValue(options));
         Assert.AreEqual(4, type.GetProperty("Seeds")!.GetValue(options));
         Assert.AreEqual(90, type.GetProperty("Seconds")!.GetValue(options));
-        Assert.IsNull(parse.Invoke(null, [Array.Empty<string>()]));
+        var defaults = parse.Invoke(null, [Array.Empty<string>()])!;
+        Assert.AreEqual(4, defaults.GetType().GetProperty("Workers")!.GetValue(defaults));
+        Assert.AreEqual(2, defaults.GetType().GetProperty("Seeds")!.GetValue(defaults));
+        Assert.AreEqual(300, defaults.GetType().GetProperty("Seconds")!.GetValue(defaults));
         Assert.ThrowsExactly<System.Reflection.TargetInvocationException>(() =>
             parse.Invoke(null, [new[] { "--search", "workers=3,seeds=0,seconds=90" }]));
     }

@@ -36,7 +36,7 @@
 - 每個具名違反量、權重與 Priority 字典序符合 `docs/05-soft-rules.md`。
 - 候選差異只計目標月已到職、非固定格，且每兩份達 5% 門檻。M 先像 T 一樣搜尋具名目標完全同分的第二份；第一次同分搜尋無結果才允許每項最多差 20%。M/T 都不預留固定候選時間，只使用目標最佳化後的剩餘總時限；M 進入候選搜尋後才保留當時餘時的一半給 20% fallback。T 替代候選維持 J1–J5 同分，不套用放寬。
 - 時間到期回傳 `TimeLimit`；呼叫端取消丟出 `OperationCanceledException`。
-- M/T CLI 的 `--search workers=N,seeds=N,seconds=N` 可調整每個 seed 的 workers、並行 seed 數與每個 seed 的總時限；M 省略時為 4／2／180，T 為 8／1／300。CLI 採用第一候選具名目標字典序較佳的結果，並顯示實際 wall time；非正整數、未知、缺漏或重複欄位會失敗。
+- M/T CLI 的 `--search workers=N,seconds=N` 可調整 worker 數與整體總時限。M 可選 `seeds=N`，省略開關時為 4 workers、2 seeds、300 秒，CLI 採用第一候選具名目標字典序較佳的整批結果；T 為 8 workers、300 秒、seed 0，`seeds>1` 會失敗。CLI 顯示實際求解時間；非正整數、未知、缺漏或重複欄位會失敗。
 
 ## CLI 與範例
 
