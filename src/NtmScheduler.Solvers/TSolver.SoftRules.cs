@@ -25,7 +25,7 @@ public static partial class TSolver
         var transitionRest = MeasureNightToEarlyRestShortfall(model, input, targetDates, variables);
         var boundaryBalance = MeasureMonthBoundaryRestDifference(model, input, targetDates, variables);
         var weekdayFairness = MeasureRestCountRangeByMonthlyShift(model, input, targetDates.Where(date => !IsWeekendOrNationalHoliday(input, date)), variables, "weekday_fairness");
-        var holidayFairness = MeasureRestCountRangeByMonthlyShift(model, input, targetDates.Where(date => IsWeekendOrNationalHoliday(input, date)), variables, "holiday_fairness");
+        var holidayFairness = MeasureHolidayRestPenaltyByMonthlyShift(model, input, targetDates.Where(date => IsWeekendOrNationalHoliday(input, date)), variables);
 
         return
         [
@@ -308,6 +308,48 @@ public static partial class TSolver
             ranges.Add(maximum - minimum);
         }
         return LinearExpr.Sum(ranges);
+    }
+
+    // 假日休假公平——同一月班別內以平均正負 1.5 天為免罰區間。
+    private static LinearExpr MeasureHolidayRestPenaltyByMonthlyShift(
+        CpModel model,
+        ScheduleInput input,
+        IEnumerable<DateOnly> dates,
+        ModelVariables variables)
+    {
+        var selectedDates = dates.ToArray();
+        var penalties = new List<LinearExpr>();
+        foreach (var group in input.DemandMonth.Employees
+                     .Where(employee => IsEmployedOn(employee, input.DemandMonth.MonthStart))
+                     .GroupBy(employee => employee.MonthlyShift))
+        {
+            var counts = group.Select(employee =>
+            {
+                var count = model.NewIntVar(0, selectedDates.Length, $"holiday_fairness_{employee.EmployeeId}");
+                model.Add(count == LinearExpr.Sum(selectedDates.Select(date => variables.AnyRest[(employee.EmployeeId, date)])));
+                return count;
+            }).ToArray();
+            if (counts.Length < 2) continue;
+            var groupSize = counts.Length;
+            var total = model.NewIntVar(
+                0, (long)groupSize * selectedDates.Length, $"holiday_fairness_{group.Key}_total");
+            model.Add(total == LinearExpr.Sum(counts));
+            for (var index = 0; index < counts.Length; index++)
+            {
+                // 2 * |n*c - T| - 3n keeps the exact fractional average without floating point.
+                var distance = model.NewIntVar(
+                    0, (long)groupSize * selectedDates.Length, $"holiday_fairness_{group.Key}_distance_{index}");
+                model.AddAbsEquality(distance, counts[index] * groupSize - total);
+                var excess = model.NewIntVar(
+                    0, 2L * groupSize * selectedDates.Length, $"holiday_fairness_{group.Key}_excess_{index}");
+                model.AddMaxEquality(excess, [distance * 2 - 3 * groupSize, LinearExpr.Constant(0)]);
+                var penalty = model.NewIntVar(
+                    0, selectedDates.Length, $"holiday_fairness_{group.Key}_penalty_{index}");
+                model.AddDivisionEquality(penalty, excess + 2 * groupSize - 1, 2 * groupSize);
+                penalties.Add(penalty);
+            }
+        }
+        return LinearExpr.Sum(penalties);
     }
 
     private static bool IsWeekendOrNationalHoliday(ScheduleInput input, DateOnly date) =>

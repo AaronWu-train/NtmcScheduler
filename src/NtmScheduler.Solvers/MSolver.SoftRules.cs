@@ -24,7 +24,7 @@ public static partial class MSolver
         var nightRestEarly = CountNightRestShiftPatterns(model, input, variables, Shift.Early, "night_rest_early");
         var nightRestAfternoon = CountNightRestShiftPatterns(model, input, variables, Shift.Afternoon, "night_rest_afternoon");
         var shiftChangeWithoutRest = CountShiftChangesWithoutRest(model, input, modelDates, variables);
-        var holidayFairness = MeasureRestCountDeviationByStationGroup(model, input, targetDates.Where(date => IsWeekendOrNationalHoliday(input, date)), variables, "holiday_fairness");
+        var holidayFairness = MeasureHolidayRestPenaltyByStationGroup(model, input, targetDates.Where(date => IsWeekendOrNationalHoliday(input, date)), variables);
         var earlyAfternoonImbalance = MeasureEarlyAfternoonImbalance(model, input, targetDates, variables);
         var nightShiftTarget = MeasureNightShiftTargetPenalty(model, input, targetDates, variables);
 
@@ -400,30 +400,46 @@ public static partial class MSolver
         return LinearExpr.Sum(violations);
     }
 
-    // 休假公平——只比較同站群組且目標月全月在職的人員。
-    private static LinearExpr MeasureRestCountDeviationByStationGroup(
+    // 假日休假公平——只比較同站群組且目標月全月在職的人員，平均正負 1.5 天不罰。
+    private static LinearExpr MeasureHolidayRestPenaltyByStationGroup(
         CpModel model,
         ScheduleInput input,
         IEnumerable<DateOnly> dates,
-        ModelVariables variables,
-        string name)
+        ModelVariables variables)
     {
         var selectedDates = dates.ToArray();
-        var deviations = new List<LinearExpr>();
+        var penalties = new List<LinearExpr>();
         foreach (var group in input.DemandMonth.Employees
                      .Where(employee => IsEmployedOn(employee, input.DemandMonth.MonthStart))
                      .GroupBy(employee => StationGroupIndex(employee.Affiliation)))
         {
             var counts = group.Select(employee =>
             {
-                var count = model.NewIntVar(0, selectedDates.Length, $"{name}_{employee.EmployeeId}");
+                var count = model.NewIntVar(0, selectedDates.Length, $"holiday_fairness_{employee.EmployeeId}");
                 model.Add(count == LinearExpr.Sum(selectedDates.Select(date => variables.AnyRest[(employee.EmployeeId, date)])));
                 return count;
             }).ToArray();
             if (counts.Length < 2) continue;
-            deviations.Add(MeasureNormalizedCountDeviationTenths(model, counts, selectedDates.Length, $"{name}_{group.Key}"));
+            var groupSize = counts.Length;
+            var total = model.NewIntVar(
+                0, (long)groupSize * selectedDates.Length, $"holiday_fairness_{group.Key}_total");
+            model.Add(total == LinearExpr.Sum(counts));
+            for (var index = 0; index < counts.Length; index++)
+            {
+                // 2 * |n*c - T| - 3n keeps the exact fractional average without floating point.
+                var distance = model.NewIntVar(
+                    0, (long)groupSize * selectedDates.Length, $"holiday_fairness_{group.Key}_distance_{index}");
+                model.AddAbsEquality(distance, counts[index] * groupSize - total);
+                var excess = model.NewIntVar(
+                    0, 2L * groupSize * selectedDates.Length, $"holiday_fairness_{group.Key}_excess_{index}");
+                model.AddMaxEquality(excess, [distance * 2 - 3 * groupSize, LinearExpr.Constant(0)]);
+                var penalty = model.NewIntVar(
+                    0, selectedDates.Length, $"holiday_fairness_{group.Key}_penalty_{index}");
+                model.AddDivisionEquality(penalty, excess + 2 * groupSize - 1, 2 * groupSize);
+                penalties.Add(penalty);
+            }
         }
-        return LinearExpr.Sum(deviations);
+        return LinearExpr.Sum(penalties);
     }
 
     // Disabled at BuildObjectiveGroups while its weight is zero.
