@@ -94,7 +94,7 @@ public sealed record MonthlySchedule(
 public sealed record RestInterval(
     DateOnly Start,
     DateOnly End,
-    IReadOnlySet<DateOnly> NationalHolidays);
+    HashSet<DateOnly> NationalHolidays);
 
 /// <summary>The complete input shared by the independent M and T solvers.</summary>
 public sealed record ScheduleInput(

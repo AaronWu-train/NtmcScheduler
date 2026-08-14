@@ -103,6 +103,7 @@ public sealed record DemandDraftDto(
     WorkspaceCode Workspace,
     DateOnly Month,
     PreviousScheduleSource PreviousSource,
+    bool HasUploadedPreviousSchedule,
     Guid ConfigurationRevisionId,
     Guid RevisionToken,
     DateTimeOffset UpdatedAtUtc,

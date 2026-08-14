@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -46,7 +47,7 @@ public sealed class ScheduleRunWorker(
             run.Status = ScheduleRunStatus.Queued;
             run.StartedAtUtc = null;
         }
-        await db.SaveChangesAsync(cancellationToken);
+        await SaveChangesWithSqliteRetryAsync(db, cancellationToken);
         foreach (var run in pending) await queue.QueueAsync(run.Id, cancellationToken);
     }
 
@@ -58,7 +59,7 @@ public sealed class ScheduleRunWorker(
         if (run is null || run.Status != ScheduleRunStatus.Queued) return;
         run.Status = ScheduleRunStatus.Running;
         run.StartedAtUtc = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync(cancellationToken);
+        await SaveChangesWithSqliteRetryAsync(db, cancellationToken);
 
         var input = JsonSerializer.Deserialize<ScheduleInput>(run.InputSnapshotJson, ServiceSupport.JsonOptions)
             ?? throw new InvalidOperationException("Run input snapshot is invalid.");
@@ -86,12 +87,11 @@ public sealed class ScheduleRunWorker(
     {
         run.Status = Map(result.Status);
         run.Error = ErrorText(result.Errors);
-        var configurationId = await ConfigurationIdAsync(db, run.DemandDraftId, cancellationToken);
         for (var index = 0; index < result.Candidates.Count; index++)
         {
             var candidate = result.Candidates[index];
             var version = SolverScheduleMapper.ToVersion(candidate.Schedule, WorkspaceCode.M, run.Id, index, run.Status,
-                configurationId, run.RequestedByUserId, demand, candidate.ExternalAssignments);
+                ConfigurationId(run), run.RequestedByUserId, demand, candidate.ExternalAssignments);
             version.WarningCount = candidate.Objectives.SelectMany(x => x.Components).Count(x => x.Value > 0);
             db.ScheduleVersions.Add(version);
         }
@@ -102,12 +102,11 @@ public sealed class ScheduleRunWorker(
     {
         run.Status = Map(result.Status);
         run.Error = ErrorText(result.Errors);
-        var configurationId = await ConfigurationIdAsync(db, run.DemandDraftId, cancellationToken);
         for (var index = 0; index < result.Candidates.Count; index++)
         {
             var candidate = result.Candidates[index];
             var version = SolverScheduleMapper.ToVersion(candidate.Schedule, WorkspaceCode.T, run.Id, index, run.Status,
-                configurationId, run.RequestedByUserId, demand);
+                ConfigurationId(run), run.RequestedByUserId, demand);
             version.WarningCount = candidate.Objectives.SelectMany(x => x.Components).Count(x => x.Value > 0);
             db.ScheduleVersions.Add(version);
         }
@@ -120,14 +119,14 @@ public sealed class ScheduleRunWorker(
         var actor = Actor(run);
         ServiceSupport.AddAudit(db, actor, "ScheduleRunCompleted", run.Workspace, "ScheduleRun", run.Id, null,
             new { run.Status, CandidateCount = candidateCount, run.Error });
-        await db.SaveChangesAsync(cancellationToken);
+        await SaveChangesWithSqliteRetryAsync(db, cancellationToken);
     }
 
     private static string? ErrorText(IReadOnlyList<InputError> errors) =>
         errors.Count == 0 ? null : string.Join("；", errors.Select(x => $"{x.Field}: {x.Message}"));
 
-    private static async Task<Guid> ConfigurationIdAsync(NtmcDbContext db, Guid demandId, CancellationToken cancellationToken) =>
-        await db.DemandDrafts.Where(x => x.Id == demandId).Select(x => x.ConfigurationRevisionId).SingleAsync(cancellationToken);
+    private static Guid ConfigurationId(ScheduleRun run) => run.ConfigurationRevisionId
+        ?? throw new InvalidOperationException("Run configuration snapshot reference is missing.");
 
     private static ScheduleRunStatus Map(SolveStatus status) => status switch
     {
@@ -149,7 +148,24 @@ public sealed class ScheduleRunWorker(
         run.CompletedAtUtc = DateTimeOffset.UtcNow;
         ServiceSupport.AddAudit(db, Actor(run), "ScheduleRunFailed", run.Workspace, "ScheduleRun", run.Id, null,
             new { ExceptionType = exception.GetType().Name });
-        await db.SaveChangesAsync(cancellationToken);
+        await SaveChangesWithSqliteRetryAsync(db, cancellationToken);
+    }
+
+    private static async Task SaveChangesWithSqliteRetryAsync(NtmcDbContext db, CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return;
+            }
+            catch (DbUpdateException exception) when (
+                attempt < 5 && exception.InnerException is SqliteException { SqliteErrorCode: 5 or 6 })
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(100 * (1 << attempt)), cancellationToken);
+            }
+        }
     }
 
     private static ActorContext Actor(ScheduleRun run) => new(

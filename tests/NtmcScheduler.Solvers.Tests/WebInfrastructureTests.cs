@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using NtmcScheduler.Contracts;
 using NtmcScheduler.Infrastructure.Data;
 using NtmcScheduler.Infrastructure.Background;
+using NtmcScheduler.Infrastructure.Csv;
 using NtmcScheduler.Infrastructure.Services;
 using NtmcScheduler.Web.Services;
 
@@ -117,7 +118,41 @@ public sealed class WebInfrastructureTests
         await new CommonConfigurationService(database.Context).CreateRevisionAsync(
             [new RestIntervalDto(intervalStart, intervalStart.AddDays(55), [])], [], null, actor);
         var demandService = new DemandService(database.Context);
-        var demand = await demandService.CreateAsync(WorkspaceCode.M, new DateOnly(2026, 9, 1), actor);
+        var demand = await demandService.CreateAsync(WorkspaceCode.M, new DateOnly(2026, 10, 1), actor);
+        var disposableDemand = await demandService.CreateAsync(WorkspaceCode.M, new DateOnly(2026, 9, 1), actor);
+
+        CollectionAssert.AreEqual(
+            new[] { new DateOnly(2026, 10, 1), new DateOnly(2026, 9, 1) },
+            (await demandService.ListMonthsAsync(WorkspaceCode.M, actor)).ToArray());
+
+        var previousPath = Path.GetTempFileName();
+        try
+        {
+            ScheduleCsv.WriteMonthly(previousPath, MSolverTests.ValidInput().PreviousMonth);
+            var previousBytes = await File.ReadAllBytesAsync(previousPath);
+            await demandService.UploadPreviousAsync(disposableDemand.Id, new MemoryStream(previousBytes), disposableDemand.RevisionToken, actor);
+            disposableDemand = (await demandService.GetAsync(WorkspaceCode.M, disposableDemand.Month, actor))!;
+            Assert.IsTrue(disposableDemand.HasUploadedPreviousSchedule);
+            await demandService.UploadPreviousAsync(disposableDemand.Id, new MemoryStream(previousBytes), disposableDemand.RevisionToken, actor);
+            Assert.AreEqual(1, await database.Context.UploadedPreviousSchedules.CountAsync());
+            disposableDemand = (await demandService.GetAsync(WorkspaceCode.M, disposableDemand.Month, actor))!;
+        }
+        finally { File.Delete(previousPath); }
+
+        var queued = await new ScheduleRunService(database.Context, new ScheduleRunQueue()).QueueAsync(
+            disposableDemand.Id, disposableDemand.RevisionToken, actor);
+        var savedRun = await database.Context.ScheduleRuns.SingleAsync(x => x.Id == queued.Id);
+        Assert.AreEqual(disposableDemand.ConfigurationRevisionId, savedRun.ConfigurationRevisionId);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(savedRun.InputSnapshotJson));
+        var restoredInput = System.Text.Json.JsonSerializer.Deserialize<ScheduleInput>(savedRun.InputSnapshotJson,
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        Assert.AreEqual(intervalStart, restoredInput!.RestIntervals.Single().Start);
+
+        await demandService.DeleteAsync(disposableDemand.Id, disposableDemand.RevisionToken, actor);
+        Assert.AreEqual(1, await database.Context.ScheduleRuns.CountAsync(x => x.DemandDraftId == disposableDemand.Id));
+        Assert.AreEqual(0, await database.Context.UploadedPreviousSchedules.CountAsync());
+        CollectionAssert.AreEqual(new[] { new DateOnly(2026, 10, 1) }, (await demandService.ListMonthsAsync(WorkspaceCode.M, actor)).ToArray());
+        Assert.AreEqual(1, await database.Context.AuditLogs.CountAsync(x => x.Action == "DemandDeleted"));
 
         await service.DeleteAsync(original.Id, original.RevisionToken, actor);
         var returned = await service.SaveAsync(command with { Name = "王大明" }, actor);
@@ -161,6 +196,122 @@ public sealed class WebInfrastructureTests
         Assert.IsFalse(preview.IsValid);
         Assert.AreEqual(0, await database.Context.Employees.CountAsync());
         Assert.AreEqual(0, await database.Context.AuditLogs.CountAsync());
+    }
+
+    [TestMethod]
+    public async Task DemandCsvImport_PreviewsThenReplacesEmployees()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var actor = Editor(WorkspaceCode.M);
+        await new EmployeeService(database.Context).SaveAsync(
+            new(null, WorkspaceCode.M, "M001", "王小明", "LB01", null, null, null), actor);
+        await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+            [new(new(2026, 7, 20), new(2026, 9, 13), []), new(new(2026, 9, 14), new(2026, 11, 8), [])], [], null, actor);
+        var service = new DemandService(database.Context);
+        var demand = await service.CreateAsync(WorkspaceCode.M, new(2026, 9, 1), actor);
+
+        var path = Path.GetTempFileName();
+        try
+        {
+            ScheduleCsv.WriteMonthly(path, MSolverTests.ValidInput().DemandMonth);
+            var csv = await File.ReadAllBytesAsync(path);
+            var preview = await service.PreviewDemandImportAsync(demand.Id, new MemoryStream(csv), actor);
+            Assert.IsTrue(preview.IsValid, string.Join(Environment.NewLine, preview.Errors));
+            await service.ImportDemandAsync(demand.Id, new MemoryStream(csv), demand.RevisionToken, actor);
+        }
+        finally { File.Delete(path); }
+
+        var imported = await service.GetAsync(WorkspaceCode.M, demand.Month, actor);
+        Assert.HasCount(40, imported!.Employees);
+        Assert.AreEqual(1, await database.Context.AuditLogs.CountAsync(x => x.Action == "DemandCsvImported"));
+    }
+
+    [TestMethod]
+    public async Task DemandPrevious_AutofillsOpeningUsageAndPerpetualSchedule()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var actor = Editor(WorkspaceCode.M);
+        var input = MSolverTests.ValidInput();
+        var previousEmployee = input.PreviousMonth.Employees[0];
+        await new EmployeeService(database.Context).SaveAsync(new(null, WorkspaceCode.M, previousEmployee.EmployeeId,
+            previousEmployee.Name, previousEmployee.Affiliation, null, null, null), actor);
+        var configuration = await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+            input.RestIntervals.Select(x => new RestIntervalDto(x.Start, x.End, x.NationalHolidays.ToArray())).ToArray(), [], null, actor);
+        var revision = await database.Context.ConfigurationRevisions.SingleAsync(x => x.Id == configuration.Id);
+        var adoptedVersion = Version(revision, input.PreviousMonth.MonthStart, "上月採用班表");
+        adoptedVersion.Employees.Add(new()
+        {
+            EmployeeCode = previousEmployee.EmployeeId, Name = previousEmployee.Name, Affiliation = previousEmployee.Affiliation,
+            ClosingRest = 12, ClosingSpecialRest = 2, PerpetualScheduleId = "P-ADOPTED"
+        });
+        database.Context.AdoptedSchedules.Add(new()
+        {
+            Workspace = WorkspaceCode.M, Month = input.PreviousMonth.MonthStart, ScheduleVersion = adoptedVersion,
+            AdoptedByUserId = actor.UserId
+        });
+        await database.Context.SaveChangesAsync();
+
+        var service = new DemandService(database.Context);
+        var demand = await service.CreateAsync(WorkspaceCode.M, input.DemandMonth.MonthStart, actor);
+        var employee = demand.Employees.Single();
+        Assert.AreEqual(12, employee.OpeningRest);
+        Assert.AreEqual(2, employee.OpeningSpecialRest);
+        Assert.AreEqual("P-ADOPTED", employee.PerpetualScheduleId);
+
+        var uploadEmployee = previousEmployee with { PerpetualScheduleId = "P-UPLOAD" };
+        var upload = input.PreviousMonth with
+        {
+            Employees = input.PreviousMonth.Employees.Select(x => x.EmployeeId == uploadEmployee.EmployeeId ? uploadEmployee : x).ToArray()
+        };
+        var path = Path.GetTempFileName();
+        try
+        {
+            ScheduleCsv.WriteMonthly(path, upload);
+            await using var stream = File.OpenRead(path);
+            await service.UploadPreviousAsync(demand.Id, stream, demand.RevisionToken, actor);
+        }
+        finally { File.Delete(path); }
+
+        employee = (await service.GetAsync(WorkspaceCode.M, demand.Month, actor))!.Employees.Single();
+        Assert.AreEqual(uploadEmployee.ClosingUsage!.Rest, employee.OpeningRest);
+        Assert.AreEqual(uploadEmployee.ClosingUsage.SpecialRest, employee.OpeningSpecialRest);
+        Assert.AreEqual("P-UPLOAD", employee.PerpetualScheduleId);
+    }
+
+    [TestMethod]
+    public async Task ScheduleRunWorker_RetriesTransientSqliteWriteLock()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"ntmc-worker-lock-{Guid.NewGuid():N}.db");
+        var options = new DbContextOptionsBuilder<NtmcDbContext>()
+            .UseSqlite($"Data Source={path};Default Timeout=1;Pooling=False").Options;
+        try
+        {
+            await using var lockingContext = new NtmcDbContext(options);
+            await using var workerContext = new NtmcDbContext(options);
+            await lockingContext.Database.EnsureCreatedAsync();
+            await using var transaction = await lockingContext.Database.BeginTransactionAsync();
+            lockingContext.AuditLogs.Add(Audit(DateTimeOffset.UtcNow, "LockHolder"));
+            await lockingContext.SaveChangesAsync();
+            workerContext.AuditLogs.Add(Audit(DateTimeOffset.UtcNow, "RetriedWrite"));
+
+            var save = typeof(ScheduleRunWorker).GetMethod("SaveChangesWithSqliteRetryAsync",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+            var releaseLock = Task.Run(async () =>
+            {
+                await Task.Delay(1500);
+                await transaction.CommitAsync();
+            });
+            var retryingSave = (Task)save.Invoke(null, [workerContext, CancellationToken.None])!;
+            await Task.WhenAll(retryingSave, releaseLock);
+
+            Assert.AreEqual(2, await workerContext.AuditLogs.CountAsync());
+        }
+        finally
+        {
+            File.Delete(path);
+            File.Delete(path + "-shm");
+            File.Delete(path + "-wal");
+        }
     }
 
     [TestMethod]

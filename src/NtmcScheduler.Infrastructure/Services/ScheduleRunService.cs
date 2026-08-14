@@ -35,6 +35,7 @@ public sealed class ScheduleRunService(NtmcDbContext db, ScheduleRunQueue queue)
             Workspace = demand.Workspace,
             Month = demand.Month,
             DemandDraftId = demand.Id,
+            ConfigurationRevisionId = demand.ConfigurationRevisionId,
             RequestedByUserId = actor.UserId,
             RequestedByName = actor.UserName,
             CorrelationId = actor.CorrelationId,
@@ -48,12 +49,14 @@ public sealed class ScheduleRunService(NtmcDbContext db, ScheduleRunQueue queue)
             InputHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(snapshot))),
             PerpetualScheduleJson = demand.PerpetualScheduleJson
         };
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        db.ScheduleRuns.Add(run);
-        ServiceSupport.AddAudit(db, actor, "ScheduleRunQueued", demand.Workspace, "ScheduleRun", run.Id, null,
-            new { run.Month, run.InputHash, run.RandomSeed, run.WorkerCount, run.TimeLimitSeconds });
-        await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
+        await using (var transaction = await db.Database.BeginTransactionAsync(cancellationToken))
+        {
+            db.ScheduleRuns.Add(run);
+            ServiceSupport.AddAudit(db, actor, "ScheduleRunQueued", demand.Workspace, "ScheduleRun", run.Id, null,
+                new { run.Month, run.InputHash, run.RandomSeed, run.WorkerCount, run.TimeLimitSeconds });
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
         await queue.QueueAsync(run.Id, cancellationToken);
         return ToDto(run);
     }

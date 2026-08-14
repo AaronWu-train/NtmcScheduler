@@ -148,6 +148,7 @@ public sealed class ScheduleRun
     public DateOnly Month { get; set; }
     public ScheduleRunStatus Status { get; set; } = ScheduleRunStatus.Queued;
     public Guid DemandDraftId { get; set; }
+    public Guid? ConfigurationRevisionId { get; set; }
     public Guid RequestedByUserId { get; set; }
     public string RequestedByName { get; set; } = "";
     public string CorrelationId { get; set; } = "";

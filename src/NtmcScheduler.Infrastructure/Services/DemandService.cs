@@ -9,6 +9,12 @@ namespace NtmcScheduler.Infrastructure.Services;
 
 public sealed class DemandService(NtmcDbContext db) : IDemandService
 {
+    public async Task<IReadOnlyList<DateOnly>> ListMonthsAsync(WorkspaceCode workspace, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        ServiceSupport.RequireViewer(actor);
+        return await db.DemandDrafts.AsNoTracking().Where(x => x.Workspace == workspace).OrderByDescending(x => x.Month).Select(x => x.Month).ToArrayAsync(cancellationToken);
+    }
+
     public async Task<DemandDraftDto?> GetAsync(WorkspaceCode workspace, DateOnly month, ActorContext actor, CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireViewer(actor);
@@ -28,7 +34,9 @@ public sealed class DemandService(NtmcDbContext db) : IDemandService
         var employees = await db.Employees.AsNoTracking().Where(x => x.Workspace == workspace).OrderBy(x => x.EmployeeCode).ToListAsync(cancellationToken);
         if (employees.Count == 0) throw new DomainValidationException("請先建立員工資料。");
         var previousMonth = month.AddMonths(-1);
-        var adopted = await db.AdoptedSchedules.AsNoTracking().SingleOrDefaultAsync(x => x.Workspace == workspace && x.Month == previousMonth, cancellationToken);
+        var adopted = await db.AdoptedSchedules.AsNoTracking()
+            .Include(x => x.ScheduleVersion).ThenInclude(x => x.Employees)
+            .SingleOrDefaultAsync(x => x.Workspace == workspace && x.Month == previousMonth, cancellationToken);
         var demand = new DemandDraft
         {
             Workspace = workspace,
@@ -47,6 +55,17 @@ public sealed class DemandService(NtmcDbContext db) : IDemandService
             EmploymentStartDate = employee.EmploymentStartDate,
             Ability = employee.Ability
         }));
+        if (adopted is not null)
+        {
+            var previousByCode = adopted.ScheduleVersion.Employees.ToDictionary(x => x.EmployeeCode, StringComparer.Ordinal);
+            foreach (var employee in demand.Employees)
+            {
+                if (!previousByCode.TryGetValue(employee.EmployeeCode, out var previous)) continue;
+                employee.OpeningRest = previous.ClosingRest;
+                employee.OpeningSpecialRest = previous.ClosingSpecialRest;
+                employee.PerpetualScheduleId = workspace == WorkspaceCode.M ? previous.PerpetualScheduleId : null;
+            }
+        }
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         db.DemandDrafts.Add(demand);
         ServiceSupport.AddAudit(db, actor, "DemandCreated", workspace, "DemandDraft", demand.Id, null,
@@ -54,6 +73,22 @@ public sealed class DemandService(NtmcDbContext db) : IDemandService
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return ServiceSupport.ToDto(demand);
+    }
+
+    public async Task DeleteAsync(Guid demandId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        var demand = await db.DemandDrafts.Include(x => x.UploadedPreviousSchedule).SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
+            ?? throw new DomainValidationException("找不到 Demand。");
+        ServiceSupport.RequireEditor(actor, demand.Workspace);
+        if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("Demand 已被其他人修改，請重新整理。");
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var previous = demand.UploadedPreviousSchedule;
+        ServiceSupport.AddAudit(db, actor, "DemandDeleted", demand.Workspace, "DemandDraft", demand.Id,
+            new { demand.Month, EmployeeCount = await db.DemandEmployees.CountAsync(x => x.DemandDraftId == demand.Id, cancellationToken) }, null);
+        db.DemandDrafts.Remove(demand);
+        if (previous is not null) db.UploadedPreviousSchedules.Remove(previous);
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task<DemandDraftDto> UpdateEmployeeAsync(
@@ -177,6 +212,7 @@ public sealed class DemandService(NtmcDbContext db) : IDemandService
         var before = new { Employees = demand.Employees.Count, Assignments = demand.Employees.Sum(x => x.Assignments.Count) };
         db.DemandEmployees.RemoveRange(demand.Employees);
         demand.Employees = schedule.Employees.Select(SolverScheduleMapper.ToDemandEmployee).ToList();
+        db.DemandEmployees.AddRange(demand.Employees);
         Touch(demand, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "DemandCsvImported", demand.Workspace, "DemandDraft", demand.Id, before,
             new { Employees = demand.Employees.Count, Assignments = demand.Employees.Sum(x => x.Assignments.Count) });
@@ -199,13 +235,31 @@ public sealed class DemandService(NtmcDbContext db) : IDemandService
             ParsedScheduleJson = JsonSerializer.Serialize(schedule, ServiceSupport.JsonOptions)
         };
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var previousUpload = demand.UploadedPreviousSchedule;
         db.UploadedPreviousSchedules.Add(upload);
         demand.UploadedPreviousSchedule = upload;
         demand.PreviousSource = PreviousScheduleSource.Upload;
         demand.PreviousAdoptedScheduleVersionId = null;
+        var previousByCode = schedule.Employees.ToDictionary(x => x.EmployeeId, StringComparer.Ordinal);
+        foreach (var employee in demand.Employees)
+        {
+            if (previousByCode.TryGetValue(employee.EmployeeCode, out var previous))
+            {
+                employee.OpeningRest = previous.ClosingUsage?.Rest;
+                employee.OpeningSpecialRest = previous.ClosingUsage?.SpecialRest;
+                employee.PerpetualScheduleId = demand.Workspace == WorkspaceCode.M ? previous.PerpetualScheduleId : null;
+            }
+            else
+            {
+                employee.OpeningRest = null;
+                employee.OpeningSpecialRest = null;
+                employee.PerpetualScheduleId = null;
+            }
+        }
         Touch(demand, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "PreviousScheduleUploaded", demand.Workspace, "DemandDraft", demand.Id, null,
             new { upload.Id, upload.Month, EmployeeCount = schedule.Employees.Count });
+        if (previousUpload is not null) db.UploadedPreviousSchedules.Remove(previousUpload);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }

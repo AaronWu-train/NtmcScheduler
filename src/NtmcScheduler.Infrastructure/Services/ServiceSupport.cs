@@ -75,6 +75,7 @@ internal static class ServiceSupport
         demand.Workspace,
         demand.Month,
         demand.PreviousSource,
+        demand.UploadedPreviousScheduleId is not null,
         demand.ConfigurationRevisionId,
         demand.RevisionToken,
         demand.UpdatedAtUtc,
