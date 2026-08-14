@@ -213,6 +213,8 @@ app.MapGet("/download/templates/{workspace}/{kind}.csv", (string workspace, stri
         "employees" when workspaceCode == WorkspaceCode.T => "ID,姓名,專業分組,到職日期,能力",
         "demand" or "previous" => ScheduleCsv.MonthlyHeader,
         "perpetual" when workspaceCode == WorkspaceCode.M => ScheduleCsv.MPerpetualHeader,
+        "rest-intervals" => "區間開始日期,區間結束日期,國定假日日期",
+        "non-standard-shifts" => "班型,時間,代碼",
         _ => null
     };
     return header is null

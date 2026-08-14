@@ -71,6 +71,24 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
+    public async Task ConfigurationCsv_ParsesIntervalsAndNonStandardShifts()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var service = new CommonConfigurationService(database.Context);
+        var actor = Editor(WorkspaceCode.M);
+
+        var intervals = await service.ParseRestIntervalsCsvAsync(
+            new MemoryStream("區間開始日期,區間結束日期,國定假日日期\n2026-08-03,2026-09-27,2026-08-14\n"u8.ToArray()), actor);
+        var shifts = await service.ParseNonStandardShiftsCsvAsync(
+            new MemoryStream("班型,時間,代碼\n日班,08:00~17:00,DAY\n"u8.ToArray()), actor);
+
+        Assert.AreEqual(new DateOnly(2026, 8, 3), intervals.Single().Start);
+        Assert.AreEqual(new DateOnly(2026, 8, 14), intervals.Single().NationalHolidays.Single());
+        Assert.AreEqual("DAY", shifts.Single().Code);
+        Assert.AreEqual(new TimeOnly(17, 0), shifts.Single().EndTime);
+    }
+
+    [TestMethod]
     public async Task EmployeeWrite_EnforcesWorkspaceAndRevisionToken()
     {
         await using var database = await TestDatabase.CreateAsync();

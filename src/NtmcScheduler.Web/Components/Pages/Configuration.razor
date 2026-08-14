@@ -5,28 +5,22 @@
 @inject CurrentActorService CurrentActor
 
 <PageTitle>共同設定</PageTitle>
-<div class="page-title"><div><h1>共同設定</h1><p>八週區間、國定假日與非常態班型。</p></div><PageHelp Title="共同設定說明"><p>每次儲存會建立新的不可變版本，只影響之後新建的 Demand 與求解。區間必須連續且各為 56 日；國定假日只填週一至週五。非常態班型名稱可空白，代碼與時間必填。</p></PageHelp></div>
+<div class="page-title"><div><h1>共同設定</h1><p>八週區間、國定假日與非常態班型。</p></div><PageHelp Title="共同設定說明"><p>儲存後只影響之後新建的 Demand 與求解。區間必須連續且各為 56 日；國定假日只填週一至週五。非常態班型名稱可空白，代碼與時間必填。</p></PageHelp></div>
 @if (message is not null) { <p class="alert @messageClass" role="status">@message</p> }
-@if (current is null)
-{
-    <p>尚未建立共同設定。</p>
-}
-else
-{
-    <p>目前版本：<strong>v@current.Version</strong>，建立時間 @Taipei(current.CreatedAtUtc)</p>
-}
 
 <section class="card">
-    <div class="section-heading"><h2>八週區間</h2>@if (canEdit) { <button type="button" @onclick="AddInterval">新增區間</button> }</div>
+    <div class="section-heading"><h2>八週 16R 區間</h2>@if (canEdit) { <div class="configuration-actions"><a class="button-link" href="/download/templates/m/rest-intervals.csv">下載範本</a><label class="button-link file-upload-button">選擇 CSV<InputFile OnChange="UploadIntervalsAsync" accept=".csv,text/csv" /></label><button type="button" @onclick="AddInterval">新增區間</button><button type="button" class="primary" @onclick="SaveIntervalsAsync">儲存設定</button></div> }</div>
+    <p class="format-help">UTF-8（可含 BOM）、固定表頭，最大 5 MB；上傳會取代下方尚未儲存的八週區間。</p>
     <div class="table-scroll"><table><thead><tr><th>開始</th><th>結束</th><th>國定假日（分號分隔）</th><th></th></tr></thead><tbody>
     @foreach (var row in intervals)
     {
-        <tr><td><input type="date" @bind="row.Start" /></td><td><input type="date" @bind="row.End" /></td><td><input class="wide-input" @bind="row.Holidays" placeholder="2026-09-18;2026-10-12" /></td><td>@if (canEdit) { <button type="button" class="danger" @onclick="() => intervals.Remove(row)">移除</button> }</td></tr>
+        <tr><td><input type="date" @bind="row.Start" /></td><td><input type="date" @bind="row.End" /></td><td><input class="wide-input" @bind="row.Holidays" /></td><td>@if (canEdit) { <button type="button" class="danger" @onclick="() => intervals.Remove(row)">移除</button> }</td></tr>
     }
     </tbody></table></div>
 </section>
 <section class="card">
-    <div class="section-heading"><h2>非常態班型</h2>@if (canEdit) { <button type="button" @onclick="AddShift">新增班型</button> }</div>
+    <div class="section-heading"><h2>非常態班型</h2>@if (canEdit) { <div class="configuration-actions"><a class="button-link" href="/download/templates/m/non-standard-shifts.csv">下載範本</a><label class="button-link file-upload-button">選擇 CSV<InputFile OnChange="UploadShiftsAsync" accept=".csv,text/csv" /></label><button type="button" @onclick="AddShift">新增班型</button><button type="button" class="primary" @onclick="SaveShiftsAsync">儲存設定</button></div> }</div>
+    <p class="format-help">UTF-8（可含 BOM）、表頭「班型,時間,代碼」，時間使用 HH:mm~HH:mm，最大 5 MB；上傳會取代下方尚未儲存的班型。</p>
     <div class="table-scroll"><table><thead><tr><th>名稱</th><th>代碼</th><th>開始</th><th>結束</th><th></th></tr></thead><tbody>
     @foreach (var row in shifts)
     {
@@ -34,7 +28,6 @@ else
     }
     </tbody></table></div>
 </section>
-@if (canEdit) { <button type="button" class="primary" @onclick="SaveAsync">建立新設定版本</button> }
 
 @code {
     private ConfigurationRevisionDto? current;
@@ -61,20 +54,52 @@ else
     }
     private void AddShift() => shifts.Add(new() { Start = new(8, 0), End = new(16, 0) });
 
-    private async Task SaveAsync()
+    private async Task UploadIntervalsAsync(InputFileChangeEventArgs args) => await RunUploadAsync(async () =>
+    {
+        await using var stream = args.File.OpenReadStream(5 * 1024 * 1024);
+        var parsed = await Service.ParseRestIntervalsCsvAsync(stream, await CurrentActor.GetAsync());
+        intervals.Clear();
+        intervals.AddRange(parsed.Select(x => new IntervalRow { Start = x.Start, End = x.End, Holidays = string.Join(';', x.NationalHolidays.Select(d => d.ToString("yyyy-MM-dd"))) }));
+    }, "八週區間 CSV 已載入，請確認後儲存設定。");
+
+    private async Task UploadShiftsAsync(InputFileChangeEventArgs args) => await RunUploadAsync(async () =>
+    {
+        await using var stream = args.File.OpenReadStream(5 * 1024 * 1024);
+        var parsed = await Service.ParseNonStandardShiftsCsvAsync(stream, await CurrentActor.GetAsync());
+        shifts.Clear();
+        shifts.AddRange(parsed.Select(x => new ShiftRow { Name = x.Name ?? "", Code = x.Code, Start = x.StartTime, End = x.EndTime }));
+    }, "非常態班型 CSV 已載入，請確認後儲存設定。");
+
+    private async Task RunUploadAsync(Func<Task> action, string success)
+    {
+        try { await action(); messageClass = "success"; message = success; }
+        catch (Exception exception) { messageClass = "error"; message = exception.Message; }
+    }
+
+    private async Task SaveIntervalsAsync()
     {
         try
         {
             var intervalDtos = intervals.Select(row => new RestIntervalDto(row.Start, row.End,
                 string.IsNullOrWhiteSpace(row.Holidays) ? [] : row.Holidays.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Select(value => DateOnly.ParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture)).ToArray())).ToArray();
-            var shiftDtos = shifts.Select(row => new NonStandardShiftDto(string.IsNullOrWhiteSpace(row.Name) ? null : row.Name, row.Code, row.Start, row.End)).ToArray();
-            current = await Service.CreateRevisionAsync(intervalDtos, shiftDtos, current?.CurrentRevisionToken, await CurrentActor.GetAsync());
-            messageClass = "success"; message = $"已建立設定版本 v{current.Version}。";
+            current = await Service.CreateRevisionAsync(intervalDtos, current?.NonStandardShifts ?? [], current?.CurrentRevisionToken, await CurrentActor.GetAsync());
+            messageClass = "success"; message = "八週 16R 區間已儲存。";
         }
         catch (Exception exception) { messageClass = "error"; message = exception.Message; }
     }
 
-    private static string Taipei(DateTimeOffset utc) => utc.ToOffset(TimeSpan.FromHours(8)).ToString("yyyy-MM-dd HH:mm");
+    private async Task SaveShiftsAsync()
+    {
+        try
+        {
+            if (current is null) throw new DomainValidationException("請先儲存八週 16R 區間。");
+            var shiftDtos = shifts.Select(row => new NonStandardShiftDto(string.IsNullOrWhiteSpace(row.Name) ? null : row.Name, row.Code, row.Start, row.End)).ToArray();
+            current = await Service.CreateRevisionAsync(current.RestIntervals, shiftDtos, current.CurrentRevisionToken, await CurrentActor.GetAsync());
+            messageClass = "success"; message = "非常態班型已儲存。";
+        }
+        catch (Exception exception) { messageClass = "error"; message = exception.Message; }
+    }
+
     private sealed class IntervalRow { public DateOnly Start { get; set; } public DateOnly End { get; set; } public string Holidays { get; set; } = ""; }
     private sealed class ShiftRow { public string Name { get; set; } = ""; public string Code { get; set; } = ""; public TimeOnly Start { get; set; } public TimeOnly End { get; set; } }
 }

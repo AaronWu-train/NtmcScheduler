@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using NtmcScheduler.Contracts;
+using NtmcScheduler.Infrastructure.Csv;
 using NtmcScheduler.Infrastructure.Data;
 
 namespace NtmcScheduler.Infrastructure.Services;
@@ -26,6 +27,20 @@ public sealed class CommonConfigurationService(NtmcDbContext db) : ICommonConfig
         return revision is null ? null : ServiceSupport.ToDto(revision);
     }
 
+    public async Task<IReadOnlyList<RestIntervalDto>> ParseRestIntervalsCsvAsync(Stream csv, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        RequireEditor(actor);
+        var intervals = await UploadFile.ParseAsync(csv, ScheduleCsv.ReadRestIntervals, cancellationToken);
+        return intervals.Select(x => new RestIntervalDto(x.Start, x.End, x.NationalHolidays.Order().ToArray())).ToArray();
+    }
+
+    public async Task<IReadOnlyList<NonStandardShiftDto>> ParseNonStandardShiftsCsvAsync(Stream csv, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        RequireEditor(actor);
+        var shifts = await UploadFile.ParseAsync(csv, ScheduleCsv.ReadNonStandardShifts, cancellationToken);
+        return shifts.Shifts.Select(x => new NonStandardShiftDto(x.Name, x.Code, x.StartTime, x.EndTime)).ToArray();
+    }
+
     public async Task<ConfigurationRevisionDto> CreateRevisionAsync(
         IReadOnlyList<RestIntervalDto> intervals,
         IReadOnlyList<NonStandardShiftDto> shifts,
@@ -33,9 +48,7 @@ public sealed class CommonConfigurationService(NtmcDbContext db) : ICommonConfig
         ActorContext actor,
         CancellationToken cancellationToken = default)
     {
-        ServiceSupport.RequireViewer(actor);
-        if (!actor.IsAdministrator && actor.EditableWorkspaces.Count == 0)
-            throw new ForbiddenOperationException("只有工作區編輯者可修改共同設定。");
+        RequireEditor(actor);
         Validate(intervals, shifts);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var current = await db.CurrentConfigurations.SingleOrDefaultAsync(x => x.Id == 1, cancellationToken);
@@ -94,5 +107,12 @@ public sealed class CommonConfigurationService(NtmcDbContext db) : ICommonConfig
                 !string.IsNullOrWhiteSpace(shift.Name) && !tokens.Add(shift.Name.Trim()))
                 throw new DomainValidationException("非常態班型名稱與代碼必填／唯一，且不可互相重複。");
         }
+    }
+
+    private static void RequireEditor(ActorContext actor)
+    {
+        ServiceSupport.RequireViewer(actor);
+        if (!actor.IsAdministrator && actor.EditableWorkspaces.Count == 0)
+            throw new ForbiddenOperationException("只有工作區編輯者可修改共同設定。");
     }
 }

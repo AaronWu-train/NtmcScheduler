@@ -12,6 +12,8 @@ public interface ICommonConfigurationService
 {
     Task<ConfigurationRevisionDto?> GetCurrentAsync(ActorContext actor, CancellationToken cancellationToken = default);
     Task<ConfigurationRevisionDto?> GetRevisionAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<RestIntervalDto>> ParseRestIntervalsCsvAsync(Stream csv, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<NonStandardShiftDto>> ParseNonStandardShiftsCsvAsync(Stream csv, ActorContext actor, CancellationToken cancellationToken = default);
     Task<ConfigurationRevisionDto> CreateRevisionAsync(IReadOnlyList<RestIntervalDto> intervals, IReadOnlyList<NonStandardShiftDto> shifts, Guid? currentRevisionToken, ActorContext actor, CancellationToken cancellationToken = default);
 }
 

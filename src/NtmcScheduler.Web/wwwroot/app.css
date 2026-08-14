@@ -46,6 +46,7 @@ button.danger { color: #9e1c1c; border-color: #c45a5a; }
 .section-heading, .toolbar, .legend, .filters { display: flex; align-items: center; flex-wrap: wrap; gap: .7rem; }
 .section-heading { justify-content: space-between; }
 .section-heading h2 { margin: 0; }
+.configuration-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: .7rem; }
 .toolbar { margin: .75rem 0; }
 .upload-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 1rem; }
 .upload-grid h2 { font-size: 1rem; margin: 0; }
