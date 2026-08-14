@@ -50,7 +50,6 @@ public sealed record EmployeeDto(
     string Affiliation,
     DateOnly? EmploymentStartDate,
     int? Ability,
-    bool IsArchived,
     Guid RevisionToken);
 
 public sealed record SaveEmployeeCommand(

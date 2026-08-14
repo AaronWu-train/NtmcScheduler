@@ -3,14 +3,26 @@
 @attribute [Authorize]
 @inject IEmployeeService Service
 @inject CurrentActorService CurrentActor
+@inject IJSRuntime JS
 
 <PageTitle>@workspaceCode 員工列表</PageTitle>
-<div class="page-title"><div><h1>@workspaceCode 員工列表</h1><p>維護建立新月份 Demand 時使用的人員主檔。</p></div><PageHelp Title="員工列表說明"><p>員工主檔只會複製到之後新建的月份；修改不會回寫既有 Demand 或班表。封存不會刪除歷史。M 的所屬為 LB01–LB12；T 的所屬為專業分組，能力必須為 1–5。</p></PageHelp></div>
+<div class="page-title"><div><h1>@workspaceCode 員工列表</h1><p>維護建立新月份 Demand 時使用的人員主檔。</p></div><PageHelp Title="員工列表說明"><p>員工主檔只會複製到之後新建的月份；修改或刪除不會回寫既有 Demand 或班表。刪除後可用相同 ID 重新建立回任人員。M 的所屬為 LB01–LB12；T 的所屬為專業分組，能力必須為 1–5。</p></PageHelp></div>
 @if (message is not null) { <p class="alert @messageClass" role="status">@message</p> }
 @if (canEdit)
 {
-    <section class="card"><h2>匯入員工 CSV</h2><p class="format-help">UTF-8（可含 BOM）、最大 5 MB。M 固定表頭：ID、姓名、所屬車站、到職日期；T 固定表頭：ID、姓名、專業分組、到職日期、能力。既有員工的到職日期可留空；有填寫時使用 yyyy-MM-dd。匯入會新增或更新，未出現的既有員工不會封存，已封存 ID 不會自動恢復。</p><a class="button-link" href="/download/templates/@Workspace.ToLowerInvariant()/employees.csv">下載範本</a> <InputFile OnChange="PreviewImportAsync" accept=".csv,text/csv" /></section>
-    @if (importPreview is not null)
+    @if (importPreview is null)
+    {
+        <section class="card">
+            <h2>@workspaceCode 員工 CSV 匯入</h2>
+            <p class="format-help"><strong>固定表頭：</strong>@EmployeeCsvColumns</p>
+            <p class="format-help">UTF-8（可含 BOM），最大 5 MB。到職日期可留空；有填寫時使用 yyyy-MM-dd。匯入會新增或更新員工，未出現的既有員工不會刪除。</p>
+            <div class="toolbar">
+                <a class="button-link" href="/download/templates/@Workspace.ToLowerInvariant()/employees.csv">下載 @workspaceCode 範本</a>
+                <label class="button-link primary file-upload-button">上傳 CSV<InputFile OnChange="PreviewImportAsync" accept=".csv,text/csv" aria-label="上傳員工 CSV" /></label>
+            </div>
+        </section>
+    }
+    else
     {
         <section class="card"><h2>匯入預覽</h2>@foreach (var error in importPreview.Errors) { <p class="error-text">@error</p> }@foreach (var difference in importPreview.Differences) { <p>@difference</p> }@if (importPreview.IsValid) { <button class="primary" @onclick="ConfirmImportAsync">確認匯入</button> } <button @onclick="CancelImport">取消</button></section>
     }
@@ -25,10 +37,17 @@
         @if (form.Id is not null) { <button type="button" @onclick="ClearForm">取消編輯</button> }
     </EditForm>
 }
-<div class="table-scroll"><table><thead><tr><th>ID</th><th>姓名</th><th>所屬</th><th>到職日期</th>@if (workspaceCode == WorkspaceCode.T) { <th>能力</th> }<th>操作</th></tr></thead><tbody>
-@foreach (var employee in employees)
+<div class="table-scroll employee-table"><table><thead><tr>
+    <th class="sortable" aria-sort='@AriaSort("id")'><button class="sort-button" @onclick='() => SortBy("id")'><span>ID</span><span class="sort-indicator" aria-hidden="true"></span></button></th>
+    <th class="sortable" aria-sort='@AriaSort("name")'><button class="sort-button" @onclick='() => SortBy("name")'><span>姓名</span><span class="sort-indicator" aria-hidden="true"></span></button></th>
+    <th class="sortable" aria-sort='@AriaSort("affiliation")'><button class="sort-button" @onclick='() => SortBy("affiliation")'><span>所屬</span><span class="sort-indicator" aria-hidden="true"></span></button></th>
+    <th class="sortable" aria-sort='@AriaSort("start")'><button class="sort-button" @onclick='() => SortBy("start")'><span>到職日期</span><span class="sort-indicator" aria-hidden="true"></span></button></th>
+    @if (workspaceCode == WorkspaceCode.T) { <th class="sortable" aria-sort='@AriaSort("ability")'><button class="sort-button" @onclick='() => SortBy("ability")'><span>能力</span><span class="sort-indicator" aria-hidden="true"></span></button></th> }
+    <th>操作</th>
+</tr></thead><tbody>
+@foreach (var employee in SortedEmployees())
 {
-    <tr><td>@employee.EmployeeCode</td><td>@employee.Name</td><td>@employee.Affiliation</td><td>@employee.EmploymentStartDate?.ToString("yyyy-MM-dd")</td>@if (workspaceCode == WorkspaceCode.T) { <td>@employee.Ability</td> }<td>@if (canEdit) { <button @onclick="() => Edit(employee)">編輯</button> <button class="danger" @onclick="() => ArchiveAsync(employee)">封存</button> }</td></tr>
+    <tr><td>@employee.EmployeeCode</td><td>@employee.Name</td><td>@employee.Affiliation</td><td>@employee.EmploymentStartDate?.ToString("yyyy-MM-dd")</td>@if (workspaceCode == WorkspaceCode.T) { <td>@employee.Ability</td> }<td>@if (canEdit) { <button @onclick="() => Edit(employee)">編輯</button> <button class="danger" @onclick="() => DeleteAsync(employee)">刪除</button> }</td></tr>
 }
 </tbody></table></div>
 
@@ -40,8 +59,14 @@
     private EmployeeForm form = new();
     private string? message;
     private string messageClass = "success";
+    private static readonly StringComparer SortComparer = StringComparer.Create(CultureInfo.GetCultureInfo("zh-TW"), false);
+    private string sortColumn = "affiliation";
+    private bool sortDescending;
     private byte[]? pendingImport;
     private EmployeeImportPreviewDto? importPreview;
+    private string EmployeeCsvColumns => workspaceCode == WorkspaceCode.M
+        ? "ID、姓名、所屬車站、到職日期"
+        : "ID、姓名、專業分組、到職日期、能力";
 
     protected override async Task OnParametersSetAsync()
     {
@@ -51,6 +76,29 @@
         await ReloadAsync();
     }
     private async Task ReloadAsync() => employees = await Service.ListAsync(workspaceCode, await CurrentActor.GetAsync());
+    private IEnumerable<EmployeeDto> SortedEmployees()
+    {
+        Func<EmployeeDto, string> key = sortColumn switch
+        {
+            "name" => employee => employee.Name,
+            "affiliation" => employee => employee.Affiliation,
+            "start" => employee => employee.EmploymentStartDate?.ToString("yyyyMMdd", CultureInfo.InvariantCulture) ?? "",
+            "ability" => employee => employee.Ability?.ToString("D2", CultureInfo.InvariantCulture) ?? "",
+            _ => employee => employee.EmployeeCode
+        };
+        var sorted = sortDescending
+            ? employees.OrderByDescending(key, SortComparer)
+            : employees.OrderBy(key, SortComparer);
+        return sortDescending
+            ? sorted.ThenByDescending(employee => employee.EmployeeCode, SortComparer)
+            : sorted.ThenBy(employee => employee.EmployeeCode, SortComparer);
+    }
+    private void SortBy(string column)
+    {
+        if (sortColumn == column) sortDescending = !sortDescending;
+        else { sortColumn = column; sortDescending = false; }
+    }
+    private string? AriaSort(string column) => sortColumn == column ? sortDescending ? "descending" : "ascending" : null;
     private void Edit(EmployeeDto employee) => form = new()
     {
         Id = employee.Id, RevisionToken = employee.RevisionToken, EmployeeCode = employee.EmployeeCode, Name = employee.Name,
@@ -63,10 +111,16 @@
             workspaceCode == WorkspaceCode.T ? form.Ability : null, form.RevisionToken), await CurrentActor.GetAsync());
         ClearForm(); await ReloadAsync();
     }, "員工資料已儲存。");
-    private Task ArchiveAsync(EmployeeDto employee) => RunAsync(async () =>
+    private async Task DeleteAsync(EmployeeDto employee)
     {
-        await Service.ArchiveAsync(employee.Id, employee.RevisionToken, await CurrentActor.GetAsync()); await ReloadAsync();
-    }, "員工已封存，歷史資料仍保留。");
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            $"確定要刪除員工「{employee.EmployeeCode} {employee.Name}」嗎？\n\n刪除後無法復原，但既有 Demand 與班表不受影響；同一人回任時可用相同 ID 重新建立。");
+        if (!confirmed) return;
+        await RunAsync(async () =>
+        {
+            await Service.DeleteAsync(employee.Id, employee.RevisionToken, await CurrentActor.GetAsync()); await ReloadAsync();
+        }, "員工已刪除；既有 Demand、班表與稽核紀錄仍保留。");
+    }
     private Task PreviewImportAsync(InputFileChangeEventArgs args) => RunAsync(async () =>
     {
         await using var stream = args.File.OpenReadStream(5 * 1024 * 1024);

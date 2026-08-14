@@ -10,13 +10,13 @@ namespace NtmScheduler.Infrastructure.Services;
 
 public sealed class EmployeeService(NtmDbContext db) : IEmployeeService
 {
-    public async Task<IReadOnlyList<EmployeeDto>> ListAsync(WorkspaceCode workspace, ActorContext actor, bool includeArchived = false, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<EmployeeDto>> ListAsync(WorkspaceCode workspace, ActorContext actor, CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireViewer(actor);
         return await db.Employees.AsNoTracking()
-            .Where(x => x.Workspace == workspace && (includeArchived || !x.IsArchived))
+            .Where(x => x.Workspace == workspace)
             .OrderBy(x => x.EmployeeCode)
-            .Select(x => new EmployeeDto(x.Id, x.Workspace, x.EmployeeCode, x.Name, x.Affiliation, x.EmploymentStartDate, x.Ability, x.IsArchived, x.RevisionToken))
+            .Select(x => new EmployeeDto(x.Id, x.Workspace, x.EmployeeCode, x.Name, x.Affiliation, x.EmploymentStartDate, x.Ability, x.RevisionToken))
             .ToListAsync(cancellationToken);
     }
 
@@ -53,18 +53,28 @@ public sealed class EmployeeService(NtmDbContext db) : IEmployeeService
         return ServiceSupport.ToDto(employee);
     }
 
-    public async Task ArchiveAsync(Guid id, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
+    public async Task DeleteAsync(Guid id, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
     {
         var employee = await db.Employees.SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw new DomainValidationException("找不到員工。");
         ServiceSupport.RequireEditor(actor, employee.Workspace);
         if (employee.RevisionToken != revisionToken) throw new ConcurrencyConflictException("員工資料已被其他人修改，請重新整理。");
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        var before = ServiceSupport.ToDto(employee);
-        employee.IsArchived = true;
-        employee.UpdatedAtUtc = DateTimeOffset.UtcNow;
-        employee.RevisionToken = Guid.NewGuid();
-        ServiceSupport.AddAudit(db, actor, "EmployeeArchived", employee.Workspace, "Employee", employee.Id, before, ServiceSupport.ToDto(employee));
+        var before = new
+        {
+            employee.Id,
+            employee.Workspace,
+            employee.EmployeeCode,
+            employee.Name,
+            employee.Affiliation,
+            employee.EmploymentStartDate,
+            employee.Ability,
+            employee.CreatedAtUtc,
+            employee.UpdatedAtUtc,
+            employee.RevisionToken
+        };
+        db.Employees.Remove(employee);
+        ServiceSupport.AddAudit(db, actor, "EmployeeDeleted", employee.Workspace, "Employee", employee.Id, before, null);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
@@ -80,12 +90,11 @@ public sealed class EmployeeService(NtmDbContext db) : IEmployeeService
         {
             var records = await UploadFile.ParseAsync(csv, path => ParseImport(path, workspace), cancellationToken);
             var existing = await db.Employees.AsNoTracking().Where(x => x.Workspace == workspace).OrderBy(x => x.EmployeeCode).ToListAsync(cancellationToken);
-            ValidateArchivedConflicts(records, existing);
-            var existingByCode = existing.Where(x => !x.IsArchived).ToDictionary(x => x.EmployeeCode, StringComparer.Ordinal);
+            var existingByCode = existing.ToDictionary(x => x.EmployeeCode, StringComparer.Ordinal);
             var differences = records.Select(record => existingByCode.TryGetValue(record.EmployeeCode, out var employee)
                 ? Same(record, employee) ? $"不變：{record.EmployeeCode} {record.Name}" : $"更新：{record.EmployeeCode} {record.Name}"
                 : $"新增：{record.EmployeeCode} {record.Name}").ToArray();
-            return new(true, [], [.. differences, "CSV 未出現的既有員工不會被封存。"], SnapshotToken(existing));
+            return new(true, [], [.. differences, "CSV 未出現的既有員工不會被刪除。"], SnapshotToken(existing));
         }
         catch (Exception exception) when (exception is DomainValidationException or MalformedLineException or IOException)
         {
@@ -106,8 +115,7 @@ public sealed class EmployeeService(NtmDbContext db) : IEmployeeService
         var existing = await db.Employees.Where(x => x.Workspace == workspace).OrderBy(x => x.EmployeeCode).ToListAsync(cancellationToken);
         if (revisionToken != SnapshotToken(existing))
             throw new ConcurrencyConflictException("員工清單在預覽後已被修改，請重新預覽。");
-        ValidateArchivedConflicts(records, existing);
-        var existingByCode = existing.Where(x => !x.IsArchived).ToDictionary(x => x.EmployeeCode, StringComparer.Ordinal);
+        var existingByCode = existing.ToDictionary(x => x.EmployeeCode, StringComparer.Ordinal);
         foreach (var record in records)
         {
             if (!existingByCode.TryGetValue(record.EmployeeCode, out var employee))
@@ -123,7 +131,7 @@ public sealed class EmployeeService(NtmDbContext db) : IEmployeeService
             employee.RevisionToken = Guid.NewGuid();
         }
         ServiceSupport.AddAudit(db, actor, "EmployeeCsvImported", workspace, "EmployeeList", workspace,
-            new { Existing = existing.Count(x => !x.IsArchived) }, new { Imported = records.Count });
+            new { Existing = existing.Count }, new { Imported = records.Count });
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
@@ -186,19 +194,12 @@ public sealed class EmployeeService(NtmDbContext db) : IEmployeeService
         return records;
     }
 
-    private static void ValidateArchivedConflicts(IReadOnlyList<EmployeeImportRecord> records, IReadOnlyList<Employee> employees)
-    {
-        var archived = employees.Where(x => x.IsArchived).Select(x => x.EmployeeCode).ToHashSet(StringComparer.Ordinal);
-        var conflicts = records.Where(x => archived.Contains(x.EmployeeCode)).Select(x => x.EmployeeCode).ToArray();
-        if (conflicts.Length > 0) throw new DomainValidationException($"已封存員工不可由匯入自動恢復：{string.Join('、', conflicts)}。");
-    }
-
     private static bool Same(EmployeeImportRecord record, Employee employee) => record.Name == employee.Name &&
         record.Affiliation == employee.Affiliation && record.EmploymentStartDate == employee.EmploymentStartDate && record.Ability == employee.Ability;
 
     private static Guid SnapshotToken(IReadOnlyList<Employee> employees)
     {
-        var text = string.Join('\n', employees.OrderBy(x => x.EmployeeCode).Select(x => $"{x.Id:N}|{x.RevisionToken:N}|{x.IsArchived}"));
+        var text = string.Join('\n', employees.OrderBy(x => x.EmployeeCode).Select(x => $"{x.Id:N}|{x.RevisionToken:N}"));
         return new Guid(SHA256.HashData(Encoding.UTF8.GetBytes(text)).AsSpan(0, 16));
     }
 

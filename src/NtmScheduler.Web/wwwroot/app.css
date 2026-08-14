@@ -50,6 +50,9 @@ button.danger { color: #9e1c1c; border-color: #c45a5a; }
 .upload-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 1rem; }
 .upload-grid h2 { font-size: 1rem; margin: 0; }
 .format-help { font-size: .9rem; color: #526175; }
+.file-upload-button { position: relative; overflow: hidden; }
+.file-upload-button input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.file-upload-button:has(input:focus-visible) { outline: 3px solid #ffbf47; outline-offset: 2px; }
 .wide-input { min-width: 22rem; }
 
 .alert { padding: .7rem 1rem; border-radius: .45rem; border: 1px solid; }
@@ -73,6 +76,14 @@ button.danger { color: #9e1c1c; border-color: #c45a5a; }
 .table-scroll { overflow: auto; max-width: 100%; background: #fff; border: 1px solid #d6dde6; }
 table { border-collapse: collapse; width: max-content; min-width: 100%; }
 th, td { border: 1px solid #d6dde6; padding: .4rem .5rem; text-align: center; white-space: nowrap; }
+.employee-table td { padding-block: .15rem; }
+.employee-table td button { padding-block: .25rem; }
+.employee-table th.sortable { padding: 0; }
+.employee-table .sort-button { display: grid; grid-template-columns: 1fr auto; align-items: center; width: 100%; border: 0; border-radius: 0; background: transparent; color: inherit; padding: .4rem .5rem; font-weight: inherit; }
+.employee-table .sort-button:hover { background: #dce5f0; }
+.employee-table .sort-indicator { width: .45rem; height: .45rem; border-right: 2px solid #526174; border-bottom: 2px solid #526174; opacity: 0; }
+.employee-table th[aria-sort="ascending"] .sort-indicator { opacity: 1; transform: rotate(225deg) translate(-1px, -1px); }
+.employee-table th[aria-sort="descending"] .sort-indicator { opacity: 1; transform: rotate(45deg) translate(-1px, -1px); }
 thead th { background: #e9eef5; position: sticky; top: 0; z-index: 3; }
 .schedule-grid { max-height: 70vh; }
 .schedule-grid .sticky-col { position: sticky; left: 0; z-index: 4; background: #f8fafc; text-align: left; }

@@ -27,7 +27,6 @@ public sealed class Employee
     public string Affiliation { get; set; } = "";
     public DateOnly? EmploymentStartDate { get; set; }
     public int? Ability { get; set; }
-    public bool IsArchived { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public Guid RevisionToken { get; set; } = Guid.NewGuid();

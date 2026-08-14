@@ -10,7 +10,7 @@
 ## 共同設定、人員與 Demand
 
 - 共同設定各區間恰為 56 日且連續；假日合法，儲存建立不可變版本，current pointer 使用 revision token，舊 Demand／班表仍可讀取原快照。
-- M/T 員工主檔可新增、修改與封存；M 僅接受 LB01–LB12，T 能力為 1–5，既有月份不因主檔異動而改變。
+- M/T 員工主檔可新增、修改與刪除；刪除後可用相同 ID 重新建立回任人員，刪除前內容保存在 AuditLog，既有月份不因主檔異動而改變。M 僅接受 LB01–LB12，T 能力為 1–5。
 - 每單位月份僅一份 Demand 草稿；重開仍保留，所有寫入以 revision token 拒絕陳舊更新。
 - 建立 Demand 自動使用上月 `★`；不存在時求解前必須成功上傳 previous schedule。求解建立 immutable JSON input snapshot、hash、seed、程式版本與人員月快照。
 - 背景佇列一次只執行一個 solver；重啟將 Queued／Running 安全回復為 Queued，終態正確區分 Optimal、TimeLimit、Infeasible、InvalidInput、Failed。
@@ -25,7 +25,7 @@
 
 ## 稽核、Log 與部署
 
-- 登入、權限、設定、人員、Demand、匯入、求解、逐格修改、標星、封存與下載均寫入 AuditLog；成功資料異動與 AuditLog 同 transaction。
+- 登入、權限、設定、人員新增／修改／刪除、Demand、匯入、求解、逐格修改、標星、班表封存與下載均寫入 AuditLog；成功資料異動與 AuditLog 同 transaction。
 - AuditLog 有 UTC、actor snapshot、before/after、IP、User-Agent、CorrelationId，且不含密碼、Cookie、token、連線字串或 CSV 原文；應用程式沒有更新／刪除 AuditLog 的路徑。
 - 所有路由頁面右上有鍵盤可操作 `?`；上傳前顯示 UTF-8/BOM、5 MB、固定表頭、日期時間、合法值及僅接受 CSV。
 - SQLite 與 SQL Server 都能產生 migration SQL；Linux 測試環境需另完成 migration、備份／還原、持久化且加密的 Data Protection key ring、反向代理可信清單與一年 Log 保留驗收。

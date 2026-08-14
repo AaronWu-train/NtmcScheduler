@@ -25,7 +25,7 @@ public sealed class DemandService(NtmDbContext db) : IDemandService
             throw new DomainValidationException("這個月份已經有 Demand。");
         var current = await db.CurrentConfigurations.AsNoTracking().SingleOrDefaultAsync(x => x.Id == 1, cancellationToken)
             ?? throw new DomainValidationException("請先建立八週區間與共同設定。");
-        var employees = await db.Employees.AsNoTracking().Where(x => x.Workspace == workspace && !x.IsArchived).OrderBy(x => x.EmployeeCode).ToListAsync(cancellationToken);
+        var employees = await db.Employees.AsNoTracking().Where(x => x.Workspace == workspace).OrderBy(x => x.EmployeeCode).ToListAsync(cancellationToken);
         if (employees.Count == 0) throw new DomainValidationException("請先建立員工資料。");
         var previousMonth = month.AddMonths(-1);
         var adopted = await db.AdoptedSchedules.AsNoTracking().SingleOrDefaultAsync(x => x.Workspace == workspace && x.Month == previousMonth, cancellationToken);

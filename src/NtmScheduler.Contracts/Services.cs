@@ -17,9 +17,9 @@ public interface ICommonConfigurationService
 
 public interface IEmployeeService
 {
-    Task<IReadOnlyList<EmployeeDto>> ListAsync(WorkspaceCode workspace, ActorContext actor, bool includeArchived = false, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<EmployeeDto>> ListAsync(WorkspaceCode workspace, ActorContext actor, CancellationToken cancellationToken = default);
     Task<EmployeeDto> SaveAsync(SaveEmployeeCommand command, ActorContext actor, CancellationToken cancellationToken = default);
-    Task ArchiveAsync(Guid id, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
+    Task DeleteAsync(Guid id, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task<EmployeeImportPreviewDto> PreviewImportAsync(WorkspaceCode workspace, Stream csv, ActorContext actor, CancellationToken cancellationToken = default);
     Task ImportAsync(WorkspaceCode workspace, Stream csv, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
 }

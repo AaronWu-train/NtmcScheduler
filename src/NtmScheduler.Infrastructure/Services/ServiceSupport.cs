@@ -68,7 +68,6 @@ internal static class ServiceSupport
         employee.Affiliation,
         employee.EmploymentStartDate,
         employee.Ability,
-        employee.IsArchived,
         employee.RevisionToken);
 
     public static DemandDraftDto ToDto(DemandDraft demand) => new(

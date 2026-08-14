@@ -44,7 +44,7 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 
 | 實體 | 承載資訊 |
 |---|---|
-| `Employee` | 員工編號、姓名、單位（M/T）、M 所屬站、T 專業與 ability、封存及 revision token |
+| `Employee` | 目前員工主檔：員工編號、姓名、單位（M/T）、M 所屬站、T 專業與 ability、revision token；刪除前內容保存在 AuditLog，既有月份使用獨立快照 |
 | `ConfigurationRevision` | 不可變的 56 日區間、國定假日與非常態班型版本；`CurrentConfiguration` 指向目前版 |
 | `DemandDraft`／`DemandEmployee`／`DemandAssignment` | 每單位每月一份草稿、月份人員快照、T 月班別、期初額度、R\* 與 X |
 | `UploadedPreviousSchedule` | 解析後的上月班表 typed JSON，不保存原始上傳檔 |

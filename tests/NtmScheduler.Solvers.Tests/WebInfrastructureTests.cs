@@ -88,6 +88,31 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
+    public async Task EmployeeDelete_PreservesAuditAndAllowsSameCodeToReturn()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var service = new EmployeeService(database.Context);
+        var actor = Editor(WorkspaceCode.M);
+        var command = new SaveEmployeeCommand(null, WorkspaceCode.M, "M001", "王小明", "LB01", null, null, null);
+        var original = await service.SaveAsync(command, actor);
+        var intervalStart = new DateOnly(2026, 8, 3);
+        await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+            [new RestIntervalDto(intervalStart, intervalStart.AddDays(55), [])], [], null, actor);
+        var demandService = new DemandService(database.Context);
+        var demand = await demandService.CreateAsync(WorkspaceCode.M, new DateOnly(2026, 9, 1), actor);
+
+        await service.DeleteAsync(original.Id, original.RevisionToken, actor);
+        var returned = await service.SaveAsync(command with { Name = "王大明" }, actor);
+
+        Assert.AreNotEqual(original.Id, returned.Id);
+        Assert.AreEqual("王大明", (await service.ListAsync(WorkspaceCode.M, actor)).Single().Name);
+        Assert.AreEqual("王小明", (await demandService.GetAsync(WorkspaceCode.M, demand.Month, actor))!.Employees.Single().Name);
+        var audit = await database.Context.AuditLogs.SingleAsync(x => x.Action == "EmployeeDeleted");
+        StringAssert.Contains(audit.BeforeJson!, "M001");
+        Assert.IsNull(audit.AfterJson);
+    }
+
+    [TestMethod]
     public async Task EmployeeCsvImport_PreviewsThenCommitsAllRows()
     {
         await using var database = await TestDatabase.CreateAsync();

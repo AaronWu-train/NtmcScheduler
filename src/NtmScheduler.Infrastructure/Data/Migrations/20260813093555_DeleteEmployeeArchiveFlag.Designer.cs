@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NtmScheduler.Infrastructure.Data;
 
@@ -10,9 +11,11 @@ using NtmScheduler.Infrastructure.Data;
 namespace NtmScheduler.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(NtmDbContext))]
-    partial class NtmDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260813093555_DeleteEmployeeArchiveFlag")]
+    partial class DeleteEmployeeArchiveFlag
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
@@ -492,10 +495,10 @@ namespace NtmScheduler.Infrastructure.Data.Migrations
                     b.Property<int?>("OpeningSpecialRest")
                         ;
 
-                    b.Property<int>("RequestedLeaveRestCount")
+                    b.Property<string>("PerpetualScheduleId")
                         ;
 
-                    b.Property<string>("PerpetualScheduleId")
+                    b.Property<int>("RequestedLeaveRestCount")
                         ;
 
                     b.HasKey("Id");
@@ -747,10 +750,10 @@ namespace NtmScheduler.Infrastructure.Data.Migrations
                     b.Property<int?>("OpeningSpecialRest")
                         ;
 
-                    b.Property<int>("RequestedLeaveRestCount")
+                    b.Property<string>("PerpetualScheduleId")
                         ;
 
-                    b.Property<string>("PerpetualScheduleId")
+                    b.Property<int>("RequestedLeaveRestCount")
                         ;
 
                     b.Property<Guid>("ScheduleVersionId")
