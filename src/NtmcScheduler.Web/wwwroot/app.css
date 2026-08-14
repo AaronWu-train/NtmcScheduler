@@ -47,6 +47,9 @@ button.danger { color: #9e1c1c; border-color: #c45a5a; }
 .section-heading { justify-content: space-between; }
 .section-heading h2 { margin: 0; }
 .configuration-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: .7rem; }
+.wizard-steps { display: flex; gap: .5rem; overflow-x: auto; padding-block: .25rem; }
+.wizard-steps button { white-space: nowrap; border-radius: 999px; }
+.wizard-steps button.active { background: #1859a9; border-color: #1859a9; color: #fff; }
 .toolbar { margin: .75rem 0; }
 .upload-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 1rem; }
 .upload-grid h2 { font-size: 1rem; margin: 0; }
@@ -79,23 +82,30 @@ table { border-collapse: collapse; width: max-content; min-width: 100%; }
 th, td { border: 1px solid #d6dde6; padding: .4rem .5rem; text-align: center; white-space: nowrap; }
 .employee-table td { padding-block: .15rem; }
 .employee-table td button { padding-block: .25rem; }
-.employee-table th.sortable { padding: 0; }
-.employee-table .sort-button { display: grid; grid-template-columns: 1fr auto; align-items: center; width: 100%; border: 0; border-radius: 0; background: transparent; color: inherit; padding: .4rem .5rem; font-weight: inherit; }
-.employee-table .sort-button:hover { background: #dce5f0; }
-.employee-table .sort-indicator { width: .45rem; height: .45rem; border-right: 2px solid #526174; border-bottom: 2px solid #526174; opacity: 0; }
-.employee-table th[aria-sort="ascending"] .sort-indicator { opacity: 1; transform: rotate(225deg) translate(-1px, -1px); }
-.employee-table th[aria-sort="descending"] .sort-indicator { opacity: 1; transform: rotate(45deg) translate(-1px, -1px); }
+.employee-table th.sortable, .demand-table th.sortable { padding: 0; }
+.employee-table .sort-button, .demand-table .sort-button { display: grid; grid-template-columns: 1fr auto; align-items: center; width: 100%; border: 0; border-radius: 0; background: transparent; color: inherit; padding: .4rem .5rem; font-weight: inherit; }
+.employee-table .sort-button:hover, .demand-table .sort-button:hover { background: #dce5f0; }
+.employee-table .sort-indicator, .demand-table .sort-indicator { width: .45rem; height: .45rem; border-right: 2px solid #526174; border-bottom: 2px solid #526174; opacity: 0; }
+.employee-table th[aria-sort="ascending"] .sort-indicator, .demand-table th[aria-sort="ascending"] .sort-indicator { opacity: 1; transform: rotate(225deg) translate(-1px, -1px); }
+.employee-table th[aria-sort="descending"] .sort-indicator, .demand-table th[aria-sort="descending"] .sort-indicator { opacity: 1; transform: rotate(45deg) translate(-1px, -1px); }
 thead th { background: #e9eef5; position: sticky; top: 0; z-index: 3; }
 .schedule-grid { max-height: 70vh; }
 .schedule-grid .sticky-col { position: sticky; left: 0; z-index: 4; background: #f8fafc; text-align: left; }
 .schedule-grid thead .sticky-col { z-index: 5; background: #e9eef5; }
+.schedule-grid .sticky-id { left: 0; min-width: 9rem; }
+.schedule-grid .sticky-name { left: 9rem; min-width: 7rem; }
+.schedule-grid .sticky-affiliation { left: 16rem; min-width: 5.5rem; }
+.inline-field { min-height: 2.3rem; }
+.number-field { width: 4.5rem; }
+.perpetual-field { width: 7rem; }
+.cell-editor { min-width: 5rem; height: 2.3rem; padding-inline: .35rem; border: 1px solid #77859a; border-radius: .35rem; font-weight: 700; background: #fff; }
 .cell { min-width: 3.2rem; padding: .35rem .25rem; font-weight: 700; border: 1px solid #77859a; }
-.cell.rest { background: #dcefe4; }
-.cell.early { background: #fff2b7; }
-.cell.afternoon { background: #ffd9ad; }
-.cell.night { background: #d8d7f4; }
-.cell.event { background: #cce9f4; }
-.cell.requested { background: #f0e4f6; }
+.cell.rest, .cell-editor.rest { background: #dcefe4; }
+.cell.early, .cell-editor.early { background: #fff2b7; }
+.cell.afternoon, .cell-editor.afternoon { background: #ffd9ad; }
+.cell.night, .cell-editor.night { background: #d8d7f4; }
+.cell.event, .cell-editor.event { background: #cce9f4; }
+.cell.requested, .cell-editor.requested { background: #f0e4f6; }
 .cell.issue-cell-error { box-shadow: inset 0 0 0 3px #c91c1c; color: #760000; }
 .cell.issue-cell-warning { box-shadow: inset 0 0 0 3px #d29a00; color: #573e00; }
 .coverage-row th, .coverage-row td { background: #edf3f8; font-size: .85rem; }
