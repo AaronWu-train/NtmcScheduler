@@ -20,7 +20,18 @@ using NtmcScheduler.Web.Services;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Logging.ClearProviders();
-builder.Logging.AddJsonConsole(options => options.JsonWriterOptions = new JsonWriterOptions { Indented = false });
+if (builder.Environment.IsDevelopment())
+{
+    builder.Logging.AddSimpleConsole(options =>
+    {
+        options.SingleLine = true;
+        options.TimestampFormat = "HH:mm:ss ";
+    });
+}
+else
+{
+    builder.Logging.AddJsonConsole();
+}
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddAntiforgery(options =>
 {
