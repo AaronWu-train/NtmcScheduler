@@ -188,16 +188,22 @@ public sealed class ScheduleService(
         .Include(x => x.Employees).ThenInclude(x => x.Assignments)
         .Include(x => x.ExternalAssignments);
 
-    private static ScheduleDetailDto ToDetail(ScheduleVersion version, bool adopted, IReadOnlyList<ValidationIssue> issues, IReadOnlyList<ScheduleEmployeeStats> stats) => new(
-        ToDto(version, adopted),
-        version.Employees.OrderBy(x => x.EmployeeCode).Select(employee => new ScheduleEmployeeInfoDto(
-            employee.Id, employee.EmployeeCode, employee.Name, employee.Affiliation, employee.Ability, employee.MonthlyShift)).ToArray(),
-        version.Employees.OrderBy(x => x.EmployeeCode).SelectMany(employee => employee.Assignments.OrderBy(x => x.Date).Select(assignment => new ScheduleAssignmentDto(
-            assignment.Id, employee.Id, employee.EmployeeCode, employee.Name, assignment.Date, assignment.Kind, assignment.RequestedRest,
-            assignment.Station, assignment.Shift, assignment.EventStart, assignment.EventEnd, assignment.EventDescription))).ToArray(),
-        version.ExternalAssignments.Select(x => new ExternalAssignmentDto(x.Date, x.Station, x.Shift, x.Count)).ToArray(),
-        stats,
-        issues);
+    private static ScheduleDetailDto ToDetail(ScheduleVersion version, bool adopted, IReadOnlyList<ValidationIssue> issues, IReadOnlyList<ScheduleEmployeeStats> stats)
+    {
+        var schedule = SolverScheduleMapper.ToMonthlySchedule(version);
+        var scheduleEmployees = schedule.Employees.ToDictionary(x => x.EmployeeId, StringComparer.Ordinal);
+        return new(
+            ToDto(version, adopted),
+            version.Employees.OrderBy(x => x.EmployeeCode).Select(employee => new ScheduleEmployeeInfoDto(
+                employee.Id, employee.EmployeeCode, employee.Name, employee.Affiliation, employee.Ability, employee.MonthlyShift,
+                ScheduleCsv.MonthlyRow(schedule, scheduleEmployees[employee.EmployeeCode]))).ToArray(),
+            version.Employees.OrderBy(x => x.EmployeeCode).SelectMany(employee => employee.Assignments.OrderBy(x => x.Date).Select(assignment => new ScheduleAssignmentDto(
+                assignment.Id, employee.Id, employee.EmployeeCode, employee.Name, assignment.Date, assignment.Kind, assignment.RequestedRest,
+                assignment.Station, assignment.Shift, assignment.EventStart, assignment.EventEnd, assignment.EventDescription))).ToArray(),
+            version.ExternalAssignments.Select(x => new ExternalAssignmentDto(x.Date, x.Station, x.Shift, x.Count)).ToArray(),
+            stats,
+            issues);
+    }
 
     private static ScheduleVersionDto ToDto(ScheduleVersion version, bool adopted) => new(
         version.Id, version.Workspace, version.Month, version.Name, version.SourceStatus, adopted, version.IsArchived,

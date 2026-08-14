@@ -1,6 +1,8 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using NtmcScheduler.Contracts;
 using NtmcScheduler.Infrastructure.Data;
+using NtmcScheduler.Solvers;
 
 namespace NtmcScheduler.Infrastructure.Services;
 
@@ -41,6 +43,27 @@ public sealed class ScheduleValidationService(NtmcDbContext db) : IScheduleValid
         ScheduleVersion version,
         CancellationToken cancellationToken)
     {
+        if (version.SourceRunId is { } runId)
+        {
+            var snapshot = await db.ScheduleRuns.AsNoTracking().Where(x => x.Id == runId)
+                .Select(x => x.InputSnapshotJson).SingleOrDefaultAsync(cancellationToken)
+                ?? throw new DomainValidationException("找不到班表版本的求解輸入快照。");
+            var input = JsonSerializer.Deserialize<ScheduleInput>(snapshot, ServiceSupport.JsonOptions)
+                ?? throw new DomainValidationException("班表版本的求解輸入快照無法讀取。");
+            return input.PreviousMonth.Employees.ToDictionary(
+                x => x.EmployeeId,
+                x => x.Assignments.ToDictionary(pair => pair.Key, pair => new ScheduleAssignment
+                {
+                    Date = pair.Key,
+                    Kind = pair.Value.Kind?.ToString() ?? "Unresolved",
+                    RequestedRest = pair.Value.RequestedRest,
+                    Station = pair.Value.Station,
+                    Shift = pair.Value.Shift?.ToString(),
+                    EventStart = pair.Value.EventStart,
+                    EventEnd = pair.Value.EventEnd
+                }),
+                StringComparer.Ordinal);
+        }
         var adopted = await db.AdoptedSchedules.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Workspace == version.Workspace && x.Month == version.Month.AddMonths(-1), cancellationToken);
         if (adopted is null) return [];
@@ -108,7 +131,8 @@ public sealed class ScheduleValidationService(NtmcDbContext db) : IScheduleValid
             {
                 var start = end.AddDays(-6);
                 if (employee.EmploymentStartDate is { } employmentStart && start < employmentStart) continue;
-                if (Enumerable.Range(0, 7).Select(start.AddDays).All(date => cells.GetValueOrDefault(date)?.Kind != "Rest"))
+                var window = Enumerable.Range(0, 7).Select(start.AddDays).ToArray();
+                if (window.All(cells.ContainsKey) && window.All(date => cells[date].Kind != "Rest"))
                     issues.Add(new(ValidationSeverity.Error, "連續七日至少一日一般 R", "這個七日區間沒有一般 R；R1 與 R休不會重置本規則。", employee.EmployeeCode, end));
             }
         }

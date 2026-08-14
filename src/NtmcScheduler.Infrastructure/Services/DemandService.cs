@@ -7,7 +7,9 @@ using NtmcScheduler.Solvers;
 
 namespace NtmcScheduler.Infrastructure.Services;
 
-public sealed class DemandService(NtmcDbContext db) : IDemandService
+public sealed class DemandService(
+    NtmcDbContext db,
+    IScheduleValidationService validation) : IDemandService
 {
     public async Task<IReadOnlyList<DateOnly>> ListMonthsAsync(WorkspaceCode workspace, ActorContext actor, CancellationToken cancellationToken = default)
     {
@@ -234,9 +236,12 @@ public sealed class DemandService(NtmcDbContext db) : IDemandService
             Month = demand.Month.AddMonths(-1),
             ParsedScheduleJson = JsonSerializer.Serialize(schedule, ServiceSupport.JsonOptions)
         };
+        var version = SolverScheduleMapper.ToImportedVersion(
+            schedule, demand.Workspace, demand.ConfigurationRevisionId, actor.UserId);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var previousUpload = demand.UploadedPreviousSchedule;
         db.UploadedPreviousSchedules.Add(upload);
+        db.ScheduleVersions.Add(version);
         demand.UploadedPreviousSchedule = upload;
         demand.PreviousSource = PreviousScheduleSource.Upload;
         demand.PreviousAdoptedScheduleVersionId = null;
@@ -259,7 +264,13 @@ public sealed class DemandService(NtmcDbContext db) : IDemandService
         Touch(demand, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "PreviousScheduleUploaded", demand.Workspace, "DemandDraft", demand.Id, null,
             new { upload.Id, upload.Month, EmployeeCount = schedule.Employees.Count });
+        ServiceSupport.AddAudit(db, actor, "ScheduleVersionImported", demand.Workspace, "ScheduleVersion", version.Id, null,
+            new { version.Month, version.Name, EmployeeCount = schedule.Employees.Count });
         if (previousUpload is not null) db.UploadedPreviousSchedules.Remove(previousUpload);
+        await db.SaveChangesAsync(cancellationToken);
+        var checkedSchedule = await validation.ValidateAsync(version.Id, actor, cancellationToken);
+        version.HasErrors = checkedSchedule.Issues.Any(x => x.Severity == ValidationSeverity.Error);
+        version.WarningCount = checkedSchedule.Issues.Count(x => x.Severity == ValidationSeverity.Warning);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }

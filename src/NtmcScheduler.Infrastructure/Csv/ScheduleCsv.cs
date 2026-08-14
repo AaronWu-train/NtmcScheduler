@@ -24,6 +24,7 @@ public static partial class ScheduleCsv
     private static readonly string[] Headers = [.. LegacyHeaders, "萬年班表"];
 
     public static string MonthlyHeader => Join(Headers);
+    public static IReadOnlyList<string> MonthlyHeaders { get; } = Array.AsReadOnly(Headers);
     public static string MPerpetualHeader => Join(["萬年班表", .. Enumerable.Range(1, 56).Select(day => day.ToString(CultureInfo.InvariantCulture))]);
 
     private static readonly TimeSpan TaipeiOffset = TimeSpan.FromHours(8);
@@ -54,32 +55,35 @@ public static partial class ScheduleCsv
     {
         var lines = new List<string> { Join(Headers) };
         foreach (var employee in schedule.Employees)
-        {
-            var values = new List<string>
-            {
-                employee.EmployeeId,
-                employee.Name,
-                employee.Affiliation,
-                employee.EmploymentStartDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
-                employee.Ability?.ToString(CultureInfo.InvariantCulture) ?? "",
-                ShiftText(employee.MonthlyShift),
-                employee.OpeningUsage?.Rest.ToString(CultureInfo.InvariantCulture) ?? "",
-                employee.OpeningUsage?.SpecialRest.ToString(CultureInfo.InvariantCulture) ?? ""
-            };
-            values.AddRange(Enumerable.Range(1, 31).Select(day => CellText(schedule, employee, day)));
-            var monthlyUsage = employee.ClosingUsage is null ? null : CountRestUsage(employee.Assignments.Values);
-            values.Add(monthlyUsage?.Rest.ToString(CultureInfo.InvariantCulture) ?? "");
-            values.Add(monthlyUsage?.SpecialRest.ToString(CultureInfo.InvariantCulture) ?? "");
-            values.Add((employee.ClosingUsage is null
-                ? employee.RequestedLeaveRestCount
-                : employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.LeaveRest))?.ToString(CultureInfo.InvariantCulture) ?? "");
-            values.Add(employee.ClosingUsage?.Rest.ToString(CultureInfo.InvariantCulture) ?? "");
-            values.Add(employee.ClosingUsage?.SpecialRest.ToString(CultureInfo.InvariantCulture) ?? "");
-            values.Add(employee.NormalWorkCount?.ToString(CultureInfo.InvariantCulture) ?? "");
-            values.Add(employee.PerpetualScheduleId ?? "");
-            lines.Add(Join(values));
-        }
+            lines.Add(Join(MonthlyRow(schedule, employee)));
         File.WriteAllText(path, string.Join(Environment.NewLine, lines) + Environment.NewLine, new UTF8Encoding(true));
+    }
+
+    public static IReadOnlyList<string> MonthlyRow(MonthlySchedule schedule, EmployeeMonthlySchedule employee)
+    {
+        var values = new List<string>
+        {
+            employee.EmployeeId,
+            employee.Name,
+            employee.Affiliation,
+            employee.EmploymentStartDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
+            employee.Ability?.ToString(CultureInfo.InvariantCulture) ?? "",
+            ShiftText(employee.MonthlyShift),
+            employee.OpeningUsage?.Rest.ToString(CultureInfo.InvariantCulture) ?? "",
+            employee.OpeningUsage?.SpecialRest.ToString(CultureInfo.InvariantCulture) ?? ""
+        };
+        values.AddRange(Enumerable.Range(1, 31).Select(day => CellText(schedule, employee, day)));
+        var monthlyUsage = employee.ClosingUsage is null ? null : CountRestUsage(employee.Assignments.Values);
+        values.Add(monthlyUsage?.Rest.ToString(CultureInfo.InvariantCulture) ?? "");
+        values.Add(monthlyUsage?.SpecialRest.ToString(CultureInfo.InvariantCulture) ?? "");
+        values.Add((employee.ClosingUsage is null
+            ? employee.RequestedLeaveRestCount
+            : employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.LeaveRest))?.ToString(CultureInfo.InvariantCulture) ?? "");
+        values.Add(employee.ClosingUsage?.Rest.ToString(CultureInfo.InvariantCulture) ?? "");
+        values.Add(employee.ClosingUsage?.SpecialRest.ToString(CultureInfo.InvariantCulture) ?? "");
+        values.Add(employee.NormalWorkCount?.ToString(CultureInfo.InvariantCulture) ?? "");
+        values.Add(employee.PerpetualScheduleId ?? "");
+        return values;
     }
 
     public static IReadOnlyList<RestInterval> ReadRestIntervals(string path)

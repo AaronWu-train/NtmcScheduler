@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text;
 using NtmcScheduler.Contracts;
+using NtmcScheduler.Infrastructure.Csv;
 using NtmcScheduler.Infrastructure.Data;
 
 namespace NtmcScheduler.Infrastructure.Services;
@@ -70,22 +71,27 @@ internal static class ServiceSupport
         employee.Ability,
         employee.RevisionToken);
 
-    public static DemandDraftDto ToDto(DemandDraft demand) => new(
-        demand.Id,
-        demand.Workspace,
-        demand.Month,
-        demand.PreviousSource,
-        demand.UploadedPreviousScheduleId is not null,
-        demand.ConfigurationRevisionId,
-        demand.RevisionToken,
-        demand.UpdatedAtUtc,
-        demand.Employees.OrderBy(x => x.EmployeeCode).Select(x => new DemandEmployeeDto(
-            x.Id, x.EmployeeCode, x.Name, x.Affiliation, x.EmploymentStartDate, x.Ability,
-            x.MonthlyShift, x.OpeningRest, x.OpeningSpecialRest, x.RequestedLeaveRestCount,
-            x.PerpetualScheduleId,
-            x.Assignments.OrderBy(a => a.Date).Select(a => new DemandAssignmentDto(
-                a.Id, a.DemandEmployeeId, a.Date, a.Kind, a.RequestedRest, a.Station, a.Shift,
-                a.EventStart, a.EventEnd, a.EventDescription)).ToArray())).ToArray());
+    public static DemandDraftDto ToDto(DemandDraft demand)
+    {
+        var schedule = SolverScheduleMapper.ToMonthlySchedule(demand);
+        var scheduleEmployees = schedule.Employees.ToDictionary(x => x.EmployeeId, StringComparer.Ordinal);
+        return new(
+            demand.Id,
+            demand.Workspace,
+            demand.Month,
+            demand.PreviousSource,
+            demand.UploadedPreviousScheduleId is not null,
+            demand.ConfigurationRevisionId,
+            demand.RevisionToken,
+            demand.UpdatedAtUtc,
+            demand.Employees.OrderBy(x => x.EmployeeCode).Select(x => new DemandEmployeeDto(
+                x.Id, x.EmployeeCode, x.Name, x.Affiliation, x.EmploymentStartDate, x.Ability,
+                x.MonthlyShift, x.OpeningRest, x.OpeningSpecialRest, x.RequestedLeaveRestCount,
+                x.PerpetualScheduleId, ScheduleCsv.MonthlyRow(schedule, scheduleEmployees[x.EmployeeCode]),
+                x.Assignments.OrderBy(a => a.Date).Select(a => new DemandAssignmentDto(
+                    a.Id, a.DemandEmployeeId, a.Date, a.Kind, a.RequestedRest, a.Station, a.Shift,
+                    a.EventStart, a.EventEnd, a.EventDescription)).ToArray())).ToArray());
+    }
 
     public static ConfigurationRevisionDto ToDto(ConfigurationRevision revision, Guid currentRevisionToken = default) => new(
         revision.Id,

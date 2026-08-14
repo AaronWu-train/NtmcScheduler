@@ -20,7 +20,8 @@ public enum ScheduleRunStatus
     TimeLimit,
     Infeasible,
     InvalidInput,
-    Failed
+    Failed,
+    Imported
 }
 
 public enum ValidationSeverity
@@ -84,6 +85,7 @@ public sealed record DemandEmployeeDto(
     int? OpeningSpecialRest,
     int RequestedLeaveRestCount,
     string? PerpetualScheduleId,
+    IReadOnlyList<string> MonthlyCsvValues,
     IReadOnlyList<DemandAssignmentDto> Assignments);
 
 public sealed record DemandAssignmentDto(
@@ -161,7 +163,8 @@ public sealed record ScheduleEmployeeInfoDto(
     string Name,
     string Affiliation,
     int? Ability,
-    string? MonthlyShift);
+    string? MonthlyShift,
+    IReadOnlyList<string> MonthlyCsvValues);
 
 public sealed record ExternalAssignmentDto(DateOnly Date, string Station, string Shift, int Count);
 

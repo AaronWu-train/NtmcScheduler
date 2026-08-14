@@ -3,6 +3,7 @@
 @attribute [Authorize]
 @inject IDemandService DemandService
 @inject IScheduleRunService RunService
+@inject IScheduleService ScheduleService
 @inject ICommonConfigurationService ConfigurationService
 @inject CurrentActorService CurrentActor
 @inject IJSRuntime JS
@@ -40,7 +41,12 @@
     }
     else if (activeStep == 2)
     {
-        <section class="card"><h2>上月班表</h2><p>目前來源：<strong>@PreviousLabel()</strong></p><p class="format-help">系統會優先使用上月 ★；若沒有，請上傳完整且已決定的上月班表，不可含未解決 R*。</p><div class="toolbar"><a class="button-link" href="/download/templates/@Workspace.ToLowerInvariant()/previous.csv">下載範本</a>@if (canEdit) { <label class="button-link primary file-upload-button">上傳 CSV<InputFile OnChange="UploadPreviousAsync" accept=".csv,text/csv" /></label> }</div><button @onclick="() => activeStep = 3">下一步</button></section>
+        <section class="card"><h2>上月班表</h2><p>目前來源：<strong>@PreviousLabel()</strong></p><p class="format-help">系統會優先使用上月 ★；若沒有，請上傳完整且已決定的上月班表，不可含未解決 R*。上傳後會建立一份上月班表版本，再由你決定是否標示 ★。</p><div class="toolbar"><a class="button-link" href="/download/templates/@Workspace.ToLowerInvariant()/previous.csv">下載範本</a>@if (canEdit) { <label class="button-link primary file-upload-button">上傳 CSV<InputFile OnChange="UploadPreviousAsync" accept=".csv,text/csv" /></label> }</div>
+        @if (previousVersion is not null)
+        {
+            <div class="toolbar"><a class="button-link" href="/schedules/@previousVersion.Id">開啟上傳版本</a>@if (canEdit) { <button class="primary" disabled="@(previousVersion.IsAdopted || previousVersion.IsArchived)" @onclick="AdoptPreviousAsync">@(previousVersion.IsAdopted ? "已標示 ★" : "標示 ★")</button> }</div>
+        }
+        <button @onclick="() => activeStep = 3">下一步</button></section>
     }
     else if (activeStep == 3)
     {
@@ -53,44 +59,53 @@
     <section class="card">
         <div class="section-heading"><h2>月份人員資料</h2><span>日格點選後立即自動儲存</span></div>
         <div class="table-scroll schedule-grid"><table class="demand-table"><thead><tr>
-        @if (workspaceCode == WorkspaceCode.M)
-        {
-            <th class="sticky-col sticky-id sortable" aria-sort='@AriaSort("id")'><button class="sort-button" @onclick='() => SortBy("id")'><span>ID</span><span class="sort-indicator" aria-hidden="true"></span></button></th>
-            <th class="sticky-col sticky-name sortable" aria-sort='@AriaSort("name")'><button class="sort-button" @onclick='() => SortBy("name")'><span>姓名</span><span class="sort-indicator" aria-hidden="true"></span></button></th>
-            <th class="sticky-col sticky-affiliation sortable" aria-sort='@AriaSort("affiliation")'><button class="sort-button" @onclick='() => SortBy("affiliation")'><span>所屬站</span><span class="sort-indicator" aria-hidden="true"></span></button></th>
-        }
-        else
-        {
-            <th class="sticky-col">員工</th><th>月班別</th>
-        }
-        <th>月初 R</th><th>月初 R1</th>@if (workspaceCode == WorkspaceCode.M) { <th>上月萬年班表</th> }
-        @foreach (var day in Days()) { <th>@day.Day<br /><small>@Weekday(day)</small></th> }
-        <th>當月指定 R休<br /><small>上限</small></th></tr></thead><tbody>
-        @foreach (var employee in SortedDemandEmployees())
+        @foreach (var header in ScheduleCsv.MonthlyHeaders) { <th class="@StickyClass(header)">@header</th> }
+        </tr></thead><tbody>
+        @foreach (var employee in demand.Employees)
         {
             var edit = employeeEdits[employee.Id];
             <tr>
-            @if (workspaceCode == WorkspaceCode.M)
+            @for (var column = 0; column < ScheduleCsv.MonthlyHeaders.Count; column++)
             {
-                <th class="sticky-col sticky-id">@employee.EmployeeCode</th><td class="sticky-col sticky-name">@employee.Name</td><td class="sticky-col sticky-affiliation">@employee.Affiliation</td>
+                var header = ScheduleCsv.MonthlyHeaders[column];
+                var value = employee.MonthlyCsvValues[column];
+                if (TryDay(header, out var day))
+                {
+                    if (day > DateTime.DaysInMonth(demand.Month.Year, demand.Month.Month)) { <td></td> }
+                    else
+                    {
+                        var date = demand.Month.AddDays(day - 1);
+                        var cell = employee.Assignments.FirstOrDefault(x => x.Date == date);
+                        <td><select class="cell-editor @CellClass(cell)" title="@value" disabled="@(!canEdit)" value="@CellEditorValue(cell)" @onchange="args => ChangeCellAsync(employee, date, cell, args.Value?.ToString())">
+                            <option value=""></option><option value="RStar">R*</option><option value="Early">@WorkText(employee, cell, "Early")</option><option value="Afternoon">@WorkText(employee, cell, "Afternoon")</option><option value="Night">@WorkText(employee, cell, "Night")</option>
+                            @if (cell is not null && CellEditorValue(cell) == "Existing") { <option value="Existing" disabled>@value</option> }
+                            <optgroup label="其他班型"><option value="Other">其他…</option>@foreach (var shift in configuration?.NonStandardShifts ?? []) { <option value="ns:@shift.Code">@EventText(shift)</option> }</optgroup>
+                        </select></td>
+                    }
+                }
+                else if (header == "T月班別" && workspaceCode == WorkspaceCode.T)
+                {
+                    <td><select class="inline-field" disabled="@(!canEdit)" value="@edit.MonthlyShift" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "monthlyShift", args.Value?.ToString())'><option value="Early">早</option><option value="Afternoon">午</option><option value="Night">夜</option></select></td>
+                }
+                else if (header == "月初區間累計R")
+                {
+                    <td><input class="inline-field number-field" type="number" min="0" disabled="@(!canEdit)" value="@edit.OpeningRest" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "openingRest", args.Value?.ToString())' /></td>
+                }
+                else if (header == "月初區間累計R1")
+                {
+                    <td><input class="inline-field number-field" type="number" min="0" disabled="@(!canEdit)" value="@edit.OpeningSpecialRest" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "openingSpecialRest", args.Value?.ToString())' /></td>
+                }
+                else if (header == "當月指定R休")
+                {
+                    <td><input class="inline-field number-field" type="number" min="0" disabled="@(!canEdit)" value="@edit.LeaveRest" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "leaveRest", args.Value?.ToString())' /></td>
+                }
+                else if (header == "萬年班表" && workspaceCode == WorkspaceCode.M)
+                {
+                    <td><input class="inline-field perpetual-field" disabled="@(!canEdit)" value="@edit.PerpetualId" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "perpetual", args.Value?.ToString())' /></td>
+                }
+                else { <td class="@StickyClass(header)">@value</td> }
             }
-            else
-            {
-                <th class="sticky-col">@employee.EmployeeCode<br /><small>@employee.Name</small></th><td><select class="inline-field" disabled="@(!canEdit)" value="@edit.MonthlyShift" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "monthlyShift", args.Value?.ToString())'><option value="Early">早</option><option value="Afternoon">午</option><option value="Night">夜</option></select></td>
-            }
-            <td><input class="inline-field number-field" type="number" min="0" disabled="@(!canEdit)" value="@edit.OpeningRest" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "openingRest", args.Value?.ToString())' /></td>
-            <td><input class="inline-field number-field" type="number" min="0" disabled="@(!canEdit)" value="@edit.OpeningSpecialRest" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "openingSpecialRest", args.Value?.ToString())' /></td>
-            @if (workspaceCode == WorkspaceCode.M) { <td><input class="inline-field perpetual-field" disabled="@(!canEdit)" value="@edit.PerpetualId" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "perpetual", args.Value?.ToString())' /></td> }
-            @foreach (var day in Days())
-            {
-                var cell = employee.Assignments.FirstOrDefault(x => x.Date == day);
-                <td><select class="cell-editor @CellClass(cell)" title="@CellText(cell)" disabled="@(!canEdit)" value="@CellEditorValue(cell)" @onchange="args => ChangeCellAsync(employee, day, cell, args.Value?.ToString())">
-                    <option value="">空白</option><option value="RStar">R*</option><option value="Early">早</option><option value="Afternoon">午</option><option value="Night">夜</option>
-                    @if (cell is not null && CellEditorValue(cell) == "Existing") { <option value="Existing" disabled>@CellText(cell)（CSV 固定值）</option> }
-                    <optgroup label="其他班型"><option value="Other">其他…</option>@foreach (var shift in configuration?.NonStandardShifts ?? []) { <option value="ns:@shift.Code">@(shift.Name ?? shift.Code)（@(shift.StartTime.ToString("HH:mm"))–@(shift.EndTime.ToString("HH:mm"))）</option> }</optgroup>
-                </select></td>
-            }
-            <td><input class="inline-field number-field" type="number" min="0" disabled="@(!canEdit)" value="@edit.LeaveRest" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "leaveRest", args.Value?.ToString())' /></td></tr>
+            </tr>
         }
         </tbody></table></div>
     </section>
@@ -122,9 +137,8 @@
     private IReadOnlyList<DateOnly> availableMonths = [];
     private int SolveStep => workspaceCode == WorkspaceCode.M ? 5 : 4;
     private DemandDraftDto? demand; private ConfigurationRevisionDto? configuration; private IReadOnlyList<ScheduleRunDto> runs = [];
+    private ScheduleVersionDto? previousVersion;
     private string? message; private string messageClass = "success"; private byte[]? pendingDemand; private ImportPreviewDto? preview;
-    private static readonly StringComparer SortComparer = StringComparer.Create(CultureInfo.GetCultureInfo("zh-TW"), false);
-    private string sortColumn = "affiliation"; private bool sortDescending;
     private Dictionary<Guid, EmployeeEdit> employeeEdits = [];
     private DemandEmployeeDto? editingCellEmployee; private DateOnly editingDate; private readonly CellEdit cellEdit = new();
 
@@ -136,7 +150,7 @@
         availableMonths = await DemandService.ListMonthsAsync(workspaceCode, actor);
         var initial = availableMonths.FirstOrDefault(x => MonthValue(x) == monthText);
         if (initial == default) initial = availableMonths.FirstOrDefault();
-        if (initial == default) { selectedMonth = "new"; demand = null; configuration = null; runs = []; employeeEdits.Clear(); return; }
+        if (initial == default) { selectedMonth = "new"; demand = null; configuration = null; previousVersion = null; runs = []; employeeEdits.Clear(); return; }
         selectedMonth = monthText = MonthValue(initial);
         await LoadAsync();
     }
@@ -145,7 +159,7 @@
     private async Task SelectMonthAsync(ChangeEventArgs args)
     {
         selectedMonth = args.Value?.ToString() ?? "new";
-        if (selectedMonth == "new") { demand = null; configuration = null; runs = []; employeeEdits.Clear(); activeStep = 1; return; }
+        if (selectedMonth == "new") { demand = null; configuration = null; previousVersion = null; runs = []; employeeEdits.Clear(); activeStep = 1; return; }
         monthText = selectedMonth;
         await LoadAsync();
         activeStep = 2;
@@ -155,6 +169,8 @@
         var actor = await CurrentActor.GetAsync();
         demand = await DemandService.GetAsync(workspaceCode, Month(), actor);
         configuration = demand is null ? null : await ConfigurationService.GetRevisionAsync(demand.ConfigurationRevisionId, actor);
+        previousVersion = demand is not { HasUploadedPreviousSchedule: true } ? null : (await ScheduleService.ListVersionsAsync(workspaceCode, demand.Month.AddMonths(-1), actor, true))
+            .FirstOrDefault(x => x.SourceStatus == ScheduleRunStatus.Imported);
         InitializeEmployeeEdits();
         await LoadRunsAsync();
     }
@@ -168,7 +184,7 @@
             var actor = await CurrentActor.GetAsync();
             await DemandService.DeleteAsync(demand.Id, demand.RevisionToken, actor);
             availableMonths = await DemandService.ListMonthsAsync(workspaceCode, actor);
-            demand = null; configuration = null; runs = []; employeeEdits.Clear(); activeStep = 1;
+            demand = null; configuration = null; previousVersion = null; runs = []; employeeEdits.Clear(); activeStep = 1;
             if (availableMonths.Count == 0) selectedMonth = "new";
             else { selectedMonth = monthText = MonthValue(availableMonths[0]); await LoadAsync(); }
         }, "Demand 已刪除；既有求解紀錄與班表均已保留。");
@@ -181,23 +197,21 @@
         { HasUploadedPreviousSchedule: true } => "已自行上傳",
         _ => "尚未上傳"
     };
-    private IEnumerable<DateOnly> Days() => Enumerable.Range(0, DateTime.DaysInMonth(Month().Year, Month().Month)).Select(Month().AddDays);
-    private static string Weekday(DateOnly date) => "日一二三四五六"[(int)date.DayOfWeek].ToString();
-    private IEnumerable<DemandEmployeeDto> SortedDemandEmployees()
+    private static bool TryDay(string header, out int day) => int.TryParse(header, NumberStyles.None, CultureInfo.InvariantCulture, out day);
+    private static string StickyClass(string header) => header switch { "ID" => "sticky-col sticky-id", "姓名" => "sticky-col sticky-name", "所屬" => "sticky-col sticky-affiliation", _ => "" };
+    private string WorkText(DemandEmployeeDto employee, DemandAssignmentDto? cell, string shift)
     {
-        if (workspaceCode != WorkspaceCode.M) return demand!.Employees;
-        Func<DemandEmployeeDto, string> key = sortColumn switch { "name" => x => x.Name, "affiliation" => x => x.Affiliation, _ => x => x.EmployeeCode };
-        var sorted = sortDescending ? demand!.Employees.OrderByDescending(key, SortComparer) : demand!.Employees.OrderBy(key, SortComparer);
-        return sortDescending ? sorted.ThenByDescending(x => x.EmployeeCode, SortComparer) : sorted.ThenBy(x => x.EmployeeCode, SortComparer);
+        var label = shift switch { "Early" => "早", "Afternoon" when workspaceCode == WorkspaceCode.M => "小", "Afternoon" => "午", _ => "夜" };
+        return workspaceCode == WorkspaceCode.M ? (cell?.Kind == "Work" && cell.Shift == shift ? cell.Station : employee.Affiliation) + label : label;
     }
-    private void SortBy(string column) { if (sortColumn == column) sortDescending = !sortDescending; else { sortColumn = column; sortDescending = false; } }
-    private string? AriaSort(string column) => sortColumn == column ? sortDescending ? "descending" : "ascending" : null;
+    private static string EventText(NonStandardShiftDto shift) => $"X[{shift.StartTime:HH:mm}-{shift.EndTime:HH:mm}]";
     private async Task LoadRunsAsync() => runs = await RunService.ListAsync(workspaceCode, Month(), await CurrentActor.GetAsync());
     private async Task QueueAsync() => await RunUiAsync(async () => { await RunService.QueueAsync(demand!.Id, demand.RevisionToken, await CurrentActor.GetAsync()); await LoadRunsAsync(); }, "已排入背景求解佇列。");
 
     private async Task PreviewDemandAsync(InputFileChangeEventArgs args) => await RunUiAsync(async () => { pendingDemand = await ReadFileAsync(args.File); preview = await DemandService.PreviewDemandImportAsync(demand!.Id, new MemoryStream(pendingDemand), await CurrentActor.GetAsync()); }, "已完成匯入預覽。");
     private async Task ConfirmDemandImportAsync() => await RunUiAsync(async () => { await DemandService.ImportDemandAsync(demand!.Id, new MemoryStream(pendingDemand!), demand.RevisionToken, await CurrentActor.GetAsync()); CancelPreview(); await LoadAsync(); }, "Demand 已由 CSV 取代。");
-    private async Task UploadPreviousAsync(InputFileChangeEventArgs args) => await RunUiAsync(async () => { var bytes = await ReadFileAsync(args.File); await DemandService.UploadPreviousAsync(demand!.Id, new MemoryStream(bytes), demand.RevisionToken, await CurrentActor.GetAsync()); await LoadAsync(); }, "Previous schedule 已保存。");
+    private async Task UploadPreviousAsync(InputFileChangeEventArgs args) => await RunUiAsync(async () => { var bytes = await ReadFileAsync(args.File); await DemandService.UploadPreviousAsync(demand!.Id, new MemoryStream(bytes), demand.RevisionToken, await CurrentActor.GetAsync()); await LoadAsync(); }, "上月班表已保存為版本；可開啟檢查或標示 ★。");
+    private async Task AdoptPreviousAsync() => await RunUiAsync(async () => { await ScheduleService.AdoptAsync(previousVersion!.Id, previousVersion.RevisionToken, await CurrentActor.GetAsync()); await LoadAsync(); }, "上傳的上月班表已標示為 ★。");
     private async Task UploadPerpetualAsync(InputFileChangeEventArgs args) => await RunUiAsync(async () => { var bytes = await ReadFileAsync(args.File); await DemandService.UploadPerpetualScheduleAsync(demand!.Id, new MemoryStream(bytes), demand.RevisionToken, await CurrentActor.GetAsync()); await LoadAsync(); }, "萬年班表已保存。");
     private static async Task<byte[]> ReadFileAsync(IBrowserFile file) { await using var stream = file.OpenReadStream(5 * 1024 * 1024); using var memory = new MemoryStream(); await stream.CopyToAsync(memory); return memory.ToArray(); }
     private void CancelPreview() { pendingDemand = null; preview = null; }
@@ -276,7 +290,6 @@
     private void CloseEditors() => editingCellEmployee = null;
 
     private async Task RunUiAsync(Func<Task> action, string success) { try { await action(); messageClass = "success"; message = success; } catch (Exception exception) { messageClass = "error"; message = exception.Message; } }
-    private static string CellText(DemandAssignmentDto? cell) => cell switch { null => "", { Kind: null, RequestedRest: true } => "R*", { Kind: "Rest", RequestedRest: true } => "R*[R]", { Kind: "SpecialRest", RequestedRest: true } => "R*[R1]", { Kind: "LeaveRest" } => "R*[R休]", { Kind: "Rest" } => "R", { Kind: "SpecialRest" } => "R1", { Kind: "WorkEvent" } => "X", { Kind: "Work", Shift: "Early" } => "早", { Kind: "Work", Shift: "Afternoon" } => "午/小", { Kind: "Work", Shift: "Night" } => "夜", _ => "" };
     private string CellEditorValue(DemandAssignmentDto? cell)
     {
         if (cell is null) return "";

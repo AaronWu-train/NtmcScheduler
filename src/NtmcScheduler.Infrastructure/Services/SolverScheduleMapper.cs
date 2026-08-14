@@ -127,6 +127,58 @@ internal static class SolverScheduleMapper
         return version;
     }
 
+    public static ScheduleVersion ToImportedVersion(
+        MonthlySchedule schedule,
+        WorkspaceCode workspace,
+        Guid configurationRevisionId,
+        Guid actorId)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var version = new ScheduleVersion
+        {
+            Workspace = workspace,
+            Month = schedule.MonthStart,
+            Name = $"上傳 {schedule.MonthStart:yyyy-MM} 班表",
+            SourceStatus = ScheduleRunStatus.Imported,
+            ConfigurationRevisionId = configurationRevisionId,
+            CreatedByUserId = actorId,
+            UpdatedByUserId = actorId,
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now
+        };
+        foreach (var employee in schedule.Employees)
+        {
+            var snapshot = new ScheduleEmployeeSnapshot
+            {
+                EmployeeCode = employee.EmployeeId,
+                Name = employee.Name,
+                Affiliation = employee.Affiliation,
+                EmploymentStartDate = employee.EmploymentStartDate,
+                Ability = employee.Ability,
+                MonthlyShift = ShiftText(employee.MonthlyShift),
+                OpeningRest = employee.OpeningUsage?.Rest,
+                OpeningSpecialRest = employee.OpeningUsage?.SpecialRest,
+                RequestedLeaveRestCount = employee.Assignments.Values.Count(x => x.Kind == SolverAssignmentKind.LeaveRest),
+                ClosingRest = employee.ClosingUsage?.Rest,
+                ClosingSpecialRest = employee.ClosingUsage?.SpecialRest,
+                NormalWorkCount = employee.NormalWorkCount,
+                PerpetualScheduleId = employee.PerpetualScheduleId
+            };
+            snapshot.Assignments.AddRange(employee.Assignments.Select(pair => new ScheduleAssignment
+            {
+                Date = pair.Key,
+                Kind = pair.Value.Kind?.ToString() ?? "Unresolved",
+                RequestedRest = pair.Value.RequestedRest,
+                Station = pair.Value.Station,
+                Shift = ShiftText(pair.Value.Shift),
+                EventStart = pair.Value.EventStart,
+                EventEnd = pair.Value.EventEnd
+            }));
+            version.Employees.Add(snapshot);
+        }
+        return version;
+    }
+
     public static DemandEmployee ToDemandEmployee(EmployeeMonthlySchedule employee)
     {
         var result = new DemandEmployee

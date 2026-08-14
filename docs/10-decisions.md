@@ -375,3 +375,15 @@
 - 完整班表與驗證會同時讀取人員日格、外派、休假區間及相關設定；這些 EF Core 多集合查詢改用 split query，避免 M 班表在單一 SQL 形成集合笛卡兒積。
 - 開發用 SQLite 在 migration 後切換為 WAL journal，使背景求解保存整份班表時，UI 班表讀取不再以預設 delete journal 互相阻塞。SQL Server 行為不變。
 - Blazor 互動中的驗證狀態失效時，版面強制重新載入根頁；後續由既有 Cookie middleware 將未登入要求導回登入首頁，避免失效頁面看似仍可操作但沒有反應。
+
+## 2026-08-14：Web 寬表完全沿用 CLI 月表，候選沿用求解時上月班表
+
+- Demand 與候選班表的寬表不再自行選欄、改順序或另算顯示內容；兩者直接沿用 `ScheduleCsv` 的 46 欄表頭與 row formatter。短月份仍顯示 1–31 並在不存在日期留空，M/T 不適用欄位也留空。
+- 日格顯示沿用 CLI 正規化輸出，包括 M 完整站碼、M 小班名稱、中括號指定休假及 X 起訖時間。刪除 CLI 月表沒有的右側 Web 統計欄與底部 Coverage／品質列，驗證問題保留在警示清單。
+- 候選班表有 `SourceRun` 時，十一小時、連續七日等跨月驗證固定讀取該次求解 input snapshot 的 previous schedule。這份 previous schedule 可以來自上月 `★`，也可以是使用者直接上傳；只有沒有 source run 的版本才退回查詢資料庫內上月 `★`。
+
+## 2026-08-14：Demand 上傳的上月班表可成為正式版本
+
+- 使用者在 Demand「上月班表」步驟直接上傳 previous schedule 時，typed JSON 仍作為該 Demand 的求解輸入；同一 transaction 另建立一份上月 `ScheduleVersion`，頁面提供「開啟版本」與「標示 ★」。
+- 上傳不自動標星。直接上傳的版本沿用既有 `AdoptAsync`、同月唯一 `AdoptedSchedule`、紅色錯誤阻擋及 AuditLog，不新增第二套採用狀態。
+- 直接上傳版本沒有上上月正式歷史時，跨月驗證不得把未知日期視為工作：十一小時只比較已知工作，連續七日一般 R 從第一個資料完整的七日視窗開始；若已有上上月 `★`，仍做完整跨月驗證。
