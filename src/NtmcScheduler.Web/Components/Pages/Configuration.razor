@@ -9,7 +9,16 @@
 @if (message is not null) { <p class="alert @messageClass" role="status">@message</p> }
 
 <section class="card">
-    <div class="section-heading"><h2>八週 16R 區間</h2>@if (canEdit) { <div class="configuration-actions"><a class="button-link" href="/download/templates/m/rest-intervals.csv">下載範本</a><label class="button-link file-upload-button">選擇 CSV<InputFile OnChange="UploadIntervalsAsync" accept=".csv,text/csv" /></label><button type="button" @onclick="AddInterval">新增區間</button><button type="button" class="primary" @onclick="SaveIntervalsAsync">儲存設定</button></div> }</div>
+    <div class="section-heading">
+        <h2>八週 16R 區間</h2>@if (canEdit) {
+        <div class="configuration-actions"><a class="button-link"
+                                                  href="/download/templates/m/rest-intervals.csv">下載範本</a><label class="button-link file-upload-button">上傳
+            CSV
+            <InputFile OnChange="UploadIntervalsAsync" accept=".csv,text/csv" />
+        </label><button type="button" @onclick="AddInterval">新增區間</button><button type="button" class="primary"
+                                                                                  @onclick="SaveIntervalsAsync">儲存設定</button></div>
+    }
+</div>
     <p class="format-help">UTF-8（可含 BOM）、固定表頭，最大 5 MB；上傳會取代下方尚未儲存的八週區間。</p>
     <div class="table-scroll"><table><thead><tr><th>開始</th><th>結束</th><th>國定假日（分號分隔）</th><th></th></tr></thead><tbody>
     @foreach (var row in intervals)
@@ -19,7 +28,16 @@
     </tbody></table></div>
 </section>
 <section class="card">
-    <div class="section-heading"><h2>非常態班型</h2>@if (canEdit) { <div class="configuration-actions"><a class="button-link" href="/download/templates/m/non-standard-shifts.csv">下載範本</a><label class="button-link file-upload-button">選擇 CSV<InputFile OnChange="UploadShiftsAsync" accept=".csv,text/csv" /></label><button type="button" @onclick="AddShift">新增班型</button><button type="button" class="primary" @onclick="SaveShiftsAsync">儲存設定</button></div> }</div>
+    <div class="section-heading">
+        <h2>非常態班型</h2>@if (canEdit) {
+        <div class="configuration-actions"><a class="button-link"
+                                                  href="/download/templates/m/non-standard-shifts.csv">下載範本</a><label
+            class="button-link file-upload-button">上傳 CSV
+            <InputFile OnChange="UploadShiftsAsync" accept=".csv,text/csv" />
+        </label><button type="button" @onclick="AddShift">新增班型</button><button type="button" class="primary"
+                                                                               @onclick="SaveShiftsAsync">儲存設定</button></div>
+    }
+</div>
     <p class="format-help">UTF-8（可含 BOM）、表頭「班型,時間,代碼」，時間使用 HH:mm~HH:mm，最大 5 MB；上傳會取代下方尚未儲存的班型。</p>
     <div class="table-scroll"><table><thead><tr><th>名稱</th><th>代碼</th><th>開始</th><th>結束</th><th></th></tr></thead><tbody>
     @foreach (var row in shifts)
