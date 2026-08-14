@@ -5,7 +5,7 @@
 - 不存在註冊、忘記密碼與電子郵件重設路徑；管理者 CLI 建立首位管理者，管理頁建立其餘帳號與一次性密碼。
 - 首次登入強制修改至少 8 字元、至少 2 種不同字元且包含數字的密碼；五次失敗鎖定 15 分鐘，另以帳號與 IP 做登入限流，錯誤訊息不揭露帳號是否存在。正式上線前須重新檢視並提高密碼政策。
 - Viewer、M Editor、T Editor、同時 M/T Editor 與 Administrator 的頁面及 application service 寫入授權一致；猜測資源 GUID 不可越權修改。
-- 停用、重設密碼及權限異動更新 security stamp；不提供持久登入，Cookie 為 Secure、HttpOnly、SameSite=Strict，閒置 30 分鐘到期。
+- 停用、重設密碼及權限異動更新 security stamp；不提供持久登入，Cookie 為 Secure、HttpOnly、SameSite=Strict，閒置 30 分鐘到期。互動中的驗證狀態失效後自動離開受保護頁面，重新載入根頁並回到登入首頁。
 
 ## 共同設定、人員與 Demand
 
@@ -28,7 +28,7 @@
 - 登入、權限、設定、人員新增／修改／刪除、Demand、匯入、求解、逐格修改、標星、班表封存與下載均寫入 AuditLog；成功資料異動與 AuditLog 同 transaction。
 - AuditLog 有 UTC、actor snapshot、before/after、IP、User-Agent、CorrelationId，且不含密碼、Cookie、token、連線字串或 CSV 原文；應用程式沒有更新／刪除 AuditLog 的路徑。
 - 所有路由頁面右上有鍵盤可操作 `?`；上傳前顯示 UTF-8/BOM、5 MB、固定表頭、日期時間、合法值及僅接受 CSV。
-- SQLite 與 SQL Server 都能產生 migration SQL；Linux 測試環境需另完成 migration、備份／還原、持久化且加密的 Data Protection key ring、反向代理可信清單與一年 Log 保留驗收。
+- SQLite 與 SQL Server 都能產生 migration SQL；開發用 SQLite 啟動後採 WAL journal，背景保存班表與 UI 讀取不得互相造成長時間鎖定；Linux 測試環境需另完成 migration、備份／還原、持久化且加密的 Data Protection key ring、反向代理可信清單與一年 Log 保留驗收。
 
 ## 建置
 

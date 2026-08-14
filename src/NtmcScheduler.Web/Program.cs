@@ -231,6 +231,7 @@ static async Task InitializeDatabaseAsync(IServiceProvider services)
     await using var scope = services.CreateAsyncScope();
     var db = scope.ServiceProvider.GetRequiredService<NtmcDbContext>();
     await db.Database.MigrateAsync();
+    if (db.Database.IsSqlite()) await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
     var roles = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
     if (!await roles.RoleExistsAsync("Administrator"))
     {

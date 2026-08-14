@@ -1,4 +1,5 @@
 @inherits LayoutComponentBase
+@implements IDisposable
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
 
@@ -22,9 +23,21 @@
 @code {
     protected override async Task OnInitializedAsync()
     {
+        AuthenticationStateProvider.AuthenticationStateChanged += AuthenticationStateChanged;
         var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
         if (user.Identity?.IsAuthenticated == true && user.FindFirst("must_change_password")?.Value == "true" &&
             !Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("Account/ChangePassword", StringComparison.OrdinalIgnoreCase))
             Navigation.NavigateTo("/Account/ChangePassword", forceLoad: true);
     }
+
+    private void AuthenticationStateChanged(Task<AuthenticationState> authenticationState) =>
+        _ = RedirectIfSignedOutAsync(authenticationState);
+
+    private async Task RedirectIfSignedOutAsync(Task<AuthenticationState> authenticationState)
+    {
+        if ((await authenticationState).User.Identity?.IsAuthenticated != true)
+            await InvokeAsync(() => Navigation.NavigateTo("/", forceLoad: true));
+    }
+
+    public void Dispose() => AuthenticationStateProvider.AuthenticationStateChanged -= AuthenticationStateChanged;
 }

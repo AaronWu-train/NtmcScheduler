@@ -20,6 +20,7 @@ public sealed class ScheduleValidationService(NtmcDbContext db) : IScheduleValid
     {
         ServiceSupport.RequireViewer(actor);
         var version = await db.ScheduleVersions
+            .AsSplitQuery()
             .Include(x => x.ConfigurationRevision).ThenInclude(x => x.RestIntervals).ThenInclude(x => x.NationalHolidays)
             .Include(x => x.Employees).ThenInclude(x => x.Assignments)
             .Include(x => x.ExternalAssignments)

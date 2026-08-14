@@ -182,6 +182,7 @@ public sealed class ScheduleService(
     }
 
     private IQueryable<ScheduleVersion> VersionQuery() => db.ScheduleVersions
+        .AsSplitQuery()
         .Include(x => x.ConfigurationRevision).ThenInclude(x => x.RestIntervals).ThenInclude(x => x.NationalHolidays)
         .Include(x => x.ConfigurationRevision).ThenInclude(x => x.NonStandardShifts)
         .Include(x => x.Employees).ThenInclude(x => x.Assignments)

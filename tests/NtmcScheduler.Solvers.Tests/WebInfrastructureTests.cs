@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using NtmcScheduler.Contracts;
 using NtmcScheduler.Infrastructure.Data;
 using NtmcScheduler.Infrastructure.Background;
@@ -387,6 +388,32 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
+    public async Task ScheduleDetail_SplitsMultipleCollectionQueries()
+    {
+        await using var database = await TestDatabase.CreateAsync(throwOnMultipleCollectionInclude: true);
+        var revision = new ConfigurationRevision { Version = 1, CreatedByUserId = Guid.NewGuid() };
+        var version = Version(revision, new DateOnly(2026, 8, 1), "M 班表");
+        version.Employees.Add(new ScheduleEmployeeSnapshot
+        {
+            EmployeeCode = "M001", Name = "王小明", Affiliation = "LB01",
+            Assignments = [new ScheduleAssignment { Date = version.Month, Kind = "Rest" }]
+        });
+        version.ExternalAssignments.Add(new ExternalAssignment
+        {
+            Date = version.Month, Station = "LB09", Shift = "Early", Count = 1
+        });
+        database.Context.AddRange(revision, version);
+        await database.Context.SaveChangesAsync();
+
+        var service = new ScheduleService(database.Context, new ScheduleValidationService(database.Context));
+        var detail = await service.GetAsync(version.Id, Editor(WorkspaceCode.M));
+
+        Assert.AreEqual(version.Id, detail.Version.Id);
+        Assert.HasCount(1, detail.Employees);
+        Assert.HasCount(1, detail.ExternalAssignments);
+    }
+
+    [TestMethod]
     public async Task ApplicationServices_RejectForgedAnonymousActor()
     {
         await using var database = await TestDatabase.CreateAsync();
@@ -440,11 +467,14 @@ public sealed class WebInfrastructureTests
             Context = context;
         }
 
-        public static async Task<TestDatabase> CreateAsync()
+        public static async Task<TestDatabase> CreateAsync(bool throwOnMultipleCollectionInclude = false)
         {
             var connection = new SqliteConnection("Data Source=:memory:");
             await connection.OpenAsync();
-            var options = new DbContextOptionsBuilder<NtmcDbContext>().UseSqlite(connection).Options;
+            var builder = new DbContextOptionsBuilder<NtmcDbContext>().UseSqlite(connection);
+            if (throwOnMultipleCollectionInclude)
+                builder.ConfigureWarnings(warnings => warnings.Throw(RelationalEventId.MultipleCollectionIncludeWarning));
+            var options = builder.Options;
             var context = new NtmcDbContext(options);
             await context.Database.EnsureCreatedAsync();
             return new TestDatabase(connection, options, context);

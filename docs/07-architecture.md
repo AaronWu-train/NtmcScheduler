@@ -58,6 +58,7 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 
 - EF Core。開發環境用 **SQLite**；正式環境使用 **SQL Server**。
 - 不使用 provider 專屬查詢；單一 migration 可分別產生 SQLite 與 SQL Server script。
+- SQLite 啟動後使用 WAL journal，避免背景求解保存班表時阻塞 UI 讀取；載入完整班表的多集合查詢使用 EF Core split query，避免集合笛卡兒積。
 
 ## 6. 登入與授權（第一版）
 
@@ -65,6 +66,7 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 - Administrator 建立帳號、設定一次性密碼、停用帳號及配置 M/T 工作區編輯權；首次登入必須改密碼。
 - 所有已登入者可檢視；只有對應工作區 Editor 或 Administrator 可寫入。共同設定可由任一 Editor 修改。
 - 路由、元件與後端 application service 都執行授權檢查，不能只依 UI 隱藏按鈕。
+- 互動中的驗證狀態失效時，強制重新載入根頁，由 Cookie middleware 回到登入首頁，不保留失效的互動頁面。
 - 第一版不做 MFA；未來可替換為 AD／Entra authentication provider，不改工作區權限及稽核模型。
 
 ## 7. 後端固定設定
