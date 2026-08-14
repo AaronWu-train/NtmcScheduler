@@ -1,4 +1,4 @@
-# NtmScheduler
+# NtmcScheduler
 
 新北捷運人員排班系統。依人員資料、指定休假（R*）、公務事件（X）與歷史班表，以 OR-Tools CP-SAT 產生最多三份月班表候選。
 
@@ -14,8 +14,8 @@
 
 ```bash
 dotnet tool restore
-dotnet run --project src/NtmScheduler.Web -- --init-admin admin
-dotnet run --project src/NtmScheduler.Web
+dotnet run --project src/NtmcScheduler.Web -- --init-admin admin
+dotnet run --project src/NtmcScheduler.Web
 ```
 
 第一個命令只還原 repository-local Microsoft `dotnet-ef`；`--init-admin` 會在終端機安全讀取一次性密碼，首次登入必須修改。正式環境設定 `DatabaseProvider=SqlServer`、`ConnectionStrings__Default`、持久化 `DataProtection__KeyPath` 與 `DataProtection__CertificatePath`，secret 不寫入設定檔。
@@ -31,11 +31,11 @@ CLI 不使用 Web 或資料庫，讀取上月班表、本月需求、八週區�
 ```bash
 # 站務 M
 cd examples/m-2026-09
-dotnet run --project ../../src/NtmScheduler.Cli
+dotnet run --project ../../src/NtmcScheduler.Cli
 
 # 或檢測 T
 cd examples/t-2026-09
-dotnet run --project ../../src/NtmScheduler.Cli
+dotnet run --project ../../src/NtmcScheduler.Cli
 ```
 
 兩個範例依序輸入：
@@ -146,25 +146,25 @@ LB01-1,3午,3午,R,...
 ## 建置與測試
 
 ```bash
-dotnet build NtmScheduler.slnx
-dotnet test NtmScheduler.slnx
+dotnet build NtmcScheduler.slnx
+dotnet test NtmcScheduler.slnx
 ```
 
 ## 專案結構（去哪找什麼）
 
 | 想找什麼 | 路徑 |
 |---|---|
-| CLI 進入點 | `src/NtmScheduler.Cli/Program.cs` |
-| Web 入口與資安 middleware | `src/NtmScheduler.Web/Program.cs` |
-| Blazor 頁面 | `src/NtmScheduler.Web/Components/Pages/` |
-| EF 實體與 migration | `src/NtmScheduler.Infrastructure/Data/` |
-| Application services | `src/NtmScheduler.Infrastructure/Services/` |
-| CSV 邊界 | `src/NtmScheduler.Infrastructure/Csv/ScheduleCsv.cs` |
-| M 求解流程 | `src/NtmScheduler.Solvers/MSolver.cs` |
-| M 硬／軟規則 | `src/NtmScheduler.Solvers/MSolver.HardRules.cs`、`MSolver.SoftRules.cs` |
-| T 求解流程 | `src/NtmScheduler.Solvers/TSolver.cs` |
-| T 硬／軟規則 | `src/NtmScheduler.Solvers/TSolver.HardRules.cs`、`TSolver.SoftRules.cs` |
-| 共用 contracts | `src/NtmScheduler.Solvers/SolverContracts.cs` |
+| CLI 進入點 | `src/NtmcScheduler.Cli/Program.cs` |
+| Web 入口與資安 middleware | `src/NtmcScheduler.Web/Program.cs` |
+| Blazor 頁面 | `src/NtmcScheduler.Web/Components/Pages/` |
+| EF 實體與 migration | `src/NtmcScheduler.Infrastructure/Data/` |
+| Application services | `src/NtmcScheduler.Infrastructure/Services/` |
+| CSV 邊界 | `src/NtmcScheduler.Infrastructure/Csv/ScheduleCsv.cs` |
+| M 求解流程 | `src/NtmcScheduler.Solvers/MSolver.cs` |
+| M 硬／軟規則 | `src/NtmcScheduler.Solvers/MSolver.HardRules.cs`、`MSolver.SoftRules.cs` |
+| T 求解流程 | `src/NtmcScheduler.Solvers/TSolver.cs` |
+| T 硬／軟規則 | `src/NtmcScheduler.Solvers/TSolver.HardRules.cs`、`TSolver.SoftRules.cs` |
+| 共用 contracts | `src/NtmcScheduler.Solvers/SolverContracts.cs` |
 | Solver 與 CLI 導覽 | `docs/11-implementation-plan.md` |
 | 軟規則總表 | `docs/05-soft-rules.md` |
 

@@ -14,11 +14,11 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 
 | 專案 | 主要責任 | 相依 |
 |---|---|---|
-| `NtmScheduler.Contracts` | Domain、DTO、規則結果、排班服務介面 | 無（**不得參考 OR-Tools 或 EF Core**） |
-| `NtmScheduler.Solvers` | OR-Tools、M／T solver、硬／軟規則、固定 Priority 群組最佳化、候選解 | Google.OrTools |
-| `NtmScheduler.Infrastructure` | EF Core、設定、CSV、背景工作、稽核、匯出；負責呼叫 Solvers | Contracts、Solvers |
-| `NtmScheduler.Web` | Blazor UI、操作服務、進度與結果呈現 | Contracts、Infrastructure |
-| `NtmScheduler.Solvers.Tests` | Solver、CLI 與 Infrastructure 單元／整合測試 | 全部 |
+| `NtmcScheduler.Contracts` | Domain、DTO、規則結果、排班服務介面 | 無（**不得參考 OR-Tools 或 EF Core**） |
+| `NtmcScheduler.Solvers` | OR-Tools、M／T solver、硬／軟規則、固定 Priority 群組最佳化、候選解 | Google.OrTools |
+| `NtmcScheduler.Infrastructure` | EF Core、設定、CSV、背景工作、稽核、匯出；負責呼叫 Solvers | Contracts、Solvers |
+| `NtmcScheduler.Web` | Blazor UI、操作服務、進度與結果呈現 | Contracts、Infrastructure |
+| `NtmcScheduler.Solvers.Tests` | Solver、CLI 與 Infrastructure 單元／整合測試 | 全部 |
 
 硬性規範：
 

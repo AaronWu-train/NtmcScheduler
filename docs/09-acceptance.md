@@ -32,8 +32,8 @@
 
 ## 建置
 
-- `dotnet build NtmScheduler.slnx -c Release` 成功。
-- `dotnet test NtmScheduler.slnx -c Release` 成功。
+- `dotnet build NtmcScheduler.slnx -c Release` 成功。
+- `dotnet test NtmcScheduler.slnx -c Release` 成功。
 - 不修改、不編譯 `tex/` 或 PDF。
 
 ## CSV

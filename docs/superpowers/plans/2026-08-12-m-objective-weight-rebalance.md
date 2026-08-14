@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Do not change M hard constraints, objective names, surplus-night behavior, or T solver behavior.
-- Keep `NtmScheduler.Contracts` free of OR-Tools and EF Core references.
+- Keep `NtmcScheduler.Contracts` free of OR-Tools and EF Core references.
 - Update documentation and `docs/10-decisions.md` before production rule behavior.
 - Preserve unrelated edits in both example README files.
 - Do not commit until the user explicitly requests a commit.
@@ -59,10 +59,10 @@ Expected: matches remain only in historical decisions and the design's discussio
 ### Task 2: Drive the production change from failing tests
 
 **Files:**
-- Modify: `tests/NtmScheduler.Solvers.Tests/SolverAcceptanceAssertions.cs`
-- Modify: `tests/NtmScheduler.Solvers.Tests/MSolverTests.cs`
-- Modify: `src/NtmScheduler.Solvers/MSolver.SoftRules.cs`
-- Modify: `src/NtmScheduler.Cli/Program.cs`
+- Modify: `tests/NtmcScheduler.Solvers.Tests/SolverAcceptanceAssertions.cs`
+- Modify: `tests/NtmcScheduler.Solvers.Tests/MSolverTests.cs`
+- Modify: `src/NtmcScheduler.Solvers/MSolver.SoftRules.cs`
+- Modify: `src/NtmcScheduler.Cli/Program.cs`
 
 **Interfaces:**
 - Consumes: existing `MCandidate.Objectives`, `ObjectiveComponent.Weight`, and `MCandidate.ExternalAssignments`
@@ -80,7 +80,7 @@ Recompute external staffing with a literal allowance of 60. Recompute all six M 
 
 - [x] **Step 2: Run tests to verify RED**
 
-Run: `dotnet test tests/NtmScheduler.Solvers.Tests/NtmScheduler.Solvers.Tests.csproj --no-restore --maxcpucount:1 --disable-build-servers --filter "Name=Solve_MonthlySchedules_ReturnsNamedCandidate"`
+Run: `dotnet test tests/NtmcScheduler.Solvers.Tests/NtmcScheduler.Solvers.Tests.csproj --no-restore --maxcpucount:1 --disable-build-servers --filter "Name=Solve_MonthlySchedules_ReturnsNamedCandidate"`
 
 Expected: FAIL because production still reports range-based fairness values and the old multiplied fairness weights.
 
@@ -105,15 +105,15 @@ Expected: PASS with the approved weights and recomputed violations.
 
 - [x] **Step 1: Run focused M solver tests**
 
-Run: `dotnet test tests/NtmScheduler.Solvers.Tests/NtmScheduler.Solvers.Tests.csproj --no-restore --maxcpucount:1 --disable-build-servers --filter "Name=Solve_Lb09ExternalStaffingIsAllowedAndImmediatelyPenalized|Name=Solve_MonthlySchedules_ReturnsNamedCandidate"`
+Run: `dotnet test tests/NtmcScheduler.Solvers.Tests/NtmcScheduler.Solvers.Tests.csproj --no-restore --maxcpucount:1 --disable-build-servers --filter "Name=Solve_Lb09ExternalStaffingIsAllowedAndImmediatelyPenalized|Name=Solve_MonthlySchedules_ReturnsNamedCandidate"`
 
 - [x] **Step 2: Run the complete solver test project**
 
-Run: `dotnet test tests/NtmScheduler.Solvers.Tests/NtmScheduler.Solvers.Tests.csproj --no-restore --maxcpucount:1 --disable-build-servers`
+Run: `dotnet test tests/NtmcScheduler.Solvers.Tests/NtmcScheduler.Solvers.Tests.csproj --no-restore --maxcpucount:1 --disable-build-servers`
 
 - [x] **Step 3: Build the solution in Release**
 
-Run: `dotnet build NtmScheduler.slnx -c Release --no-restore --maxcpucount:1 --disable-build-servers`
+Run: `dotnet build NtmcScheduler.slnx -c Release --no-restore --maxcpucount:1 --disable-build-servers`
 
 - [x] **Step 4: Check the diff**
 

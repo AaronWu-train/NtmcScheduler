@@ -2,8 +2,8 @@
 
 ## 2026-08-13：Core 更名為 Contracts，Infrastructure 保留原名
 
-- `NtmScheduler.Core` 更名為 `NtmScheduler.Contracts`，明確表示其只承載 provider-neutral DTO、command、enum、例外與 application service 介面，不是 ASP.NET Core API 或可獨立執行的後端。
-- `NtmScheduler.Infrastructure` 保留原名，承載 application service 實作、EF Core／Identity、CSV、AuditLog 與背景求解工作。
+- `NtmcScheduler.Core` 更名為 `NtmcScheduler.Contracts`，明確表示其只承載 provider-neutral DTO、command、enum、例外與 application service 介面，不是 ASP.NET Core API 或可獨立執行的後端。
+- `NtmcScheduler.Infrastructure` 保留原名，承載 application service 實作、EF Core／Identity、CSV、AuditLog 與背景求解工作。
 - 本次只調整專案、namespace 與文件名稱，不改變資料庫 schema、migration ID、服務契約或排班規則。
 
 ## 2026-08-13：登入、工作區授權與資安邊界

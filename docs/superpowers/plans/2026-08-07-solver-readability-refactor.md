@@ -36,8 +36,8 @@ Delete `MSolver.Rules.cs` and `TSolver.Rules.cs` after moving their contents. Ex
 ### Task 1: Establish the green baseline
 
 **Files:**
-- Test: `tests/NtmScheduler.Solvers.Tests/MSolverTests.cs`
-- Test: `tests/NtmScheduler.Solvers.Tests/TSolverTests.cs`
+- Test: `tests/NtmcScheduler.Solvers.Tests/MSolverTests.cs`
+- Test: `tests/NtmcScheduler.Solvers.Tests/TSolverTests.cs`
 
 **Interfaces:**
 - Consumes: existing `MSolver.Solve(...)` and `TSolver.Solve(...)`
@@ -46,7 +46,7 @@ Delete `MSolver.Rules.cs` and `TSolver.Rules.cs` after moving their contents. Ex
 - [x] **Step 1: Run all existing solver tests**
 
 ```bash
-dotnet test tests/NtmScheduler.Solvers.Tests/NtmScheduler.Solvers.Tests.csproj -c Release --no-restore -m:1 /nodeReuse:false
+dotnet test tests/NtmcScheduler.Solvers.Tests/NtmcScheduler.Solvers.Tests.csproj -c Release --no-restore -m:1 /nodeReuse:false
 ```
 
 Expected: all tests pass. Diagnose any failure before refactoring.
@@ -60,12 +60,12 @@ Confirm the suite covers legal M/T solving, input validation, cancellation, time
 ### Task 2: Split and simplify MSolver
 
 **Files:**
-- Modify: `src/NtmScheduler.Solvers/MSolver.cs`
-- Modify: `src/NtmScheduler.Solvers/MSolver.Input.cs`
-- Create: `src/NtmScheduler.Solvers/MSolver.HardRules.cs`
-- Create: `src/NtmScheduler.Solvers/MSolver.SoftRules.cs`
-- Delete: `src/NtmScheduler.Solvers/MSolver.Rules.cs`
-- Test: `tests/NtmScheduler.Solvers.Tests/MSolverTests.cs`
+- Modify: `src/NtmcScheduler.Solvers/MSolver.cs`
+- Modify: `src/NtmcScheduler.Solvers/MSolver.Input.cs`
+- Create: `src/NtmcScheduler.Solvers/MSolver.HardRules.cs`
+- Create: `src/NtmcScheduler.Solvers/MSolver.SoftRules.cs`
+- Delete: `src/NtmcScheduler.Solvers/MSolver.Rules.cs`
+- Test: `tests/NtmcScheduler.Solvers.Tests/MSolverTests.cs`
 
 **Interfaces:**
 - Consumes: `ScheduleInput`, `SolverOptions`, existing M constants and private records
@@ -178,7 +178,7 @@ Place `ModelVariables` at the bottom of `MSolver.HardRules.cs` and `ObjectiveGro
 - [x] **Step 7: Run M tests**
 
 ```bash
-dotnet test tests/NtmScheduler.Solvers.Tests/NtmScheduler.Solvers.Tests.csproj -c Release --no-restore --filter "FullyQualifiedName~MSolverTests" -m:1 /nodeReuse:false
+dotnet test tests/NtmcScheduler.Solvers.Tests/NtmcScheduler.Solvers.Tests.csproj -c Release --no-restore --filter "FullyQualifiedName~MSolverTests" -m:1 /nodeReuse:false
 ```
 
 Expected: all M tests pass unchanged.
@@ -188,12 +188,12 @@ Expected: all M tests pass unchanged.
 ### Task 3: Split and simplify TSolver
 
 **Files:**
-- Modify: `src/NtmScheduler.Solvers/TSolver.cs`
-- Modify: `src/NtmScheduler.Solvers/TSolver.Input.cs`
-- Create: `src/NtmScheduler.Solvers/TSolver.HardRules.cs`
-- Create: `src/NtmScheduler.Solvers/TSolver.SoftRules.cs`
-- Delete: `src/NtmScheduler.Solvers/TSolver.Rules.cs`
-- Test: `tests/NtmScheduler.Solvers.Tests/TSolverTests.cs`
+- Modify: `src/NtmcScheduler.Solvers/TSolver.cs`
+- Modify: `src/NtmcScheduler.Solvers/TSolver.Input.cs`
+- Create: `src/NtmcScheduler.Solvers/TSolver.HardRules.cs`
+- Create: `src/NtmcScheduler.Solvers/TSolver.SoftRules.cs`
+- Delete: `src/NtmcScheduler.Solvers/TSolver.Rules.cs`
+- Test: `tests/NtmcScheduler.Solvers.Tests/TSolverTests.cs`
 
 **Interfaces:**
 - Consumes: `ScheduleInput`, `SolverOptions`, existing T constants and private records
@@ -261,7 +261,7 @@ Comment that `ShiftAssignedOnDate` uses T月班別 in the target month and the n
 - [x] **Step 5: Run T tests**
 
 ```bash
-dotnet test tests/NtmScheduler.Solvers.Tests/NtmScheduler.Solvers.Tests.csproj -c Release --no-restore --filter "FullyQualifiedName~TSolverTests" -m:1 /nodeReuse:false
+dotnet test tests/NtmcScheduler.Solvers.Tests/NtmcScheduler.Solvers.Tests.csproj -c Release --no-restore --filter "FullyQualifiedName~TSolverTests" -m:1 /nodeReuse:false
 ```
 
 Expected: all T tests pass unchanged.
@@ -271,10 +271,10 @@ Expected: all T tests pass unchanged.
 ### Task 4: Verify both solvers together
 
 **Files:**
-- Inspect: `src/NtmScheduler.Solvers/MSolver*.cs`
-- Inspect: `src/NtmScheduler.Solvers/TSolver*.cs`
-- Test: `tests/NtmScheduler.Solvers.Tests/MSolverTests.cs`
-- Test: `tests/NtmScheduler.Solvers.Tests/TSolverTests.cs`
+- Inspect: `src/NtmcScheduler.Solvers/MSolver*.cs`
+- Inspect: `src/NtmcScheduler.Solvers/TSolver*.cs`
+- Test: `tests/NtmcScheduler.Solvers.Tests/MSolverTests.cs`
+- Test: `tests/NtmcScheduler.Solvers.Tests/TSolverTests.cs`
 
 **Interfaces:**
 - Consumes: refactored M and T partial classes
@@ -283,9 +283,9 @@ Expected: all T tests pass unchanged.
 - [x] **Step 1: Check obsolete files and helpers are gone**
 
 ```bash
-test ! -e src/NtmScheduler.Solvers/MSolver.Rules.cs
-test ! -e src/NtmScheduler.Solvers/TSolver.Rules.cs
-rg -n 'private static .*\b(MonthStart|Employees|Sum|MakeObjective|LengthPenalty|AndNot|IsEqual)\(' src/NtmScheduler.Solvers/MSolver*.cs src/NtmScheduler.Solvers/TSolver*.cs
+test ! -e src/NtmcScheduler.Solvers/MSolver.Rules.cs
+test ! -e src/NtmcScheduler.Solvers/TSolver.Rules.cs
+rg -n 'private static .*\b(MonthStart|Employees|Sum|MakeObjective|LengthPenalty|AndNot|IsEqual)\(' src/NtmcScheduler.Solvers/MSolver*.cs src/NtmcScheduler.Solvers/TSolver*.cs
 ```
 
 Expected: file checks succeed and `rg` finds no obsolete helper calls.
@@ -293,8 +293,8 @@ Expected: file checks succeed and `rg` finds no obsolete helper calls.
 - [x] **Step 2: Check structure and comments**
 
 ```bash
-wc -l src/NtmScheduler.Solvers/MSolver*.cs src/NtmScheduler.Solvers/TSolver*.cs
-rg -n '#region|Rule ID|J[1-5]|---{10,}' src/NtmScheduler.Solvers/MSolver*.cs src/NtmScheduler.Solvers/TSolver*.cs
+wc -l src/NtmcScheduler.Solvers/MSolver*.cs src/NtmcScheduler.Solvers/TSolver*.cs
+rg -n '#region|Rule ID|J[1-5]|---{10,}' src/NtmcScheduler.Solvers/MSolver*.cs src/NtmcScheduler.Solvers/TSolver*.cs
 ```
 
 Expected: eight responsibility files exist; the second command finds no forbidden markers.
@@ -302,8 +302,8 @@ Expected: eight responsibility files exist; the second command finds no forbidde
 - [x] **Step 3: Run all tests and the Release build**
 
 ```bash
-dotnet test tests/NtmScheduler.Solvers.Tests/NtmScheduler.Solvers.Tests.csproj -c Release --no-restore -m:1 /nodeReuse:false
-dotnet build NtmScheduler.slnx -c Release --no-restore -m:1 /nodeReuse:false
+dotnet test tests/NtmcScheduler.Solvers.Tests/NtmcScheduler.Solvers.Tests.csproj -c Release --no-restore -m:1 /nodeReuse:false
+dotnet build NtmcScheduler.slnx -c Release --no-restore -m:1 /nodeReuse:false
 ```
 
 Expected: all tests pass and the solution has zero compilation errors. `NU1900` is acceptable only if the NuGet vulnerability feed is unavailable.

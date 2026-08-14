@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/NtmcScheduler.Cli/NtmcScheduler.Cli.csproj" />
+    <Project Path="src/NtmcScheduler.Contracts/NtmcScheduler.Contracts.csproj" />
+    <Project Path="src/NtmcScheduler.Infrastructure/NtmcScheduler.Infrastructure.csproj" />
+    <Project Path="src/NtmcScheduler.Solvers/NtmcScheduler.Solvers.csproj" />
+    <Project Path="src/NtmcScheduler.Web/NtmcScheduler.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/NtmcScheduler.Solvers.Tests/NtmcScheduler.Solvers.Tests.csproj" />
+  </Folder>
+</Solution>

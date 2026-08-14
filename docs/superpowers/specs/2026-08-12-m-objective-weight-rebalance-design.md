@@ -79,7 +79,7 @@ No violation measurement is renamed or moved to a new public objective group. Th
 - Add or update a focused assertion that the LB02/LB04/LB11 shared allowance is 60 and that assignment 61 is the first penalized assignment.
 - Assert the complete M component weight table in acceptance coverage.
 - Recompute all reported component violations from returned schedules as existing acceptance coverage does.
-- Run the focused M solver tests, the whole-month M acceptance test, the complete solver test project, and a Release build through `NtmScheduler.slnx`.
+- Run the focused M solver tests, the whole-month M acceptance test, the complete solver test project, and a Release build through `NtmcScheduler.slnx`.
 - Report `TimeLimit` separately from `Infeasible`; a legal incumbent remains valid even when optimality is not proved.
 
 Existing example README edits are outside this change and must not be included in its commits.

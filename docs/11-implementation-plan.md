@@ -4,15 +4,15 @@
 
 ```text
 src/
-├── NtmScheduler.Contracts/
+├── NtmcScheduler.Contracts/
 │   ├── Models.cs
 │   └── Services.cs
-├── NtmScheduler.Infrastructure/
+├── NtmcScheduler.Infrastructure/
 │   ├── Background/
 │   ├── Csv/
 │   ├── Data/
 │   └── Services/
-├── NtmScheduler.Solvers/
+├── NtmcScheduler.Solvers/
 │   ├── SolverContracts.cs
 │   ├── MContracts.cs
 │   ├── MSolver.cs
@@ -24,15 +24,15 @@ src/
 │   ├── TSolver.Input.cs
 │   ├── TSolver.HardRules.cs
 │   └── TSolver.SoftRules.cs
-├── NtmScheduler.Cli/
+├── NtmcScheduler.Cli/
 │   └── Program.cs
-└── NtmScheduler.Web/
+└── NtmcScheduler.Web/
     ├── Components/
     ├── Services/
     └── Program.cs
 ```
 
-`NtmScheduler.Contracts` 只有 provider-neutral domain DTO 與 application service contracts，不參考 EF 或 OR-Tools。`Infrastructure` 實作 Identity／EF、CSV adapter、快照轉換、直接 M/T 驗證器與單一背景佇列。`Web` 是 .NET 10 Blazor Interactive Server，元件只呼叫 application services。CSV 使用 .NET `TextFieldParser`，CLI 與 Web 共用同一 adapter。
+`NtmcScheduler.Contracts` 只有 provider-neutral domain DTO 與 application service contracts，不參考 EF 或 OR-Tools。`Infrastructure` 實作 Identity／EF、CSV adapter、快照轉換、直接 M/T 驗證器與單一背景佇列。`Web` 是 .NET 10 Blazor Interactive Server，元件只呼叫 application services。CSV 使用 .NET `TextFieldParser`，CLI 與 Web 共用同一 adapter。
 
 ## Web 頁面與服務
 
@@ -46,7 +46,7 @@ src/
 
 - Identity、WorkspacePermission、Employee、不可變 ConfigurationRevision、DemandDraft／快照、ScheduleRun、ScheduleVersion／assignments、AdoptedSchedule 與 append-only AuditLog。
 - 所有 domain 主鍵與 revision token 使用應用程式產生 GUID；`AdoptedSchedule(Workspace, Month)` 主鍵保證每月唯一 `★`。
-- repository-local `dotnet-ef` 產生單一 provider-neutral migration；開發用 SQLite，正式用 SQL Server。`NTM_MIGRATION_PROVIDER=SqlServer` 可產生 SQL Server script。
+- repository-local `dotnet-ef` 產生單一 provider-neutral migration；開發用 SQLite，正式用 SQL Server。`NTMC_MIGRATION_PROVIDER=SqlServer` 可產生 SQL Server script。
 
 ## 資安邊界
 
@@ -68,7 +68,7 @@ M 與 T 不共用任何建模邏輯。每個 solver 只有一個 private `Variab
 
 ## CLI 責任
 
-`NtmScheduler.Infrastructure/Csv/ScheduleCsv.cs` 是 CSV 邊界：讀寫月班表，讀取八週區間、M 萬年班表與非常態班型，並把文字格值轉為 solver contracts。`Program.cs` 只做：
+`NtmcScheduler.Infrastructure/Csv/ScheduleCsv.cs` 是 CSV 邊界：讀寫月班表，讀取八週區間、M 萬年班表與非常態班型，並把文字格值轉為 solver contracts。`Program.cs` 只做：
 
 1. 詢問五個共用輸入；M 再詢問可留白的萬年班表 CSV。
 2. 建立 `ScheduleInput`。
@@ -80,7 +80,7 @@ CLI 不包含業務規則，solver 不知道 CSV 路徑。
 
 ## 測試
 
-`tests/NtmScheduler.Solvers.Tests` 使用 MSTest，涵蓋 solver／CLI 與 Web Infrastructure。測試重點為：
+`tests/NtmcScheduler.Solvers.Tests` 使用 MSTest，涵蓋 solver／CLI 與 Web Infrastructure。測試重點為：
 
 - typed input 與 InvalidInput 邊界。
 - M/T 至少一個可求解主要案例。
