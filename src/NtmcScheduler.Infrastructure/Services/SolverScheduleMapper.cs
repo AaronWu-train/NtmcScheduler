@@ -39,7 +39,7 @@ internal static class SolverScheduleMapper
             Ability = employee.Ability,
             MonthlyShift = ParseShift(employee.MonthlyShift),
             PerpetualScheduleId = employee.PerpetualScheduleId,
-            RequestedLeaveRestCount = employee.RequestedLeaveRestCount,
+            RequestedLeaveRestCount = null,
             OpeningUsage = employee.OpeningRest is null || employee.OpeningSpecialRest is null
                 ? null
                 : new RestUsage(employee.OpeningRest.Value, employee.OpeningSpecialRest.Value),

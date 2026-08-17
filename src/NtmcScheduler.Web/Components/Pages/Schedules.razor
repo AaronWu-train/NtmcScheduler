@@ -20,6 +20,67 @@
 {
     <p class="alert @messageClass" role="status">@message</p>
 }
+<div class="month-list">
+    @foreach (var month in months)
+    {
+        <button class="month-card @(selectedMonth == month.Month ? "selected" : "")" disabled="@isBusy" @onclick="() => SelectMonthAsync(month.Month)">
+            <strong>@month.Month.ToString("yyyy-MM")</strong><span>@month.VersionCount 份班表</span><span>@(month.Adopted is null ? "尚未採用班表" : $"已採用：{month.Adopted.Name}")</span>
+        </button>
+    }
+</div>
+@if (selectedMonth is not null)
+{
+    <div class="table-scroll">
+        <table>
+            <thead>
+            <tr>
+                <th>狀態</th><th>班表名稱</th><th>來源</th><th>最佳化分數</th><th>建立時間</th><th>最後修改</th><th>檢查結果</th><th>操作</th>
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (var version in versions)
+            {
+                <tr class="@(version.IsAdopted ? "adopted-row" : "")">
+                    <td>
+                        @if (version.IsAdopted)
+                        {
+                            <span class="adopted-badge">已採用</span>
+                        }
+                        else
+                        {
+                            <span>一般班表</span>
+                        }
+                    </td>
+                    <td>
+                        <a href="/schedules/@version.Id">@version.Name</a>
+                    </td><td>@SourceText(version.SourceStatus)</td>
+                    <td class="objective-scores">
+                        @foreach (var score in DisplayObjectives(version))
+                        {
+                            <span>J@score.Priority：@score.Value</span>
+                        }
+                        @if (!DisplayObjectives(version).Any())
+                        {
+                            <span>—</span>
+                        }
+                    </td><td>@Taipei(version.CreatedAtUtc)</td><td>@Taipei(version.UpdatedAtUtc)</td>
+                    <td>
+                        <span class="status @(version.HasErrors ? "warning" : version.WarningCount > 0 ? "warning" : "ok")">@(version.HasErrors ? "需要修正" : version.WarningCount > 0 ? $"建議 {version.WarningCount} 項" : "可採用")</span>
+                    </td>
+                    <td>
+                        <a class="button-link" href="/schedules/@version.Id">開啟班表</a><a class="button-link" href="/download/schedules/@(version.Id).csv">下載 CSV</a>
+                        @if (canEdit && !version.IsAdopted)
+                        {
+                            <button class="primary" disabled="@isBusy" @onclick="() => AdoptAsync(version)">採用</button>
+                            <button class="danger" disabled="@isBusy" @onclick="() => ArchiveAsync(version)">封存</button>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
 @if (workspaceCode == WorkspaceCode.M)
 {
     <section class="card">
@@ -116,67 +177,25 @@
         }
     </section>
 }
-<div class="month-list">
-    @foreach (var month in months)
-    {
-        <button class="month-card @(selectedMonth == month.Month ? "selected" : "")" disabled="@isBusy" @onclick="() => SelectMonthAsync(month.Month)">
-            <strong>@month.Month.ToString("yyyy-MM")</strong><span>@month.VersionCount 份班表</span><span>@(month.Adopted is null ? "尚未採用班表" : $"已採用：{month.Adopted.Name}")</span>
-        </button>
-    }
-</div>
-@if (selectedMonth is not null)
+@if (workspaceCode == WorkspaceCode.T)
 {
-    <div class="table-scroll">
-        <table>
-            <thead>
-            <tr>
-                <th>狀態</th><th>班表名稱</th><th>來源</th><th>最佳化分數</th><th>建立時間</th><th>最後修改</th><th>檢查結果</th><th>操作</th>
-            </tr>
-            </thead>
-            <tbody>
-            @foreach (var version in versions)
-            {
-                <tr class="@(version.IsAdopted ? "adopted-row" : "")">
-                    <td>
-                        @if (version.IsAdopted)
-                        {
-                            <span class="adopted-badge">已採用</span>
-                        }
-                        else
-                        {
-                            <span>一般班表</span>
-                        }
-                    </td>
-                    <td>
-                        <a href="/schedules/@version.Id">@version.Name</a>
-                    </td><td>@SourceText(version.SourceStatus)</td>
-                    <td class="objective-scores">
-                        @foreach (var score in DisplayObjectives(version))
-                        {
-                            <span>J@score.Priority：@score.Value</span>
-                        }
-                        @if (!DisplayObjectives(version).Any())
-                        {
-                            <span>—</span>
-                        }
-                    </td><td>@Taipei(version.CreatedAtUtc)</td><td>@Taipei(version.UpdatedAtUtc)</td>
-                    <td>
-                        <span class="status @(version.HasErrors ? "warning" : version.WarningCount > 0 ? "warning" : "ok")">@(version.HasErrors ? "需要修正" : version.WarningCount > 0 ? $"建議 {version.WarningCount} 項" : "可採用")</span>
-                    </td>
-                    <td>
-                        <a class="button-link" href="/schedules/@version.Id">開啟班表</a><a class="button-link" href="/download/schedules/@(version.Id).csv">下載 CSV</a>
-                        @if (canEdit && !version.IsAdopted)
-                        {
-                            <button class="primary" disabled="@isBusy" @onclick="() => AdoptAsync(version)">採用</button>
-                            <button class="danger" disabled="@isBusy" @onclick="() => ArchiveAsync(version)">封存</button>
-                        }
-                    </td>
-                </tr>
-            }
-            </tbody>
-        </table>
-    </div>
+    <section class="card">
+        <div class="section-heading">
+            <div>
+                <h2>匯入歷史班表</h2>
+                <p>指定月份後，上傳為一份可編輯的一般班表；不會自動採用或覆蓋既有版本。</p>
+            </div>
+            <div class="toolbar">
+                <label>歷史月份<input type="month" value="@historyMonthText" @onchange="args => historyMonthText = args.Value?.ToString() ?? historyMonthText"/></label><a class="button-link" href="/download/templates/t/previous.csv">下載範本</a>
+                @if (canEdit)
+                {
+                    <label class="button-link primary file-upload-button">上傳歷史班表<InputFile OnChange="ImportHistoryAsync" accept=".csv,text/csv" disabled="@isBusy"/></label>
+                }
+            </div>
+        </div>
+    </section>
 }
+
 
 @code {
     [Parameter] public string Workspace { get; set; } = "";
@@ -236,10 +255,24 @@
     private Task ImportHistoryAsync(InputFileChangeEventArgs args) => RunAsync(async () =>
     {
         if (!DateOnly.TryParse(historyMonthText + "-01", out var month)) throw new DomainValidationException("請選擇歷史月份。");
-        var bytes = await ReadFileAsync(args.File);
-        await Service.ImportAsync(WorkspaceCode.M, month, args.File.Name, new MemoryStream(bytes), await CurrentActor.GetAsync());
-        selectedMonth = month;
-        await ReloadAsync();
+        if (workspaceCode == WorkspaceCode.M)
+        {
+            var bytes = await ReadFileAsync(args.File);
+            await Service.ImportAsync(WorkspaceCode.M, month, args.File.Name, new MemoryStream(bytes), await CurrentActor.GetAsync());
+            selectedMonth = month;
+            await ReloadAsync();
+        }
+        else if (workspaceCode == WorkspaceCode.T)
+        {
+            var bytes = await ReadFileAsync(args.File);
+            await Service.ImportAsync(WorkspaceCode.T, month, args.File.Name, new MemoryStream(bytes), await CurrentActor.GetAsync());
+            selectedMonth = month;
+            await ReloadAsync();
+        }
+        else
+        {
+            throw new DomainValidationException("工作區只支援 M 或 T。");
+        }
     }, "歷史班表已匯入。");
 
     private Task UploadPerpetualAsync(InputFileChangeEventArgs args) => RunAsync(async () =>

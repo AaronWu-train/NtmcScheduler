@@ -306,6 +306,7 @@ public sealed class WebInfrastructureTests
             EmployeeCode = previousEmployee.EmployeeId,
             Name = previousEmployee.Name,
             Affiliation = previousEmployee.Affiliation,
+            RequestedLeaveRestCount = 3,
             ClosingRest = 12,
             ClosingSpecialRest = 2,
             PerpetualScheduleId = "P-ADOPTED"
@@ -325,6 +326,16 @@ public sealed class WebInfrastructureTests
         Assert.AreEqual(12, employee.OpeningRest);
         Assert.AreEqual(2, employee.OpeningSpecialRest);
         Assert.AreEqual("P-ADOPTED", employee.PerpetualScheduleId);
+
+        var queued = await new ScheduleRunService(database.Context, new ScheduleRunQueue()).QueueAsync(
+            demand.Id, demand.RevisionToken, new ScheduleRunOptions(300, 4, 1), actor);
+        var savedRun = await database.Context.ScheduleRuns.SingleAsync(x => x.Id == queued.Id);
+        using (var snapshot = System.Text.Json.JsonDocument.Parse(savedRun.InputSnapshotJson))
+        {
+            var requestedLeaveRestCount = snapshot.RootElement.GetProperty("previousMonth").GetProperty("employees")[0]
+                .GetProperty("requestedLeaveRestCount");
+            Assert.AreEqual(System.Text.Json.JsonValueKind.Null, requestedLeaveRestCount.ValueKind);
+        }
 
         var uploadEmployee = previousEmployee with { PerpetualScheduleId = "P-UPLOAD" };
         var upload = input.PreviousMonth with
