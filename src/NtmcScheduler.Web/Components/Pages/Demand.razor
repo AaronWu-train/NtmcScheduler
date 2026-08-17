@@ -214,7 +214,7 @@
                     <tbody>
                     @foreach (var employee in SortedEmployees())
                     {
-                        var edit = employeeEdits[employee.Id];
+                        var edit = employeeEdits[employee.EmployeeCode];
                         <tr>
                             @foreach (var header in InputHeaders)
                             {
@@ -266,13 +266,13 @@
                                 else if (header == "到職日期")
                                 {
                                     <td>
-                                        <input class="inline-field date-field" type="date" disabled="@(!canEdit)" value="@DateText(edit.EmploymentStartDate)" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "employmentStart", args.Value?.ToString())'/>
+                                        <input class="inline-field date-field" type="date" disabled="@(!canEdit || isBusy)" value="@DateText(edit.EmploymentStartDate)" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "employmentStart", args.Value?.ToString())'/>
                                     </td>
                                 }
                                 else if (header == "T月班別" && workspaceCode == WorkspaceCode.T)
                                 {
                                     <td>
-                                        <select class="inline-field" disabled="@(!canEdit)" value="@edit.MonthlyShift" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "monthlyShift", args.Value?.ToString())'>
+                                        <select class="inline-field" disabled="@(!canEdit || isBusy)" value="@edit.MonthlyShift" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "monthlyShift", args.Value?.ToString())'>
                                             <option value="Early">早</option><option value="Afternoon">午</option><option value="Night">夜</option>
                                         </select>
                                     </td>
@@ -280,25 +280,25 @@
                                 else if (header == "月初區間累計R")
                                 {
                                     <td>
-                                        <input class="inline-field number-field" type="number" min="0" disabled="@(!canEdit)" value="@edit.OpeningRest" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "openingRest", args.Value?.ToString())'/>
+                                        <input class="inline-field number-field" type="number" min="0" disabled="@(!canEdit || isBusy)" value="@edit.OpeningRest" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "openingRest", args.Value?.ToString())'/>
                                     </td>
                                 }
                                 else if (header == "月初區間累計R1")
                                 {
                                     <td>
-                                        <input class="inline-field number-field" type="number" min="0" disabled="@(!canEdit)" value="@edit.OpeningSpecialRest" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "openingSpecialRest", args.Value?.ToString())'/>
+                                        <input class="inline-field number-field" type="number" min="0" disabled="@(!canEdit || isBusy)" value="@edit.OpeningSpecialRest" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "openingSpecialRest", args.Value?.ToString())'/>
                                     </td>
                                 }
                                 else if (header == "當月指定R休")
                                 {
                                     <td>
-                                        <input class="inline-field number-field" type="number" min="0" disabled="@(!canEdit)" value="@edit.LeaveRest" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "leaveRest", args.Value?.ToString())'/>
+                                        <input class="inline-field number-field" type="number" min="0" disabled="@(!canEdit || isBusy)" value="@edit.LeaveRest" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "leaveRest", args.Value?.ToString())'/>
                                     </td>
                                 }
                                 else if (header == "萬年班表" && workspaceCode == WorkspaceCode.M)
                                 {
                                     <td>
-                                        <input class="inline-field perpetual-field" disabled="@(!canEdit)" value="@edit.PerpetualId" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "perpetual", args.Value?.ToString())'/>
+                                        <input class="inline-field perpetual-field" disabled="@(!canEdit || isBusy)" value="@edit.PerpetualId" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "perpetual", args.Value?.ToString())'/>
                                     </td>
                                 }
                                 else
@@ -458,10 +458,11 @@
     private string sortColumn = "ID";
     private bool sortDescending;
     private bool pendingUploadPreviousSource;
-    private Dictionary<Guid, EmployeeEdit> employeeEdits = [];
+    private Dictionary<string, EmployeeEdit> employeeEdits = [];
     private DemandEmployeeDto? editingCellEmployee;
     private DateOnly editingDate;
     private readonly CellEdit cellEdit = new();
+    private readonly System.Threading.SemaphoreSlim uiOperationLock = new(1, 1);
 
     protected override async Task OnParametersSetAsync()
     {
@@ -481,7 +482,7 @@
             previousVersion = null;
             previousOptions = [];
             runs = [];
-            employeeEdits.Clear();
+            ClearLocalDemandEdits();
             pendingUploadPreviousSource = false;
             globalPerpetual = workspaceCode == WorkspaceCode.M ? await PerpetualService.GetAsync(actor) : null;
             return;
@@ -504,7 +505,7 @@
             previousVersion = null;
             previousOptions = [];
             runs = [];
-            employeeEdits.Clear();
+            ClearLocalDemandEdits();
             pendingUploadPreviousSource = false;
             activeStep = 1;
             return;
@@ -553,7 +554,7 @@
             previousVersion = null;
             previousOptions = [];
             runs = [];
-            employeeEdits.Clear();
+            ClearLocalDemandEdits();
             pendingUploadPreviousSource = false;
             activeStep = 1;
             if (availableMonths.Count == 0) selectedMonth = "new";
@@ -720,11 +721,16 @@
         preview = null;
     }
 
-    private void InitializeEmployeeEdits() => employeeEdits = demand?.Employees.ToDictionary(x => x.Id, x => new EmployeeEdit
+    private void InitializeEmployeeEdits()
     {
-        EmploymentStartDate = x.EmploymentStartDate, MonthlyShift = x.MonthlyShift ?? "Early", OpeningRest = x.OpeningRest, OpeningSpecialRest = x.OpeningSpecialRest,
-        LeaveRest = x.RequestedLeaveRestCount, PerpetualId = x.PerpetualScheduleId ?? ""
-    }) ?? [];
+        employeeEdits = demand?.Employees.ToDictionary(x => x.EmployeeCode, x => new EmployeeEdit
+        {
+            EmploymentStartDate = x.EmploymentStartDate, MonthlyShift = x.MonthlyShift ?? "Early", OpeningRest = x.OpeningRest, OpeningSpecialRest = x.OpeningSpecialRest,
+            LeaveRest = x.RequestedLeaveRestCount, PerpetualId = x.PerpetualScheduleId ?? ""
+        }) ?? [];
+    }
+
+    private void ClearLocalDemandEdits() => employeeEdits.Clear();
 
     private async Task ChangeEmployeeFieldAsync(DemandEmployeeDto employee, EmployeeEdit edit, string field, string? value)
     {
@@ -750,8 +756,8 @@
         if ((edit.OpeningRest is null) != (edit.OpeningSpecialRest is null)) return;
         await RunUiAsync(async () =>
         {
-            demand = await DemandService.UpdateEmployeeAsync(employee.Id, edit.EmploymentStartDate, workspaceCode == WorkspaceCode.T ? edit.MonthlyShift : null,
-                edit.OpeningRest, edit.OpeningSpecialRest, edit.LeaveRest, edit.PerpetualId, demand!.RevisionToken, await CurrentActor.GetAsync());
+            demand = await DemandService.UpdateEmployeeAsync(demand!.Id, employee.EmployeeCode, edit.EmploymentStartDate, workspaceCode == WorkspaceCode.T ? edit.MonthlyShift : null,
+                edit.OpeningRest, edit.OpeningSpecialRest, edit.LeaveRest, edit.PerpetualId, demand.RevisionToken, await CurrentActor.GetAsync());
             InitializeEmployeeEdits();
         }, "月份欄位已自動儲存。");
     }
@@ -782,7 +788,7 @@
             var kind = value is "Early" or "Afternoon" or "Night" || isMWork ? "Work" : value?.StartsWith("ns:", StringComparison.Ordinal) == true ? "WorkEvent" : null;
             var requested = value == "RStar";
             var parts = isMWork ? value!.Split(':') : null;
-            var shift = kind == "Work" ? (parts?[2] ?? value) : null;
+            var shift = kind == "Work" ? parts?[2] ?? value : null;
             DateTimeOffset? start = null;
             DateTimeOffset? end = null;
             string? description = null;
@@ -794,9 +800,9 @@
                 description = nonStandard.Name ?? nonStandard.Code;
             }
 
-            demand = await DemandService.UpdateAssignmentAsync(employee.Id, date, kind, requested,
+            demand = await DemandService.UpdateAssignmentAsync(demand!.Id, employee.EmployeeCode, date, kind, requested,
                 kind == "Work" && workspaceCode == WorkspaceCode.M ? parts?[1] : null, shift,
-                start, end, description, demand!.RevisionToken, await CurrentActor.GetAsync());
+                start, end, description, demand.RevisionToken, await CurrentActor.GetAsync());
         }, "日格已自動儲存。");
     }
 
@@ -811,8 +817,8 @@
 
     private async Task SaveOtherCellAsync() => await RunUiAsync(async () =>
     {
-        demand = await DemandService.UpdateAssignmentAsync(editingCellEmployee!.Id, editingDate, "WorkEvent", false, null, null,
-            Offset(cellEdit.Start), Offset(cellEdit.End), cellEdit.Description, demand!.RevisionToken, await CurrentActor.GetAsync());
+        demand = await DemandService.UpdateAssignmentAsync(demand!.Id, editingCellEmployee!.EmployeeCode, editingDate, "WorkEvent", false, null, null,
+            Offset(cellEdit.Start), Offset(cellEdit.End), cellEdit.Description, demand.RevisionToken, await CurrentActor.GetAsync());
         CloseEditors();
     }, "日格已自動儲存。");
 
@@ -822,12 +828,13 @@
 
     private async Task RunUiAsync(Func<Task> action, string success)
     {
-        isBusy = true;
-        messageClass = "success";
-        message = "處理中…";
-        await InvokeAsync(StateHasChanged);
+        await uiOperationLock.WaitAsync();
         try
         {
+            isBusy = true;
+            messageClass = "success";
+            message = "處理中…";
+            await InvokeAsync(StateHasChanged);
             await action();
             message = success;
         }
@@ -839,6 +846,8 @@
         finally
         {
             isBusy = false;
+            uiOperationLock.Release();
+            await InvokeAsync(StateHasChanged);
         }
     }
 

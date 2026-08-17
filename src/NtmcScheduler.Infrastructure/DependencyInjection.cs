@@ -14,6 +14,7 @@ public static class DependencyInjection
         Action<DbContextOptionsBuilder> configureDatabase)
     {
         services.AddDbContext<NtmcDbContext>(configureDatabase);
+        services.AddDbContextFactory<NtmcDbContext>(configureDatabase, ServiceLifetime.Scoped);
         services.AddScoped<IUserAdministrationService, UserAdministrationService>();
         services.AddScoped<ICommonConfigurationService, CommonConfigurationService>();
         services.AddScoped<IEmployeeService, EmployeeService>();
