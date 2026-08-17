@@ -9,3 +9,6 @@ document.addEventListener("click", event => {
     download.click();
     download.remove();
 });
+
+window.scrollToScheduleCell = id =>
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });

@@ -4,6 +4,7 @@
 @inject IScheduleService Service
 @inject ICommonConfigurationService ConfigurationService
 @inject CurrentActorService CurrentActor
+@inject IJSRuntime JS
 
 <PageTitle>班表編輯器</PageTitle>
 @if (detail is null)
@@ -178,10 +179,10 @@ else
         </table>
     </div>
 
-    @if (detail.Issues.Count > 0)
+    @if (detail.Issues.Count > 0 || Suggestions().Count > 0)
     {
         <details class="issue-details">
-            <summary>檢查結果（@detail.Issues.Count）</summary>
+            <summary>檢查結果（@(detail.Issues.Count + Suggestions().Count)）</summary>
             <ul class="issue-list">
                 @foreach (var issue in detail.Issues)
                 {
@@ -189,9 +190,13 @@ else
                         <strong>@issue.RuleName</strong>：@issue.Message
                         @if (issue.EmployeeCode is not null && issue.Date is not null)
                         {
-                            <a href="#cell-@issue.EmployeeCode-@issue.Date.Value.ToString("yyyyMMdd")">@issue.EmployeeCode／@issue.Date.Value.ToString("M/d")</a>
+                            <a href="@($"#cell-{issue.EmployeeCode}-{issue.Date.Value:yyyyMMdd}")" @onclick="() => ScrollToCellAsync(issue.EmployeeCode, issue.Date.Value)" @onclick:preventDefault="true">@issue.EmployeeCode／@issue.Date.Value.ToString("M/d")</a>
                         }
                     </li>
+                }
+                @foreach (var suggestion in Suggestions())
+                {
+                    <li class="issue-warning"><strong>建議</strong>：@suggestion</li>
                 }
             </ul>
         </details>
@@ -310,6 +315,38 @@ else
     private IReadOnlyList<ValidationIssue> Issues(string employee, DateOnly day) => detail!.Issues.Where(x => x.EmployeeCode == employee && x.Date == day).ToArray();
     private static string IssueText(IReadOnlyList<ValidationIssue> issues) => string.Join("；", issues.Select(x => x.Message));
     private static string IssueClass(IReadOnlyList<ValidationIssue> issues) => issues.Any(x => x.IsLaborLawViolation) ? "labor-violation" : issues.Any(x => x.Severity == ValidationSeverity.Error) ? "blocking-issue" : issues.Count > 0 ? "advisory-issue" : "";
+    private async Task ScrollToCellAsync(string employeeCode, DateOnly date) =>
+        await JS.InvokeVoidAsync("scrollToScheduleCell", $"cell-{employeeCode}-{date:yyyyMMdd}");
+    private IReadOnlyList<string> Suggestions() => (detail?.Version.Objectives ?? [])
+        .SelectMany(objective => objective.Components)
+        .Where(component => component.Value > 0)
+        .Select(component => $"{SuggestionText(component.Name)}（違反量 {component.Value}）")
+        .ToArray();
+
+    private static string SuggestionText(string name) => name switch
+    {
+        "RequestedRest" => "調整人力或指定休假，盡量滿足 R*",
+        "UnusedLeaveRest" => "檢視可使用的指定 R休 額度",
+        "ExternalStaffing" => "調整同三站群組的人力，減少超過門檻的外援",
+        "MonthlyRest" => "調整一般 R，使每人更接近當月目標",
+        "SpecialRestBalance" => "調整 R1，使八週累積額度更接近國定假日目標",
+        "WorkStreak" => "調整休假位置，避免過短或過長的連續工作區段",
+        "MixedShiftWorkStreak" => "讓同一連續工作區段盡量維持單一正常班型",
+        "NightRestEarly" => "避免夜班後休一天即接早班",
+        "NightRestAfternoon" => "避免夜班後休一天即接小／午班",
+        "ShiftChangeWithoutRest" => "在不同正常班型之間安排實際休假",
+        "HolidayRestFairness" => "在比較群組內平衡假日休假次數",
+        "EarlyAfternoonImbalance" => "平衡個人的早班與小／午班數",
+        "NightShiftTarget" => "讓每人的夜班數盡量落在 3 至 4 天",
+        "NonMonthlyShift" => "讓實際班別更接近人員的 T 月班別",
+        "Attendance" => "補足各班組每日出勤人數",
+        "Specialty" => "補足各班應有的專業分組",
+        "Ability" => "補足每班能力 4 至 5 的出勤人員",
+        "NightToEarlyRest" => "增加夜班轉早班前的休假",
+        "MonthBoundaryRestBalance" => "調整月初與月底交界的休假安排",
+        "WeekdayRestFairness" => "在班組內平衡平日休假次數",
+        _ => name
+    };
     private static string CellClass(ScheduleAssignmentDto cell) => cell.Kind switch { "Rest" or "SpecialRest" or "LeaveRest" => "rest-text", "Work" when cell.Shift == "Afternoon" => "afternoon-text", "Work" when cell.Shift == "Night" => "night-text", "WorkEvent" => "event-text", _ => "" };
     private string CellText(ScheduleAssignmentDto cell) => cell switch { { Kind: "Rest", RequestedRest: true } => "R*", { Kind: "SpecialRest", RequestedRest: true } => "R1*", { Kind: "LeaveRest", RequestedRest: true } => "R休*", { Kind: "Rest" } => "R", { Kind: "SpecialRest" } => "R1", { Kind: "LeaveRest" } => "R休", { Kind: "WorkEvent" } => string.IsNullOrWhiteSpace(cell.EventDescription) ? "X" : cell.EventDescription!, { Kind: "Work", Shift: "Early" } => WorkText(cell, "早"), { Kind: "Work", Shift: "Afternoon" } => WorkText(cell, detail!.Version.Workspace == WorkspaceCode.M ? "小" : "午"), { Kind: "Work", Shift: "Night" } => WorkText(cell, "夜"), _ => "?" };
     private string WorkText(ScheduleAssignmentDto cell, string shift) => detail!.Version.Workspace == WorkspaceCode.M && cell.Station is { Length: >= 4 } ? $"{int.Parse(cell.Station[2..])}{shift}" : shift;
