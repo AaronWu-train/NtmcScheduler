@@ -299,7 +299,7 @@ public sealed class TSolverTests
             Assert.IsTrue(assignments.Values.All(cell => cell.RequestedRest));
 
             ScheduleCsv.WriteMonthly(outputPath, parsed);
-            StringAssert.Contains(File.ReadAllText(outputPath), "R*[R],R*[R1],R*[R休]");
+            StringAssert.Contains(File.ReadAllText(outputPath), "R*,R1*,R休*");
         }
         finally
         {

@@ -82,8 +82,6 @@ public sealed class ScheduleValidationService(NtmcDbContext db) : IScheduleValid
             var leaveRest = employee.Assignments.Where(x => x.Date >= version.Month && x.Date <= monthEnd && x.Kind == "LeaveRest").ToArray();
             if (leaveRest.Length > employee.RequestedLeaveRestCount)
                 issues.Add(new(ValidationSeverity.Error, "R休 上限", $"本月 R休 {leaveRest.Length} 日，超過上限 {employee.RequestedLeaveRestCount} 日。", employee.EmployeeCode));
-            foreach (var cell in leaveRest.Where(x => !x.RequestedRest))
-                issues.Add(new(ValidationSeverity.Error, "R休 指定日期", "R休 只能排在該員工的 R* 日期。", employee.EmployeeCode, cell.Date));
             for (var date = version.Month; date <= monthEnd; date = date.AddDays(1))
             {
                 if (employee.EmploymentStartDate is { } start && date < start) continue;
@@ -112,7 +110,7 @@ public sealed class ScheduleValidationService(NtmcDbContext db) : IScheduleValid
             var work = cells.Select(cell => WorkInterval(version.Workspace, cell)).Where(x => x is not null).Select(x => x!.Value).OrderBy(x => x.Start).ToArray();
             for (var index = 1; index < work.Length; index++)
                 if (work[index].Start - work[index - 1].End < TimeSpan.FromHours(11))
-                    issues.Add(new(ValidationSeverity.Error, "最少十一小時休息", "相鄰工作區間重疊或休息少於十一小時。", employee.EmployeeCode, work[index].Date));
+                    issues.Add(new(ValidationSeverity.Error, "最少十一小時休息", "相鄰工作區間重疊或休息少於十一小時。", employee.EmployeeCode, work[index].Date, IsLaborLawViolation: true));
         }
     }
 
@@ -133,7 +131,7 @@ public sealed class ScheduleValidationService(NtmcDbContext db) : IScheduleValid
                 if (employee.EmploymentStartDate is { } employmentStart && start < employmentStart) continue;
                 var window = Enumerable.Range(0, 7).Select(start.AddDays).ToArray();
                 if (window.All(cells.ContainsKey) && window.All(date => cells[date].Kind != "Rest"))
-                    issues.Add(new(ValidationSeverity.Error, "連續七日至少一日一般 R", "這個七日區間沒有一般 R；R1 與 R休不會重置本規則。", employee.EmployeeCode, end));
+                    issues.Add(new(ValidationSeverity.Error, "連續七日至少一日一般 R", "這個七日區間沒有一般 R；R1 與 R休不會重置本規則。", employee.EmployeeCode, end, IsLaborLawViolation: true));
             }
         }
     }
@@ -171,19 +169,6 @@ public sealed class ScheduleValidationService(NtmcDbContext db) : IScheduleValid
                 !StationsInSameGroup(employee.Affiliation).Contains(cell.Station))
                 issues.Add(new(ValidationSeverity.Error, "M 合法站群", "正常班必須同時指定合法車站與班別，且車站須位於員工所屬三站群組。", employee.EmployeeCode, cell.Date, cell.Station, cell.Shift));
         }
-        for (var date = version.Month; date <= monthEnd; date = date.AddDays(1))
-        foreach (var station in MStations)
-        foreach (var shift in new[] { "Early", "Afternoon", "Night" })
-        {
-            var internalCount = version.Employees.SelectMany(x => x.Assignments).Count(x => x.Date == date && x.Kind == "Work" && x.Station == station && x.Shift == shift);
-            var externalCount = version.ExternalAssignments.Where(x => x.Date == date && x.Station == station && x.Shift == shift).Sum(x => x.Count);
-            var actual = internalCount + externalCount;
-            var required = shift is "Early" or "Afternoon" ? 1 : station is "LB01" or "LB06" or "LB08" or "LB12" ? 1 : 0;
-            var multipleAllowed = station is "LB01" or "LB06" or "LB07" or "LB12" && shift is "Early" or "Afternoon";
-            if (actual < required || !multipleAllowed && actual != required)
-                issues.Add(new(ValidationSeverity.Error, "M 班位 Coverage", $"{station} {ShiftLabel(shift)}需求 {required} 人，目前 {actual} 人。", null, date, station, shift));
-        }
-
         foreach (var employee in version.Employees)
         {
             var byDate = employee.Assignments.ToDictionary(x => x.Date);

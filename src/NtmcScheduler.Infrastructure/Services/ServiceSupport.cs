@@ -84,6 +84,8 @@ internal static class ServiceSupport
             demand.ConfigurationRevisionId,
             demand.RevisionToken,
             demand.UpdatedAtUtc,
+            demand.UploadedPreviousSchedule is null ? null : new PreviousUploadDto(demand.UploadedPreviousSchedule.FileName, demand.UploadedPreviousSchedule.CreatedAtUtc),
+            demand.PerpetualScheduleJson is null ? null : new PerpetualUploadDto(demand.PerpetualScheduleFileName ?? "perpetual.csv", demand.PerpetualScheduleUploadedAtUtc ?? demand.UpdatedAtUtc),
             demand.Employees.OrderBy(x => x.EmployeeCode).Select(x => new DemandEmployeeDto(
                 x.Id, x.EmployeeCode, x.Name, x.Affiliation, x.EmploymentStartDate, x.Ability,
                 x.MonthlyShift, x.OpeningRest, x.OpeningSpecialRest, x.RequestedLeaveRestCount,

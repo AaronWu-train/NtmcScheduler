@@ -14,7 +14,8 @@ namespace NtmcScheduler.Infrastructure.Background;
 public sealed class ScheduleRunWorker(
     ScheduleRunQueue queue,
     IServiceScopeFactory scopeFactory,
-    ILogger<ScheduleRunWorker> logger) : BackgroundService
+    ILogger<ScheduleRunWorker> logger,
+    IScheduleRunNotifier? notifier = null) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -60,6 +61,7 @@ public sealed class ScheduleRunWorker(
         run.Status = ScheduleRunStatus.Running;
         run.StartedAtUtc = DateTimeOffset.UtcNow;
         await SaveChangesWithSqliteRetryAsync(db, cancellationToken);
+        await NotifyAsync(run, cancellationToken);
 
         var input = JsonSerializer.Deserialize<ScheduleInput>(run.InputSnapshotJson, ServiceSupport.JsonOptions)
             ?? throw new InvalidOperationException("Run input snapshot is invalid.");
@@ -71,9 +73,7 @@ public sealed class ScheduleRunWorker(
         };
         if (run.Workspace == WorkspaceCode.M)
         {
-            var result = string.IsNullOrWhiteSpace(run.PerpetualScheduleJson)
-                ? MSolver.Solve(input, options, cancellationToken)
-                : MSolver.Solve(input, JsonSerializer.Deserialize<MPerpetualSchedule>(run.PerpetualScheduleJson, ServiceSupport.JsonOptions)!, options, cancellationToken);
+            var result = SolveMPortfolio(input, run, options, cancellationToken);
             await StoreMResultAsync(db, run, input.DemandMonth, result, cancellationToken);
         }
         else
@@ -83,10 +83,11 @@ public sealed class ScheduleRunWorker(
         }
     }
 
-    private static async Task StoreMResultAsync(NtmcDbContext db, ScheduleRun run, MonthlySchedule demand, MSolveResult result, CancellationToken cancellationToken)
+    private async Task StoreMResultAsync(NtmcDbContext db, ScheduleRun run, MonthlySchedule demand, MSolveResult result, CancellationToken cancellationToken)
     {
         run.Status = Map(result.Status);
         run.Error = ErrorText(result.Errors);
+        run.ResultDetailsJson = JsonSerializer.Serialize(result.Candidates.Select((candidate, index) => ToDto(index + 1, candidate.Objectives)), ServiceSupport.JsonOptions);
         for (var index = 0; index < result.Candidates.Count; index++)
         {
             var candidate = result.Candidates[index];
@@ -96,12 +97,14 @@ public sealed class ScheduleRunWorker(
             db.ScheduleVersions.Add(version);
         }
         await CompleteAsync(db, run, result.Candidates.Count, cancellationToken);
+        await NotifyAsync(run, cancellationToken);
     }
 
-    private static async Task StoreTResultAsync(NtmcDbContext db, ScheduleRun run, MonthlySchedule demand, TSolveResult result, CancellationToken cancellationToken)
+    private async Task StoreTResultAsync(NtmcDbContext db, ScheduleRun run, MonthlySchedule demand, TSolveResult result, CancellationToken cancellationToken)
     {
         run.Status = Map(result.Status);
         run.Error = ErrorText(result.Errors);
+        run.ResultDetailsJson = JsonSerializer.Serialize(result.Candidates.Select((candidate, index) => ToDto(index + 1, candidate.Objectives)), ServiceSupport.JsonOptions);
         for (var index = 0; index < result.Candidates.Count; index++)
         {
             var candidate = result.Candidates[index];
@@ -111,6 +114,7 @@ public sealed class ScheduleRunWorker(
             db.ScheduleVersions.Add(version);
         }
         await CompleteAsync(db, run, result.Candidates.Count, cancellationToken);
+        await NotifyAsync(run, cancellationToken);
     }
 
     private static async Task CompleteAsync(NtmcDbContext db, ScheduleRun run, int candidateCount, CancellationToken cancellationToken)
@@ -122,8 +126,41 @@ public sealed class ScheduleRunWorker(
         await SaveChangesWithSqliteRetryAsync(db, cancellationToken);
     }
 
+    private MSolveResult SolveMPortfolio(ScheduleInput input, ScheduleRun run, SolverOptions options, CancellationToken cancellationToken)
+    {
+        var template = string.IsNullOrWhiteSpace(run.PerpetualScheduleJson) ? null
+            : JsonSerializer.Deserialize<MPerpetualSchedule>(run.PerpetualScheduleJson, ServiceSupport.JsonOptions);
+        var results = Enumerable.Range(0, run.SeedCount).AsParallel().AsOrdered().WithCancellation(cancellationToken)
+            .Select(index => template is null
+                ? MSolver.Solve(input, options with { RandomSeed = unchecked(run.RandomSeed + index) }, cancellationToken)
+                : MSolver.Solve(input, template, options with { RandomSeed = unchecked(run.RandomSeed + index) }, cancellationToken))
+            .ToArray();
+        return results.Aggregate((best, current) => Compare(current, best) < 0 ? current : best);
+    }
+
+    private static int Compare(MSolveResult left, MSolveResult right)
+    {
+        if (left.Candidates.Count == 0) return right.Candidates.Count == 0 ? 0 : 1;
+        if (right.Candidates.Count == 0) return -1;
+        var leftScores = left.Candidates[0].Objectives;
+        var rightScores = right.Candidates[0].Objectives;
+        for (var index = 0; index < Math.Min(leftScores.Count, rightScores.Count); index++)
+        {
+            var comparison = leftScores[index].Value.CompareTo(rightScores[index].Value);
+            if (comparison != 0) return comparison;
+        }
+        return leftScores.Count.CompareTo(rightScores.Count);
+    }
+
+    private Task NotifyAsync(ScheduleRun run, CancellationToken cancellationToken) =>
+        notifier?.NotifyAsync(ScheduleRunService.ToDto(run), cancellationToken) ?? Task.CompletedTask;
+
     private static string? ErrorText(IReadOnlyList<InputError> errors) =>
         errors.Count == 0 ? null : string.Join("；", errors.Select(x => $"{x.Field}: {x.Message}"));
+
+    private static ScheduleRunCandidateDto ToDto(int number, IReadOnlyList<ObjectiveScore> objectives) => new(number,
+        objectives.Select(objective => new ObjectiveScoreDto(objective.Priority, objective.Name, objective.Value,
+            objective.Components.Select(component => new ObjectiveComponentDto(component.Name, component.Value, component.Weight)).ToArray())).ToArray());
 
     private static Guid ConfigurationId(ScheduleRun run) => run.ConfigurationRevisionId
         ?? throw new InvalidOperationException("Run configuration snapshot reference is missing.");
@@ -149,6 +186,7 @@ public sealed class ScheduleRunWorker(
         ServiceSupport.AddAudit(db, Actor(run), "ScheduleRunFailed", run.Workspace, "ScheduleRun", run.Id, null,
             new { ExceptionType = exception.GetType().Name });
         await SaveChangesWithSqliteRetryAsync(db, cancellationToken);
+        await NotifyAsync(run, cancellationToken);
     }
 
     private static async Task SaveChangesWithSqliteRetryAsync(NtmcDbContext db, CancellationToken cancellationToken)

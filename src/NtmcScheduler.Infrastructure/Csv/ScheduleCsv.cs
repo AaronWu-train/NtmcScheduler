@@ -163,6 +163,14 @@ public static partial class ScheduleCsv
         return new(patterns);
     }
 
+    public static byte[] WriteMPerpetualSchedule(MPerpetualSchedule schedule)
+    {
+        var lines = new List<string> { MPerpetualHeader };
+        foreach (var pattern in schedule.Patterns.OrderBy(x => x.Key, StringComparer.Ordinal))
+            lines.Add(Join([pattern.Key, .. pattern.Value.Select(MPerpetualCellText)]));
+        return new UTF8Encoding(true).GetBytes(string.Join(Environment.NewLine, lines) + Environment.NewLine);
+    }
+
     private static EmployeeMonthlySchedule ParseEmployee(
         string[] row,
         int rowNumber,
@@ -205,7 +213,7 @@ public static partial class ScheduleCsv
             }
             if (text.Length == 0) continue;
             var date = monthStart.AddDays(day - 1);
-            assignments[date] = ParseCell(text, date, monthlyShift, nonStandardShifts, historical, $"{field} day {day}");
+            assignments[date] = ParseCell(text, date, monthlyShift, nonStandardShifts, historical || closingUsage is not null, $"{field} day {day}");
         }
         var expectedMonthlyUsage = CountRestUsage(assignments.Values);
         if (closingUsage is null && monthlyUsage is not null)
@@ -235,9 +243,9 @@ public static partial class ScheduleCsv
         "R" => new() { Kind = AssignmentKind.Rest },
         "R1" => new() { Kind = AssignmentKind.SpecialRest },
         "R休" => new() { Kind = AssignmentKind.LeaveRest },
+        "R休*" => new() { Kind = AssignmentKind.LeaveRest, RequestedRest = true },
         "R*" when historical => new() { Kind = AssignmentKind.Rest, RequestedRest = true },
         "R1*" when historical => new() { Kind = AssignmentKind.SpecialRest, RequestedRest = true },
-        "R休*" when historical => new() { Kind = AssignmentKind.LeaveRest, RequestedRest = true },
         "R*" => new() { RequestedRest = true },
         "R*[R]" => new() { Kind = AssignmentKind.Rest, RequestedRest = true },
         "R*[R1]" => new() { Kind = AssignmentKind.SpecialRest, RequestedRest = true },
@@ -255,6 +263,14 @@ public static partial class ScheduleCsv
         "R" => new() { Kind = AssignmentKind.Rest },
         _ when MWorkCell(text) is { } cell => cell,
         _ => throw new ScheduleCsvException(field, $"Unsupported M perpetual-schedule cell '{text}'.")
+    };
+
+    private static string MPerpetualCellText(ScheduleCell? cell) => cell?.Kind switch
+    {
+        null => "",
+        AssignmentKind.Rest => "R",
+        AssignmentKind.Work when cell.Station is not null => cell.Station + MShiftText(cell.Shift),
+        _ => throw new ScheduleCsvException(nameof(MPerpetualSchedule), "M perpetual schedule contains an unsupported cell.")
     };
 
     private static ScheduleCell? MWorkCell(string text)
@@ -302,9 +318,9 @@ public static partial class ScheduleCsv
         return cell.Kind switch
         {
             null when cell.RequestedRest => "R*",
-            AssignmentKind.Rest when cell.RequestedRest => "R*[R]",
-            AssignmentKind.SpecialRest when cell.RequestedRest => "R*[R1]",
-            AssignmentKind.LeaveRest when cell.RequestedRest => "R*[R休]",
+            AssignmentKind.Rest when cell.RequestedRest => "R*",
+            AssignmentKind.SpecialRest when cell.RequestedRest => "R1*",
+            AssignmentKind.LeaveRest when cell.RequestedRest => "R休*",
             AssignmentKind.Rest => "R",
             AssignmentKind.SpecialRest => "R1",
             AssignmentKind.LeaveRest => "R休",

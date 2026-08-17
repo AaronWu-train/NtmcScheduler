@@ -155,11 +155,12 @@ public sealed class EmployeeService(NtmcDbContext db) : IEmployeeService
     {
         var expected = workspace == WorkspaceCode.M
             ? new[] { "ID", "姓名", "所屬車站", "到職日期" }
-            : new[] { "ID", "姓名", "專業分組", "到職日期", "能力" };
+            : new[] { "ID", "姓名", "所屬", "到職日期", "能力" };
         using var parser = new TextFieldParser(path, Encoding.UTF8, true) { TextFieldType = FieldType.Delimited, HasFieldsEnclosedInQuotes = true, TrimWhiteSpace = false };
         parser.SetDelimiters(",");
         var header = parser.ReadFields() ?? [];
-        if (!header.SequenceEqual(expected)) throw new DomainValidationException($"員工 CSV 表頭必須為：{string.Join(',', expected)}");
+        var validHeader = header.SequenceEqual(expected) || workspace == WorkspaceCode.T && header.SequenceEqual(["ID", "姓名", "專業分組", "到職日期", "能力"]);
+        if (!validHeader) throw new DomainValidationException($"員工 CSV 表頭必須為：{string.Join(',', expected)}");
         var records = new List<EmployeeImportRecord>();
         var codes = new HashSet<string>(StringComparer.Ordinal);
         while (!parser.EndOfData)

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NtmcScheduler.Infrastructure.Data;
 
@@ -10,9 +11,11 @@ using NtmcScheduler.Infrastructure.Data;
 namespace NtmcScheduler.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(NtmcDbContext))]
-    partial class NtmcDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260814064938_AddPerpetualUploadMetadata")]
+    partial class AddPerpetualUploadMetadata
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");

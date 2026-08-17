@@ -131,20 +131,27 @@ public sealed class WebInfrastructureTests
         {
             ScheduleCsv.WriteMonthly(previousPath, MSolverTests.ValidInput().PreviousMonth);
             var previousBytes = await File.ReadAllBytesAsync(previousPath);
-            await demandService.UploadPreviousAsync(disposableDemand.Id, new MemoryStream(previousBytes), disposableDemand.RevisionToken, actor);
+            await demandService.UploadPreviousAsync(disposableDemand.Id, "previous.csv", new MemoryStream(previousBytes), disposableDemand.RevisionToken, actor);
             disposableDemand = (await demandService.GetAsync(WorkspaceCode.M, disposableDemand.Month, actor))!;
             Assert.IsTrue(disposableDemand.HasUploadedPreviousSchedule);
-            await demandService.UploadPreviousAsync(disposableDemand.Id, new MemoryStream(previousBytes), disposableDemand.RevisionToken, actor);
+            await demandService.UploadPreviousAsync(disposableDemand.Id, "previous.csv", new MemoryStream(previousBytes), disposableDemand.RevisionToken, actor);
             Assert.AreEqual(1, await database.Context.UploadedPreviousSchedules.CountAsync());
             disposableDemand = (await demandService.GetAsync(WorkspaceCode.M, disposableDemand.Month, actor))!;
         }
         finally { File.Delete(previousPath); }
 
-        var queued = await new ScheduleRunService(database.Context, new ScheduleRunQueue()).QueueAsync(
-            disposableDemand.Id, disposableDemand.RevisionToken, actor);
+        var runService = new ScheduleRunService(database.Context, new ScheduleRunQueue());
+        var queued = await runService.QueueAsync(
+            disposableDemand.Id, disposableDemand.RevisionToken, new ScheduleRunOptions(300, 4, 1), actor);
         var savedRun = await database.Context.ScheduleRuns.SingleAsync(x => x.Id == queued.Id);
         Assert.AreEqual(disposableDemand.ConfigurationRevisionId, savedRun.ConfigurationRevisionId);
+        Assert.AreEqual(4, savedRun.WorkerCount);
+        Assert.AreEqual(1, savedRun.SeedCount);
+        Assert.AreEqual(300, savedRun.TimeLimitSeconds);
+        Assert.IsGreaterThan(0, savedRun.RandomSeed);
         Assert.IsFalse(string.IsNullOrWhiteSpace(savedRun.InputSnapshotJson));
+        CollectionAssert.AreEqual(new[] { queued.Id }, (await runService.ListActiveAsync(actor)).Select(x => x.Id).ToArray());
+        CollectionAssert.AreEqual(new[] { queued.Id }, (await runService.ListRecentAsync(5, actor)).Select(x => x.Id).ToArray());
         var restoredInput = System.Text.Json.JsonSerializer.Deserialize<ScheduleInput>(savedRun.InputSnapshotJson,
             new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
         Assert.AreEqual(intervalStart, restoredInput!.RestIntervals.Single().Start);
@@ -197,6 +204,18 @@ public sealed class WebInfrastructureTests
         Assert.IsFalse(preview.IsValid);
         Assert.AreEqual(0, await database.Context.Employees.CountAsync());
         Assert.AreEqual(0, await database.Context.AuditLogs.CountAsync());
+    }
+
+    [TestMethod]
+    public async Task EmployeeCsvImport_TAcceptsAffiliationHeader()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var service = new EmployeeService(database.Context);
+        var csv = "ID,姓名,所屬,到職日期,能力\nT001,王小明,號誌,2026-08-01,5\n"u8.ToArray();
+
+        var preview = await service.PreviewImportAsync(WorkspaceCode.T, new MemoryStream(csv), Editor(WorkspaceCode.T));
+
+        Assert.IsTrue(preview.IsValid, string.Join(Environment.NewLine, preview.Errors));
     }
 
     [TestMethod]
@@ -274,7 +293,7 @@ public sealed class WebInfrastructureTests
         {
             ScheduleCsv.WriteMonthly(path, upload);
             await using var stream = File.OpenRead(path);
-            await service.UploadPreviousAsync(demand.Id, stream, demand.RevisionToken, actor);
+            await service.UploadPreviousAsync(demand.Id, "previous.csv", stream, demand.RevisionToken, actor);
         }
         finally { File.Delete(path); }
 
@@ -282,6 +301,32 @@ public sealed class WebInfrastructureTests
         Assert.AreEqual(uploadEmployee.ClosingUsage!.Rest, employee.OpeningRest);
         Assert.AreEqual(uploadEmployee.ClosingUsage.SpecialRest, employee.OpeningSpecialRest);
         Assert.AreEqual("P-UPLOAD", employee.PerpetualScheduleId);
+    }
+
+    [TestMethod]
+    public async Task PerpetualUpload_StoresMetadataAndCanBeDownloaded()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var actor = Editor(WorkspaceCode.M);
+        await new EmployeeService(database.Context).SaveAsync(
+            new(null, WorkspaceCode.M, "M001", "王小明", "LB01", null, null, null), actor);
+        await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+            [new(new(2026, 8, 3), new(2026, 9, 27), [])], [], null, actor);
+        var service = DemandService(database.Context);
+        var demand = await service.CreateAsync(WorkspaceCode.M, new(2026, 9, 1), actor);
+        var schedule = new MPerpetualSchedule(new Dictionary<string, IReadOnlyList<ScheduleCell?>>
+        {
+            ["P1"] = [new ScheduleCell { Kind = AssignmentKind.Rest }, .. Enumerable.Repeat<ScheduleCell?>(null, 55)]
+        });
+
+        await service.UploadPerpetualScheduleAsync(demand.Id, "my-pattern.csv",
+            new MemoryStream(ScheduleCsv.WriteMPerpetualSchedule(schedule)), demand.RevisionToken, actor);
+
+        var saved = await service.GetAsync(WorkspaceCode.M, demand.Month, actor);
+        Assert.AreEqual("my-pattern.csv", saved!.PerpetualUpload!.FileName);
+        var file = await service.ExportPerpetualScheduleAsync(demand.Id, actor);
+        Assert.AreEqual("my-pattern.csv", file.FileName);
+        StringAssert.Contains(System.Text.Encoding.UTF8.GetString(file.Content), "P1,R");
     }
 
     [TestMethod]
@@ -314,7 +359,7 @@ public sealed class WebInfrastructureTests
         {
             ScheduleCsv.WriteMonthly(path, previous);
             await using var stream = File.OpenRead(path);
-            await demandService.UploadPreviousAsync(demand.Id, stream, demand.RevisionToken, actor);
+            await demandService.UploadPreviousAsync(demand.Id, "previous.csv", stream, demand.RevisionToken, actor);
         }
         finally { File.Delete(path); }
 
@@ -441,10 +486,15 @@ public sealed class WebInfrastructureTests
     {
         await using var database = await TestDatabase.CreateAsync(throwOnMultipleCollectionInclude: true);
         var revision = new ConfigurationRevision { Version = 1, CreatedByUserId = Guid.NewGuid() };
+        revision.RestIntervals.Add(new RestIntervalEntity
+        {
+            Start = new DateOnly(2026, 7, 6), End = new DateOnly(2026, 8, 30),
+            NationalHolidays = [new NationalHoliday { Date = new DateOnly(2026, 8, 8) }]
+        });
         var version = Version(revision, new DateOnly(2026, 8, 1), "M 班表");
         version.Employees.Add(new ScheduleEmployeeSnapshot
         {
-            EmployeeCode = "M001", Name = "王小明", Affiliation = "LB01",
+            EmployeeCode = "M001", Name = "王小明", Affiliation = "LB01", OpeningRest = 7,
             Assignments = [new ScheduleAssignment { Date = version.Month, Kind = "Rest" }]
         });
         version.ExternalAssignments.Add(new ExternalAssignment
@@ -463,6 +513,10 @@ public sealed class WebInfrastructureTests
         Assert.HasCount(46, detail.Employees[0].MonthlyCsvValues);
         Assert.AreEqual("R", detail.Employees[0].MonthlyCsvValues[8]);
         Assert.HasCount(1, detail.ExternalAssignments);
+        Assert.AreEqual(8, detail.IntervalStats.Single().Rest);
+        Assert.AreEqual(1, detail.IntervalStats.Single().RequiredSpecialRest);
+        Assert.AreEqual(1, detail.Coverage.Single(x => x.Date == version.Month && x.Station == "LB09" && x.Shift == "Early").External);
+        Assert.IsTrue(detail.Coverage.Single(x => x.Date == version.Month && x.Station == "LB01" && x.Shift == "Early").AllowsMultiple);
     }
 
     [TestMethod]
@@ -525,6 +579,9 @@ public sealed class WebInfrastructureTests
 
         Assert.IsFalse(result.Issues.Any(x => x.RuleName == "連續七日至少一日一般 R" &&
             x.EmployeeCode == "M001" && x.Date is { Day: 1 or 2 }));
+        Assert.IsTrue(result.Issues.Where(x => x.RuleName == "連續七日至少一日一般 R").All(x => x.IsLaborLawViolation));
+        Assert.IsTrue(result.Issues.Where(x => x.RuleName != "連續七日至少一日一般 R" && x.RuleName != "兩班間至少十一小時")
+            .All(x => !x.IsLaborLawViolation));
     }
 
     [TestMethod]

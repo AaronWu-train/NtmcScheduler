@@ -10,7 +10,7 @@ public sealed class CommonConfigurationService(NtmcDbContext db) : ICommonConfig
     public async Task<ConfigurationRevisionDto?> GetCurrentAsync(ActorContext actor, CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireViewer(actor);
-        var current = await db.CurrentConfigurations.AsNoTracking()
+        var current = await db.CurrentConfigurations.AsNoTracking().AsSplitQuery()
             .Include(x => x.ConfigurationRevision).ThenInclude(x => x.RestIntervals).ThenInclude(x => x.NationalHolidays)
             .Include(x => x.ConfigurationRevision).ThenInclude(x => x.NonStandardShifts)
             .SingleOrDefaultAsync(x => x.Id == 1, cancellationToken);
@@ -20,7 +20,7 @@ public sealed class CommonConfigurationService(NtmcDbContext db) : ICommonConfig
     public async Task<ConfigurationRevisionDto?> GetRevisionAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireViewer(actor);
-        var revision = await db.ConfigurationRevisions.AsNoTracking()
+        var revision = await db.ConfigurationRevisions.AsNoTracking().AsSplitQuery()
             .Include(x => x.RestIntervals).ThenInclude(x => x.NationalHolidays)
             .Include(x => x.NonStandardShifts)
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);

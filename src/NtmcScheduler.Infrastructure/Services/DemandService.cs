@@ -30,7 +30,7 @@ public sealed class DemandService(
         ServiceSupport.RequireEditor(actor, workspace);
         month = MonthStart(month);
         if (await db.DemandDrafts.AnyAsync(x => x.Workspace == workspace && x.Month == month, cancellationToken))
-            throw new DomainValidationException("這個月份已經有 Demand。");
+            throw new DomainValidationException("這個月份已經有需求資料。");
         var current = await db.CurrentConfigurations.AsNoTracking().SingleOrDefaultAsync(x => x.Id == 1, cancellationToken)
             ?? throw new DomainValidationException("請先建立八週區間與共同設定。");
         var employees = await db.Employees.AsNoTracking().Where(x => x.Workspace == workspace).OrderBy(x => x.EmployeeCode).ToListAsync(cancellationToken);
@@ -80,9 +80,9 @@ public sealed class DemandService(
     public async Task DeleteAsync(Guid demandId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
     {
         var demand = await db.DemandDrafts.Include(x => x.UploadedPreviousSchedule).SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
-            ?? throw new DomainValidationException("找不到 Demand。");
+            ?? throw new DomainValidationException("找不到本月需求。");
         ServiceSupport.RequireEditor(actor, demand.Workspace);
-        if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("Demand 已被其他人修改，請重新整理。");
+        if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var previous = demand.UploadedPreviousSchedule;
         ServiceSupport.AddAudit(db, actor, "DemandDeleted", demand.Workspace, "DemandDraft", demand.Id,
@@ -95,6 +95,7 @@ public sealed class DemandService(
 
     public async Task<DemandDraftDto> UpdateEmployeeAsync(
         Guid demandEmployeeId,
+        DateOnly? employmentStartDate,
         string? monthlyShift,
         int? openingRest,
         int? openingSpecialRest,
@@ -108,7 +109,7 @@ public sealed class DemandService(
             ?? throw new DomainValidationException("找不到月份員工資料。");
         var demand = employee.DemandDraft;
         ServiceSupport.RequireEditor(actor, demand.Workspace);
-        if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("Demand 已被其他人修改，請重新整理。");
+        if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
         if ((openingRest is null) != (openingSpecialRest is null) || openingRest < 0 || openingSpecialRest < 0 || requestedLeaveRestCount < 0)
             throw new DomainValidationException("月初 R/R1 必須同時填寫且不可為負數；R休上限不可為負數。");
         if (demand.Workspace == WorkspaceCode.T && SolverScheduleMapper.ParseShift(monthlyShift) is null)
@@ -116,7 +117,8 @@ public sealed class DemandService(
         if (demand.Workspace == WorkspaceCode.M && !string.IsNullOrWhiteSpace(monthlyShift))
             throw new DomainValidationException("M 不可設定 T 月班別。");
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        var before = new { employee.MonthlyShift, employee.OpeningRest, employee.OpeningSpecialRest, employee.RequestedLeaveRestCount, employee.PerpetualScheduleId };
+        var before = new { employee.EmploymentStartDate, employee.MonthlyShift, employee.OpeningRest, employee.OpeningSpecialRest, employee.RequestedLeaveRestCount, employee.PerpetualScheduleId };
+        employee.EmploymentStartDate = employmentStartDate;
         employee.MonthlyShift = string.IsNullOrWhiteSpace(monthlyShift) ? null : SolverScheduleMapper.ParseShift(monthlyShift).ToString();
         employee.OpeningRest = openingRest;
         employee.OpeningSpecialRest = openingSpecialRest;
@@ -124,7 +126,7 @@ public sealed class DemandService(
         employee.PerpetualScheduleId = string.IsNullOrWhiteSpace(perpetualScheduleId) ? null : perpetualScheduleId.Trim();
         Touch(demand, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "DemandEmployeeUpdated", demand.Workspace, "DemandEmployee", employee.Id, before,
-            new { employee.MonthlyShift, employee.OpeningRest, employee.OpeningSpecialRest, employee.RequestedLeaveRestCount, employee.PerpetualScheduleId });
+            new { employee.EmploymentStartDate, employee.MonthlyShift, employee.OpeningRest, employee.OpeningSpecialRest, employee.RequestedLeaveRestCount, employee.PerpetualScheduleId });
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return ServiceSupport.ToDto(await Query().SingleAsync(x => x.Id == demand.Id, cancellationToken));
@@ -134,7 +136,7 @@ public sealed class DemandService(
     {
         ServiceSupport.RequireViewer(actor);
         var demand = await Query().AsNoTracking().SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
-            ?? throw new DomainValidationException("找不到 Demand。");
+            ?? throw new DomainValidationException("找不到本月需求。");
         try
         {
             var schedule = await ParseMonthlyAsync(csv, demand, false, cancellationToken);
@@ -172,8 +174,8 @@ public sealed class DemandService(
             ?? throw new DomainValidationException("找不到月份員工資料。");
         var demand = employee.DemandDraft;
         ServiceSupport.RequireEditor(actor, demand.Workspace);
-        if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("Demand 已被其他人修改，請重新整理。");
-        if (date < demand.Month || date >= demand.Month.AddMonths(1)) throw new DomainValidationException("日格日期不在 Demand 月份內。");
+        if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
+        if (date < demand.Month || date >= demand.Month.AddMonths(1)) throw new DomainValidationException("日格日期不在目前月份內。");
         ValidateDemandCell(demand.Workspace, date, kind, requestedRest, station, shift, eventStart, eventEnd, eventDescription);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var assignment = employee.Assignments.SingleOrDefault(x => x.Date == date);
@@ -205,9 +207,9 @@ public sealed class DemandService(
     public async Task ImportDemandAsync(Guid demandId, Stream csv, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
     {
         var demand = await Query().SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
-            ?? throw new DomainValidationException("找不到 Demand。");
+            ?? throw new DomainValidationException("找不到本月需求。");
         ServiceSupport.RequireEditor(actor, demand.Workspace);
-        if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("Demand 已被其他人修改，請重新整理。");
+        if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
         var schedule = await ParseMonthlyAsync(csv, demand, false, cancellationToken);
         ValidateWorkspace(schedule, demand.Workspace);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
@@ -222,18 +224,19 @@ public sealed class DemandService(
         await transaction.CommitAsync(cancellationToken);
     }
 
-    public async Task UploadPreviousAsync(Guid demandId, Stream csv, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
+    public async Task UploadPreviousAsync(Guid demandId, string fileName, Stream csv, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
     {
         var demand = await Query().SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
-            ?? throw new DomainValidationException("找不到 Demand。");
+            ?? throw new DomainValidationException("找不到本月需求。");
         ServiceSupport.RequireEditor(actor, demand.Workspace);
-        if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("Demand 已被其他人修改，請重新整理。");
+        if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
         var schedule = await ParseMonthlyAsync(csv, demand, true, cancellationToken);
         ValidateWorkspace(schedule, demand.Workspace);
         var upload = new UploadedPreviousSchedule
         {
             Workspace = demand.Workspace,
             Month = demand.Month.AddMonths(-1),
+            FileName = Path.GetFileName(fileName),
             ParsedScheduleJson = JsonSerializer.Serialize(schedule, ServiceSupport.JsonOptions)
         };
         var version = SolverScheduleMapper.ToImportedVersion(
@@ -263,28 +266,31 @@ public sealed class DemandService(
         }
         Touch(demand, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "PreviousScheduleUploaded", demand.Workspace, "DemandDraft", demand.Id, null,
-            new { upload.Id, upload.Month, EmployeeCount = schedule.Employees.Count });
+            new { upload.Id, upload.Month, upload.FileName, EmployeeCount = schedule.Employees.Count });
         ServiceSupport.AddAudit(db, actor, "ScheduleVersionImported", demand.Workspace, "ScheduleVersion", version.Id, null,
             new { version.Month, version.Name, EmployeeCount = schedule.Employees.Count });
         if (previousUpload is not null) db.UploadedPreviousSchedules.Remove(previousUpload);
         await db.SaveChangesAsync(cancellationToken);
         var checkedSchedule = await validation.ValidateAsync(version.Id, actor, cancellationToken);
-        version.HasErrors = checkedSchedule.Issues.Any(x => x.Severity == ValidationSeverity.Error);
-        version.WarningCount = checkedSchedule.Issues.Count(x => x.Severity == ValidationSeverity.Warning);
+        version.HasErrors = false;
+        version.WarningCount = checkedSchedule.Issues.Count;
+        await db.SaveChangesAsync(cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
 
-    public async Task UploadPerpetualScheduleAsync(Guid demandId, Stream csv, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
+    public async Task UploadPerpetualScheduleAsync(Guid demandId, string fileName, Stream csv, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
     {
         var demand = await Query().SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
-            ?? throw new DomainValidationException("找不到 Demand。");
+            ?? throw new DomainValidationException("找不到本月需求。");
         ServiceSupport.RequireEditor(actor, demand.Workspace);
         if (demand.Workspace != WorkspaceCode.M) throw new DomainValidationException("只有 M 可上傳八週萬年班表。");
-        if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("Demand 已被其他人修改，請重新整理。");
+        if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
         var schedule = await UploadFile.ParseAsync(csv, ScheduleCsv.ReadMPerpetualSchedule, cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         demand.PerpetualScheduleJson = JsonSerializer.Serialize(schedule, ServiceSupport.JsonOptions);
+        demand.PerpetualScheduleFileName = Path.GetFileName(fileName);
+        demand.PerpetualScheduleUploadedAtUtc = DateTimeOffset.UtcNow;
         Touch(demand, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "PerpetualScheduleUploaded", demand.Workspace, "DemandDraft", demand.Id, null,
             new { PatternCount = schedule.Patterns.Count });
@@ -292,7 +298,19 @@ public sealed class DemandService(
         await transaction.CommitAsync(cancellationToken);
     }
 
-    private IQueryable<DemandDraft> Query() => db.DemandDrafts
+    public async Task<PerpetualScheduleFileDto> ExportPerpetualScheduleAsync(Guid demandId, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        ServiceSupport.RequireViewer(actor);
+        var demand = await db.DemandDrafts.AsNoTracking().SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
+            ?? throw new DomainValidationException("找不到本月需求。");
+        if (demand.Workspace != WorkspaceCode.M || string.IsNullOrWhiteSpace(demand.PerpetualScheduleJson))
+            throw new DomainValidationException("找不到 M 八週萬年班表。");
+        var schedule = JsonSerializer.Deserialize<MPerpetualSchedule>(demand.PerpetualScheduleJson, ServiceSupport.JsonOptions)
+            ?? throw new DomainValidationException("M 八週萬年班表無法讀取。");
+        return new(demand.PerpetualScheduleFileName ?? "perpetual.csv", ScheduleCsv.WriteMPerpetualSchedule(schedule));
+    }
+
+    private IQueryable<DemandDraft> Query() => db.DemandDrafts.AsSplitQuery()
         .Include(x => x.ConfigurationRevision).ThenInclude(x => x.NonStandardShifts)
         .Include(x => x.Employees).ThenInclude(x => x.Assignments)
         .Include(x => x.UploadedPreviousSchedule);
@@ -315,8 +333,8 @@ public sealed class DemandService(
     private static void ValidateDemandCell(WorkspaceCode workspace, DateOnly date, string? kind, bool requestedRest, string? station, string? shift, DateTimeOffset? eventStart, DateTimeOffset? eventEnd, string? description)
     {
         if (kind is not (null or "" or "Unresolved" or "Work" or "Rest" or "SpecialRest" or "LeaveRest" or "WorkEvent"))
-            throw new DomainValidationException("不支援的 Demand 日格狀態。");
-        if (kind == "LeaveRest" && !requestedRest) throw new DomainValidationException("Demand 的 R休 必須標記為 R*。");
+            throw new DomainValidationException("不支援的需求日格狀態。");
+        if (kind == "LeaveRest" && !requestedRest) throw new DomainValidationException("需求中的 R休 必須來自 R*。");
         if (requestedRest && kind is not (null or "" or "Unresolved" or "Rest" or "SpecialRest" or "LeaveRest"))
             throw new DomainValidationException("R* 標記只能套用在未決定或休假日格。");
         if (kind == "Work")

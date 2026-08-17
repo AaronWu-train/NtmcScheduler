@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using NtmcScheduler.Contracts;
 using NtmcScheduler.Infrastructure.Csv;
@@ -14,8 +15,8 @@ public sealed class ScheduleService(
     public async Task<IReadOnlyList<ScheduleMonthDto>> ListMonthsAsync(WorkspaceCode workspace, ActorContext actor, CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireViewer(actor);
-        var versions = await db.ScheduleVersions.AsNoTracking().Where(x => x.Workspace == workspace && !x.IsArchived).ToListAsync(cancellationToken);
-        var adopted = await db.AdoptedSchedules.AsNoTracking().Include(x => x.ScheduleVersion).Where(x => x.Workspace == workspace).ToDictionaryAsync(x => x.Month, cancellationToken);
+        var versions = await db.ScheduleVersions.AsNoTracking().Include(x => x.SourceRun).Where(x => x.Workspace == workspace && !x.IsArchived).ToListAsync(cancellationToken);
+        var adopted = await db.AdoptedSchedules.AsNoTracking().Include(x => x.ScheduleVersion).ThenInclude(x => x.SourceRun).Where(x => x.Workspace == workspace).ToDictionaryAsync(x => x.Month, cancellationToken);
         return versions.GroupBy(x => x.Month).OrderByDescending(x => x.Key).Select(group => new ScheduleMonthDto(
             group.Key,
             group.Count(),
@@ -29,7 +30,7 @@ public sealed class ScheduleService(
         month = new(month.Year, month.Month, 1);
         var adoptedId = await db.AdoptedSchedules.AsNoTracking().Where(x => x.Workspace == workspace && x.Month == month)
             .Select(x => (Guid?)x.ScheduleVersionId).SingleOrDefaultAsync(cancellationToken);
-        var versions = await db.ScheduleVersions.AsNoTracking()
+        var versions = await db.ScheduleVersions.AsNoTracking().Include(x => x.SourceRun)
             .Where(x => x.Workspace == workspace && x.Month == month && (includeArchived || !x.IsArchived))
             .ToListAsync(cancellationToken);
         return versions.OrderByDescending(x => x.CreatedAtUtc).Select(x => ToDto(x, x.Id == adoptedId)).ToArray();
@@ -94,14 +95,12 @@ public sealed class ScheduleService(
         var version = await db.ScheduleVersions.SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
             ?? throw new DomainValidationException("找不到班表版本。");
         ServiceSupport.RequireEditor(actor, version.Workspace);
-        if (version.IsArchived) throw new DomainValidationException("封存班表不可標示為採用版。");
+        if (version.IsArchived) throw new DomainValidationException("封存班表不可採用。");
         if (version.RevisionToken != revisionToken) throw new ConcurrencyConflictException("班表已被其他人修改，請重新整理。");
         var checkedSchedule = await validation.ValidateAsync(version.Id, actor, cancellationToken);
-        if (checkedSchedule.Issues.Any(x => x.Severity == ValidationSeverity.Error))
-            throw new DomainValidationException("班表仍有紅色硬規則或 Coverage 違反，不可標示為 ★。");
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         version.HasErrors = false;
-        version.WarningCount = checkedSchedule.Issues.Count(x => x.Severity == ValidationSeverity.Warning);
+        version.WarningCount = checkedSchedule.Issues.Count;
         Touch(version, actor.UserId);
         var adopted = await db.AdoptedSchedules.SingleOrDefaultAsync(x => x.Workspace == version.Workspace && x.Month == version.Month, cancellationToken);
         var before = adopted?.ScheduleVersionId;
@@ -125,7 +124,7 @@ public sealed class ScheduleService(
         ServiceSupport.RequireEditor(actor, version.Workspace);
         if (version.RevisionToken != revisionToken) throw new ConcurrencyConflictException("班表已被其他人修改，請重新整理。");
         if (await db.AdoptedSchedules.AnyAsync(x => x.ScheduleVersionId == versionId, cancellationToken))
-            throw new DomainValidationException("請先改選其他 ★ 班表，才能封存目前採用版。");
+            throw new DomainValidationException("請先採用其他班表，才能封存目前採用的班表。");
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var before = ToDto(version, false);
         version.IsArchived = true;
@@ -195,19 +194,75 @@ public sealed class ScheduleService(
         return new(
             ToDto(version, adopted),
             version.Employees.OrderBy(x => x.EmployeeCode).Select(employee => new ScheduleEmployeeInfoDto(
-                employee.Id, employee.EmployeeCode, employee.Name, employee.Affiliation, employee.Ability, employee.MonthlyShift,
+                employee.Id, employee.EmployeeCode, employee.Name, employee.Affiliation, employee.EmploymentStartDate,
+                employee.Ability, employee.MonthlyShift, employee.OpeningRest, employee.OpeningSpecialRest,
                 ScheduleCsv.MonthlyRow(schedule, scheduleEmployees[employee.EmployeeCode]))).ToArray(),
             version.Employees.OrderBy(x => x.EmployeeCode).SelectMany(employee => employee.Assignments.OrderBy(x => x.Date).Select(assignment => new ScheduleAssignmentDto(
                 assignment.Id, employee.Id, employee.EmployeeCode, employee.Name, assignment.Date, assignment.Kind, assignment.RequestedRest,
                 assignment.Station, assignment.Shift, assignment.EventStart, assignment.EventEnd, assignment.EventDescription))).ToArray(),
             version.ExternalAssignments.Select(x => new ExternalAssignmentDto(x.Date, x.Station, x.Shift, x.Count)).ToArray(),
             stats,
+            IntervalStats(version),
+            Coverage(version),
             issues);
+    }
+
+    private static IReadOnlyList<ScheduleIntervalStatsDto> IntervalStats(ScheduleVersion version)
+    {
+        var monthEnd = version.Month.AddMonths(1).AddDays(-1);
+        return version.Employees.SelectMany(employee => version.ConfigurationRevision.RestIntervals
+            .Where(interval => interval.Start <= monthEnd && interval.End >= version.Month)
+            .Select(interval =>
+            {
+                var start = interval.Start < version.Month ? version.Month : interval.Start;
+                var end = interval.End > monthEnd ? monthEnd : interval.End;
+                var cells = employee.Assignments.Where(cell => cell.Date >= start && cell.Date <= end).ToArray();
+                return new ScheduleIntervalStatsDto(employee.EmployeeCode, interval.Start, interval.End,
+                    (interval.Start < version.Month ? employee.OpeningRest ?? 0 : 0) + cells.Count(cell => cell.Kind == "Rest"),
+                    (interval.Start < version.Month ? employee.OpeningSpecialRest ?? 0 : 0) + cells.Count(cell => cell.Kind == "SpecialRest"),
+                    interval.NationalHolidays.Count);
+            })).ToArray();
+    }
+
+    private static IReadOnlyList<ScheduleCoverageDto> Coverage(ScheduleVersion version)
+    {
+        if (version.Workspace != WorkspaceCode.M) return [];
+        var monthEnd = version.Month.AddMonths(1).AddDays(-1);
+        string[] stations = ["LB01", "LB02", "LB03", "LB04", "LB05", "LB06", "LB07", "LB08", "LB09", "LB10", "LB11", "LB12"];
+        string[] shifts = ["Early", "Afternoon", "Night"];
+        var result = new List<ScheduleCoverageDto>();
+        for (var date = version.Month; date <= monthEnd; date = date.AddDays(1))
+        foreach (var station in stations)
+        foreach (var shift in shifts)
+        {
+            var required = shift is "Early" or "Afternoon" ? 1 : station is "LB01" or "LB06" or "LB08" or "LB12" ? 1 : 0;
+            var allowsMultiple = (station is "LB01" or "LB06" or "LB07" or "LB12") &&
+                shift is "Early" or "Afternoon";
+            var internalCount = version.Employees.SelectMany(x => x.Assignments).Count(x => x.Date == date && x.Kind == "Work" && x.Station == station && x.Shift == shift);
+            var externalCount = version.ExternalAssignments.Where(x => x.Date == date && x.Station == station && x.Shift == shift).Sum(x => x.Count);
+            result.Add(new(date, station, shift, required, allowsMultiple, internalCount, externalCount));
+        }
+        return result;
     }
 
     private static ScheduleVersionDto ToDto(ScheduleVersion version, bool adopted) => new(
         version.Id, version.Workspace, version.Month, version.Name, version.SourceStatus, adopted, version.IsArchived,
-        version.HasErrors, version.WarningCount, version.CreatedAtUtc, version.UpdatedAtUtc, version.RevisionToken, version.ConfigurationRevisionId);
+        version.HasErrors, version.WarningCount, version.CreatedAtUtc, version.UpdatedAtUtc, version.RevisionToken, version.ConfigurationRevisionId,
+        Objectives(version));
+
+    private static IReadOnlyList<ObjectiveScoreDto> Objectives(ScheduleVersion version)
+    {
+        if (version.CandidateIndex is not { } index || string.IsNullOrWhiteSpace(version.SourceRun?.ResultDetailsJson)) return [];
+        try
+        {
+            return JsonSerializer.Deserialize<IReadOnlyList<ScheduleRunCandidateDto>>(version.SourceRun.ResultDetailsJson, ServiceSupport.JsonOptions)?
+                .FirstOrDefault(candidate => candidate.Number == index + 1)?.Objectives ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
 
     private static object AssignmentSnapshot(ScheduleAssignment assignment) => new
     {

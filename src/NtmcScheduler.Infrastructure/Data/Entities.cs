@@ -89,6 +89,8 @@ public sealed class DemandDraft
     public Guid? UploadedPreviousScheduleId { get; set; }
     public Guid ConfigurationRevisionId { get; set; }
     public string? PerpetualScheduleJson { get; set; }
+    public string? PerpetualScheduleFileName { get; set; }
+    public DateTimeOffset? PerpetualScheduleUploadedAtUtc { get; set; }
     public Guid CreatedByUserId { get; set; }
     public Guid UpdatedByUserId { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
@@ -137,6 +139,7 @@ public sealed class UploadedPreviousSchedule
     public Guid Id { get; set; } = Guid.NewGuid();
     public WorkspaceCode Workspace { get; set; }
     public DateOnly Month { get; set; }
+    public string FileName { get; set; } = "";
     public string ParsedScheduleJson { get; set; } = "";
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }
@@ -156,11 +159,13 @@ public sealed class ScheduleRun
     public string? UserAgent { get; set; }
     public int RandomSeed { get; set; }
     public int WorkerCount { get; set; }
+    public int SeedCount { get; set; } = 1;
     public int TimeLimitSeconds { get; set; }
     public string ProgramVersion { get; set; } = "";
     public string InputHash { get; set; } = "";
     public string InputSnapshotJson { get; set; } = "";
     public string? PerpetualScheduleJson { get; set; }
+    public string? ResultDetailsJson { get; set; }
     public string? Error { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? StartedAtUtc { get; set; }

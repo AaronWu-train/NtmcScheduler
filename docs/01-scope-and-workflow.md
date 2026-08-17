@@ -43,7 +43,7 @@ Demand 工作檔可持續修改或刪除 → 輸入驗證 → 求解（最多 3 
 
 - 同一單位、同一月份可保存多份 `ScheduleVersion`，`AdoptedSchedule` 最多指向其中一份作為 `★` 採用版。
 - 求解器 PreviousMonth 優先取上月 `★`；沒有時必須上傳完整、已解析的 previous schedule。
-- 在 Demand 的「上月班表」步驟上傳 previous schedule 時，同一份內容也保存為上月的 `ScheduleVersion`；使用者可開啟該版本並沿用既有驗證與「標示 ★」操作，不會因上傳而自動標星。
+- 在建立班表的「上月班表」步驟上傳 previous schedule 時，同一份內容也保存為上月的 Imported 歷史班表版本；規則或人力問題只標記警告，不阻擋採用。使用者可開啟、自由編輯、採用並作為本月求解的歷史來源。
 - `★` 班表與 X 事件是後續排班的正式歷史來源，求解器不得改寫（規則 GEN-H-05）。
 - 每次 ScheduleRun 保存完整快照：人員、事件、歷史截止點、固定設定、
   隨機種子（seed）與程式版本，重跑可重現。

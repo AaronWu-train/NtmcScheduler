@@ -109,7 +109,13 @@ public sealed record DemandDraftDto(
     Guid ConfigurationRevisionId,
     Guid RevisionToken,
     DateTimeOffset UpdatedAtUtc,
+    PreviousUploadDto? PreviousUpload,
+    PerpetualUploadDto? PerpetualUpload,
     IReadOnlyList<DemandEmployeeDto> Employees);
+
+public sealed record PreviousUploadDto(string FileName, DateTimeOffset UploadedAtUtc);
+public sealed record PerpetualUploadDto(string FileName, DateTimeOffset UploadedAtUtc);
+public sealed record PerpetualScheduleFileDto(string FileName, byte[] Content);
 
 public sealed record ImportPreviewDto(bool IsValid, IReadOnlyList<string> Errors, IReadOnlyList<string> Differences);
 public sealed record EmployeeImportPreviewDto(bool IsValid, IReadOnlyList<string> Errors, IReadOnlyList<string> Differences, Guid RevisionToken);
@@ -127,7 +133,8 @@ public sealed record ScheduleVersionDto(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset UpdatedAtUtc,
     Guid RevisionToken,
-    Guid ConfigurationRevisionId);
+    Guid ConfigurationRevisionId,
+    IReadOnlyList<ObjectiveScoreDto>? Objectives = null);
 
 public sealed record ScheduleMonthDto(DateOnly Month, int VersionCount, ScheduleVersionDto? Adopted, DateTimeOffset UpdatedAtUtc);
 
@@ -162,11 +169,31 @@ public sealed record ScheduleEmployeeInfoDto(
     string EmployeeCode,
     string Name,
     string Affiliation,
+    DateOnly? EmploymentStartDate,
     int? Ability,
     string? MonthlyShift,
+    int? OpeningRest,
+    int? OpeningSpecialRest,
     IReadOnlyList<string> MonthlyCsvValues);
 
 public sealed record ExternalAssignmentDto(DateOnly Date, string Station, string Shift, int Count);
+
+public sealed record ScheduleIntervalStatsDto(
+    string EmployeeCode,
+    DateOnly Start,
+    DateOnly End,
+    int Rest,
+    int SpecialRest,
+    int RequiredSpecialRest);
+
+public sealed record ScheduleCoverageDto(
+    DateOnly Date,
+    string Station,
+    string Shift,
+    int Required,
+    bool AllowsMultiple,
+    int Internal,
+    int External);
 
 public sealed record ValidationIssue(
     ValidationSeverity Severity,
@@ -175,7 +202,8 @@ public sealed record ValidationIssue(
     string? EmployeeCode = null,
     DateOnly? Date = null,
     string? Station = null,
-    string? Shift = null);
+    string? Shift = null,
+    bool IsLaborLawViolation = false);
 
 public sealed record ScheduleDetailDto(
     ScheduleVersionDto Version,
@@ -183,6 +211,8 @@ public sealed record ScheduleDetailDto(
     IReadOnlyList<ScheduleAssignmentDto> Assignments,
     IReadOnlyList<ExternalAssignmentDto> ExternalAssignments,
     IReadOnlyList<ScheduleEmployeeStats> EmployeeStats,
+    IReadOnlyList<ScheduleIntervalStatsDto> IntervalStats,
+    IReadOnlyList<ScheduleCoverageDto> Coverage,
     IReadOnlyList<ValidationIssue> Issues);
 
 public sealed record ScheduleRunDto(
@@ -192,7 +222,17 @@ public sealed record ScheduleRunDto(
     ScheduleRunStatus Status,
     string? Error,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset? CompletedAtUtc);
+    DateTimeOffset? CompletedAtUtc,
+    int TimeLimitSeconds,
+    int WorkerCount,
+    int SeedCount,
+    IReadOnlyList<ScheduleRunCandidateDto> Candidates);
+
+public sealed record ScheduleRunCandidateDto(int Number, IReadOnlyList<ObjectiveScoreDto> Objectives);
+public sealed record ObjectiveScoreDto(int Priority, string Name, long Value, IReadOnlyList<ObjectiveComponentDto> Components);
+public sealed record ObjectiveComponentDto(string Name, long Value, int Weight);
+
+public sealed record ScheduleRunOptions(int TimeLimitSeconds, int WorkerCount, int SeedCount);
 
 public sealed record AuditLogDto(
     Guid Id,
