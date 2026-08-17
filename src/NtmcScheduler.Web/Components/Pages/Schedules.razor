@@ -9,10 +9,10 @@
 <div class="page-title">
     <div>
         <h1>@workspaceCode 班表列表</h1>
-        <p>開啟、採用或封存每個月份的班表。</p>
+        <p>開啟、改名、採用或封存每個月份的班表。</p>
     </div>
     <PageHelp Title="班表列表說明">
-        <p>同月份可保存多份班表，但只能採用一份。所有硬規則必須先排除才能採用；目前採用的班表必須先改採用其他版本才能封存。</p>
+        <p>同月份可保存多份班表，最多採用一份，也可暫時不採用。所有硬規則必須先排除才能採用；已採用班表須先取消採用或改採用其他版本才能封存。</p>
     </PageHelp>
 </div>
 @if (message is not null)
@@ -87,7 +87,25 @@
                         }
                     </td>
                     <td>
-                        <a href="/schedules/@version.Id">@version.Name</a>
+                        @if (editingNameId == version.Id)
+                        {
+                            <input aria-label="班表名稱" value="@version.Name" disabled="@isBusy" @onchange="args => RenameAsync(version, args.Value?.ToString() ?? string.Empty)"/>
+                            <button class="icon-button" aria-label="取消修改班表名稱" title="取消" disabled="@isBusy" @onclick="() => editingNameId = null">×</button>
+                        }
+                        else
+                        {
+                            <span class="name-actions">
+                                <a href="/schedules/@version.Id">@version.Name</a>
+                                @if (canEdit && !version.IsArchived)
+                                {
+                                    <button class="icon-button" aria-label="修改班表名稱" title="修改班表名稱" disabled="@isBusy" @onclick="() => editingNameId = version.Id">
+                                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                                            <path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/>
+                                        </svg>
+                                    </button>
+                                }
+                            </span>
+                        }
                     </td><td>@SourceText(version.SourceStatus)</td>
                     <td class="objective-scores">
                         @foreach (var score in DisplayObjectives(version))
@@ -103,12 +121,21 @@
                         <span class="status @(version.HasErrors ? "warning" : version.WarningCount > 0 ? "warning" : "ok")">@(version.HasErrors ? "需要修正" : version.WarningCount > 0 ? $"建議 {version.WarningCount} 項" : "可採用")</span>
                     </td>
                     <td>
-                        <a class="button-link" href="/schedules/@version.Id">開啟班表</a><a class="button-link" href="/download/schedules/@(version.Id).csv">下載 CSV</a>
-                        @if (canEdit && !version.IsAdopted)
-                        {
-                            <button class="primary" disabled="@isBusy" @onclick="() => AdoptAsync(version)">採用</button>
-                            <button class="danger" disabled="@isBusy" @onclick="() => ArchiveAsync(version)">封存</button>
-                        }
+                        <div style="display: flex; gap: 12px;">
+
+                            <a class="button-link" href="/schedules/@version.Id">開啟班表</a>
+                            <a class="button-link" href="/download/schedules/@(version.Id).csv">下載 CSV</a>
+                            <span><!--This is a empty div for spacings--></span>
+                            @if (canEdit && version.IsAdopted)
+                            {
+                                <button disabled="@isBusy" @onclick="() => UnadoptAsync(version)">取消採用</button>
+                            }
+                            else if (canEdit && !version.IsArchived)
+                            {
+                                <button class="primary" disabled="@isBusy" @onclick="() => AdoptAsync(version)">採用</button>
+                                <button class="danger" disabled="@isBusy" @onclick="() => ArchiveAsync(version)">封存</button>
+                            }
+                        </div>
                     </td>
                 </tr>
             }
@@ -127,6 +154,7 @@
     private string? message;
     private string messageClass = "success";
     private bool isBusy;
+    private Guid? editingNameId;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -155,6 +183,19 @@
         await Service.AdoptAsync(version.Id, version.RevisionToken, await CurrentActor.GetAsync());
         await ReloadAsync();
     }, "已採用這份班表。");
+
+    private Task UnadoptAsync(ScheduleVersionDto version) => RunAsync(async () =>
+    {
+        await Service.UnadoptAsync(version.Id, version.RevisionToken, await CurrentActor.GetAsync());
+        await ReloadAsync();
+    }, "已取消採用這份班表。");
+
+    private Task RenameAsync(ScheduleVersionDto version, string name) => RunAsync(async () =>
+    {
+        await Service.RenameAsync(version.Id, name, version.RevisionToken, await CurrentActor.GetAsync());
+        editingNameId = null;
+        await ReloadAsync();
+    }, "班表名稱已更新。");
 
     private Task ArchiveAsync(ScheduleVersionDto version) => RunAsync(async () =>
     {

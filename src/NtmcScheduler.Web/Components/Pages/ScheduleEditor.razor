@@ -17,7 +17,19 @@ else
     <div class="page-title">
         <div>
             <div class="title-line">
-                <h1>@detail.Version.Name</h1>
+                @if (isEditingName)
+                {
+                    <input class="inline-field" aria-label="班表名稱" value="@detail.Version.Name" disabled="@isBusy" @onchange="args => RenameAsync(args.Value?.ToString() ?? string.Empty)" />
+                    <button class="icon-button" aria-label="取消修改班表名稱" title="取消" disabled="@isBusy" @onclick="() => isEditingName = false">×</button>
+                }
+                else
+                {
+                    <h1>@detail.Version.Name</h1>
+                    @if (canEdit && !detail.Version.IsArchived)
+                    {
+                        <button class="icon-button" aria-label="修改班表名稱" title="修改班表名稱" disabled="@isBusy" @onclick="() => isEditingName = true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg></button>
+                    }
+                }
                 @if (detail.Version.IsAdopted)
                 {
                     <span class="adopted-badge">已採用</span>
@@ -46,7 +58,11 @@ else
             {
                 <a class="button-link" href="/download/schedules/@(VersionId)-external.csv">下載外派 CSV</a>
             }
-            @if (canEdit && !detail.Version.IsArchived && !detail.Version.IsAdopted)
+            @if (canEdit && detail.Version.IsAdopted)
+            {
+                <button disabled="@isBusy" @onclick="UnadoptAsync">取消採用</button>
+            }
+            else if (canEdit && !detail.Version.IsArchived)
             {
                 <button class="primary" disabled="@isBusy" @onclick="AdoptAsync">@(isBusy ? "處理中…" : "採用這份班表")</button>
                 <button class="danger" disabled="@isBusy" @onclick="ArchiveAsync">封存班表</button>
@@ -255,6 +271,7 @@ else
     private ConfigurationRevisionDto? configuration;
     private bool canEdit;
     private bool isBusy;
+    private bool isEditingName;
     private string? message;
     private string messageClass = "success";
     private string sortColumn = "id";
@@ -378,6 +395,19 @@ else
         await Service.AdoptAsync(VersionId, detail!.Version.RevisionToken, await CurrentActor.GetAsync());
         await LoadAsync();
     }, "已採用這份班表。");
+
+    private Task UnadoptAsync() => RunAsync(async () =>
+    {
+        await Service.UnadoptAsync(VersionId, detail!.Version.RevisionToken, await CurrentActor.GetAsync());
+        await LoadAsync();
+    }, "已取消採用這份班表。");
+
+    private Task RenameAsync(string name) => RunAsync(async () =>
+    {
+        await Service.RenameAsync(VersionId, name, detail!.Version.RevisionToken, await CurrentActor.GetAsync());
+        isEditingName = false;
+        await LoadAsync();
+    }, "班表名稱已更新。");
 
     private Task ArchiveAsync() => RunAsync(async () =>
     {

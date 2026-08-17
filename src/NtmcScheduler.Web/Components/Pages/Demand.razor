@@ -127,7 +127,8 @@
                 {
                     <p>檔名：@demand.PerpetualUpload.FileName　上傳時間：@Taipei(demand.PerpetualUpload.UploadedAtUtc)</p>
                     <div class="toolbar">
-                        <a class="button-link" target="_blank" href="/demands/@(demand.Id)/perpetual.csv">開啟班表</a><a class="button-link" href="/download/demands/@(demand.Id)/perpetual.csv">下載 CSV</a>
+                        <a class="button-link" target="_blank" href="/demands/@(demand.Id)/perpetual.csv">開啟班表</a>
+                        <a class="button-link" href="/download/demands/@(demand.Id)/perpetual.csv">下載 CSV</a>
                         @if (canEdit)
                         {
                             <button disabled="@isBusy" @onclick="UseGlobalPerpetualAsync">改用全域萬年班表</button>
@@ -138,7 +139,8 @@
                 {
                     <p>全域檔名：@globalPerpetual.FileName　最後修改：@Taipei(globalPerpetual.UpdatedAtUtc)</p>
                     <div class="toolbar">
-                        <a class="button-link" target="_blank" href="/m/perpetual.csv">開啟班表</a><a class="button-link" href="/download/m/perpetual.csv">下載 CSV</a>
+                        <a class="button-link" target="_blank" href="/m/perpetual.csv">開啟班表</a>
+                        <a class="button-link" href="/download/m/perpetual.csv">下載 CSV</a>
                     </div>
                 }
             }

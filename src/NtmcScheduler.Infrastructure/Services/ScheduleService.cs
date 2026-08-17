@@ -159,12 +159,49 @@ public sealed class ScheduleService(
         ServiceSupport.RequireEditor(actor, version.Workspace);
         if (version.RevisionToken != revisionToken) throw new ConcurrencyConflictException("班表已被其他人修改，請重新整理。");
         if (await db.AdoptedSchedules.AnyAsync(x => x.ScheduleVersionId == versionId, cancellationToken))
-            throw new DomainValidationException("請先採用其他班表，才能封存目前採用的班表。");
+            throw new DomainValidationException("請先取消採用或採用其他班表，才能封存目前採用的班表。");
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var before = ToDto(version, false);
         version.IsArchived = true;
         Touch(version, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "ScheduleArchived", version.Workspace, "ScheduleVersion", version.Id, before, ToDto(version, false));
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task UnadoptAsync(Guid versionId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        var version = await db.ScheduleVersions.SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
+            ?? throw new DomainValidationException("找不到班表版本。");
+        ServiceSupport.RequireEditor(actor, version.Workspace);
+        if (version.RevisionToken != revisionToken) throw new ConcurrencyConflictException("班表已被其他人修改，請重新整理。");
+        var adopted = await db.AdoptedSchedules.SingleOrDefaultAsync(x => x.ScheduleVersionId == versionId, cancellationToken)
+            ?? throw new DomainValidationException("這份班表目前未採用。");
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        db.AdoptedSchedules.Remove(adopted);
+        Touch(version, actor.UserId);
+        ServiceSupport.AddAudit(db, actor, "ScheduleUnadopted", version.Workspace, "ScheduleVersion", version.Id,
+            new { ScheduleVersionId = version.Id }, null);
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task RenameAsync(Guid versionId, string name, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        var version = await db.ScheduleVersions.SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
+            ?? throw new DomainValidationException("找不到班表版本。");
+        ServiceSupport.RequireEditor(actor, version.Workspace);
+        if (version.IsArchived) throw new DomainValidationException("封存班表不可修改名稱。");
+        if (version.RevisionToken != revisionToken) throw new ConcurrencyConflictException("班表已被其他人修改，請重新整理。");
+        var trimmedName = name.Trim();
+        if (trimmedName.Length is < 1 or > 100) throw new DomainValidationException("班表名稱須為 1 至 100 個字元。");
+        if (version.Name == trimmedName) return;
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var before = version.Name;
+        version.Name = trimmedName;
+        Touch(version, actor.UserId);
+        ServiceSupport.AddAudit(db, actor, "ScheduleRenamed", version.Workspace, "ScheduleVersion", version.Id,
+            new { Name = before }, new { Name = version.Name });
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }

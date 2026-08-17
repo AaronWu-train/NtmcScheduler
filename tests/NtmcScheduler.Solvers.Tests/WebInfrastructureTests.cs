@@ -680,6 +680,32 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
+    public async Task Schedule_CanBeUnadoptedAndRenamed()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var actor = Editor(WorkspaceCode.M);
+        var revision = new ConfigurationRevision { Version = 1, CreatedByUserId = actor.UserId };
+        var version = Version(revision, new DateOnly(2026, 8, 1), "原班表名稱");
+        database.Context.AddRange(revision, version, new AdoptedSchedule
+        {
+            Workspace = version.Workspace,
+            Month = version.Month,
+            ScheduleVersionId = version.Id,
+            AdoptedByUserId = actor.UserId
+        });
+        await database.Context.SaveChangesAsync();
+
+        var service = new ScheduleService(database.Context, new ScheduleValidationService(database.Context));
+        await service.UnadoptAsync(version.Id, version.RevisionToken, actor);
+        Assert.IsFalse(await database.Context.AdoptedSchedules.AnyAsync(x => x.ScheduleVersionId == version.Id));
+        Assert.AreEqual(1, await database.Context.AuditLogs.CountAsync(x => x.Action == "ScheduleUnadopted"));
+
+        await service.RenameAsync(version.Id, "  新班表名稱  ", version.RevisionToken, actor);
+        Assert.AreEqual("新班表名稱", (await database.Context.ScheduleVersions.SingleAsync(x => x.Id == version.Id)).Name);
+        Assert.AreEqual(1, await database.Context.AuditLogs.CountAsync(x => x.Action == "ScheduleRenamed"));
+    }
+
+    [TestMethod]
     public async Task ScheduleDetail_SplitsMultipleCollectionQueries()
     {
         await using var database = await TestDatabase.CreateAsync(throwOnMultipleCollectionInclude: true);

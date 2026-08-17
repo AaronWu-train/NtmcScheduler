@@ -67,6 +67,8 @@ public interface IScheduleService
     Task<ScheduleDetailDto> UpdateAssignmentAsync(Guid versionId, Guid assignmentId, string kind, bool requestedRest, string? station, string? shift, DateTimeOffset? eventStart, DateTimeOffset? eventEnd, string? eventDescription, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task<ScheduleDetailDto> UpdateMonthlyShiftAsync(Guid versionId, Guid employeeSnapshotId, string monthlyShift, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task AdoptAsync(Guid versionId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
+    Task UnadoptAsync(Guid versionId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
+    Task RenameAsync(Guid versionId, string name, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task ArchiveAsync(Guid versionId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task<byte[]> ExportCsvAsync(Guid versionId, ActorContext actor, CancellationToken cancellationToken = default);
     Task<byte[]> ExportExternalCsvAsync(Guid versionId, ActorContext actor, CancellationToken cancellationToken = default);
