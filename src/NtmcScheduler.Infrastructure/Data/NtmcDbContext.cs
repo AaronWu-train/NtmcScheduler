@@ -17,6 +17,7 @@ public sealed class NtmcDbContext(DbContextOptions<NtmcDbContext> options)
     public DbSet<DemandDraft> DemandDrafts => Set<DemandDraft>();
     public DbSet<DemandEmployee> DemandEmployees => Set<DemandEmployee>();
     public DbSet<DemandAssignment> DemandAssignments => Set<DemandAssignment>();
+    public DbSet<MPerpetualScheduleTemplate> MPerpetualScheduleTemplates => Set<MPerpetualScheduleTemplate>();
     public DbSet<UploadedPreviousSchedule> UploadedPreviousSchedules => Set<UploadedPreviousSchedule>();
     public DbSet<ScheduleRun> ScheduleRuns => Set<ScheduleRun>();
     public DbSet<ScheduleVersion> ScheduleVersions => Set<ScheduleVersion>();
@@ -95,6 +96,13 @@ public sealed class NtmcDbContext(DbContextOptions<NtmcDbContext> options)
             entity.HasIndex(x => new { x.Workspace, x.Month }).IsUnique();
             entity.HasOne(x => x.ConfigurationRevision).WithMany().HasForeignKey(x => x.ConfigurationRevisionId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.UploadedPreviousSchedule).WithMany().HasForeignKey(x => x.UploadedPreviousScheduleId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<MPerpetualScheduleTemplate>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).ValueGeneratedNever();
+            entity.Property(x => x.FileName).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.RevisionToken).IsConcurrencyToken();
         });
         modelBuilder.Entity<DemandEmployee>(entity =>
         {

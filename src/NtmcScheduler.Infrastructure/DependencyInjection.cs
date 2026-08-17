@@ -21,6 +21,7 @@ public static class DependencyInjection
         services.AddScoped<IScheduleRunService, ScheduleRunService>();
         services.AddScoped<IScheduleValidationService, ScheduleValidationService>();
         services.AddScoped<IScheduleService, ScheduleService>();
+        services.AddScoped<IMPerpetualScheduleService, MPerpetualScheduleService>();
         services.AddScoped<IAuditQueryService, AuditQueryService>();
         services.AddSingleton<ScheduleRunQueue>();
         services.AddHostedService<ScheduleRunWorker>();

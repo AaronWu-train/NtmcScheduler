@@ -257,7 +257,7 @@ public static partial class ScheduleCsv
         _ => throw new ScheduleCsvException(field, $"Unsupported schedule cell '{text}'.")
     };
 
-    private static ScheduleCell? ParseMPerpetualCell(string text, string field) => text switch
+    internal static ScheduleCell? ParseMPerpetualCell(string text, string field) => text switch
     {
         "" => null,
         "R" => new() { Kind = AssignmentKind.Rest },
@@ -265,7 +265,7 @@ public static partial class ScheduleCsv
         _ => throw new ScheduleCsvException(field, $"Unsupported M perpetual-schedule cell '{text}'.")
     };
 
-    private static string MPerpetualCellText(ScheduleCell? cell) => cell?.Kind switch
+    internal static string MPerpetualCellText(ScheduleCell? cell) => cell?.Kind switch
     {
         null => "",
         AssignmentKind.Rest => "R",

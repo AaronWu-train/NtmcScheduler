@@ -180,6 +180,40 @@ public sealed class ScheduleService(
         }
     }
 
+    public async Task<ScheduleVersionDto> ImportAsync(
+        WorkspaceCode workspace,
+        DateOnly month,
+        string fileName,
+        Stream csv,
+        ActorContext actor,
+        CancellationToken cancellationToken = default)
+    {
+        ServiceSupport.RequireEditor(actor, workspace);
+        month = new DateOnly(month.Year, month.Month, 1);
+        var configurationId = await db.CurrentConfigurations.AsNoTracking().Where(x => x.Id == 1)
+            .Select(x => (Guid?)x.ConfigurationRevisionId).SingleOrDefaultAsync(cancellationToken)
+            ?? throw new DomainValidationException("請先建立共同設定。");
+        var configuration = await db.ConfigurationRevisions.AsNoTracking().Include(x => x.NonStandardShifts)
+            .SingleAsync(x => x.Id == configurationId, cancellationToken);
+        var shifts = SolverScheduleMapper.ToNonStandardShifts(configuration);
+        var schedule = await UploadFile.ParseAsync(csv, path => ScheduleCsv.ReadMonthly(path, month, shifts, true), cancellationToken);
+        var isT = schedule.Employees.Any(x => x.Ability is not null || x.MonthlyShift is not null);
+        if (isT != (workspace == WorkspaceCode.T)) throw new DomainValidationException("CSV 的 M/T 欄位與目前工作區不符。");
+        var version = SolverScheduleMapper.ToImportedVersion(schedule, workspace, configurationId, actor.UserId);
+        version.Name = $"上傳 {month:yyyy-MM} 班表";
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        db.ScheduleVersions.Add(version);
+        ServiceSupport.AddAudit(db, actor, "ScheduleVersionImported", workspace, "ScheduleVersion", version.Id, null,
+            new { version.Month, version.Name, FileName = Path.GetFileName(fileName), EmployeeCount = schedule.Employees.Count });
+        await db.SaveChangesAsync(cancellationToken);
+        var checkedSchedule = await validation.ValidateAsync(version.Id, actor, cancellationToken);
+        version.HasErrors = false;
+        version.WarningCount = checkedSchedule.Issues.Count;
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return ToDto(version, false);
+    }
+
     private IQueryable<ScheduleVersion> VersionQuery() => db.ScheduleVersions
         .AsSplitQuery()
         .Include(x => x.ConfigurationRevision).ThenInclude(x => x.RestIntervals).ThenInclude(x => x.NationalHolidays)

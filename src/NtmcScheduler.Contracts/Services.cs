@@ -37,7 +37,9 @@ public interface IDemandService
     Task<ImportPreviewDto> PreviewDemandImportAsync(Guid demandId, Stream csv, ActorContext actor, CancellationToken cancellationToken = default);
     Task ImportDemandAsync(Guid demandId, Stream csv, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task UploadPreviousAsync(Guid demandId, string fileName, Stream csv, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
+    Task SelectPreviousScheduleAsync(Guid demandId, Guid scheduleVersionId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task UploadPerpetualScheduleAsync(Guid demandId, string fileName, Stream csv, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
+    Task ClearPerpetualScheduleAsync(Guid demandId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task<PerpetualScheduleFileDto> ExportPerpetualScheduleAsync(Guid demandId, ActorContext actor, CancellationToken cancellationToken = default);
 }
 
@@ -64,6 +66,16 @@ public interface IScheduleService
     Task ArchiveAsync(Guid versionId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task<byte[]> ExportCsvAsync(Guid versionId, ActorContext actor, CancellationToken cancellationToken = default);
     Task<byte[]> ExportExternalCsvAsync(Guid versionId, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<ScheduleVersionDto> ImportAsync(WorkspaceCode workspace, DateOnly month, string fileName, Stream csv, ActorContext actor, CancellationToken cancellationToken = default);
+}
+
+public interface IMPerpetualScheduleService
+{
+    Task<MPerpetualScheduleDto?> GetAsync(ActorContext actor, CancellationToken cancellationToken = default);
+    Task<MPerpetualScheduleDto> UploadAsync(string fileName, Stream csv, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<MPerpetualScheduleDto> SavePatternAsync(string? originalId, string id, IReadOnlyList<string> days, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<MPerpetualScheduleDto?> DeletePatternAsync(string id, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<PerpetualScheduleFileDto> ExportAsync(ActorContext actor, CancellationToken cancellationToken = default);
 }
 
 public interface IScheduleValidationService

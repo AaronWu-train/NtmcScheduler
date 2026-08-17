@@ -34,6 +34,10 @@ public sealed class ScheduleRunService(NtmcDbContext db, ScheduleRunQueue queue,
             SolverScheduleMapper.ToRestIntervals(demand.ConfigurationRevision),
             SolverScheduleMapper.ToNonStandardShifts(demand.ConfigurationRevision));
         var snapshot = JsonSerializer.Serialize(input, ServiceSupport.JsonOptions);
+        var perpetualScheduleJson = demand.PerpetualScheduleJson;
+        if (demand.Workspace == WorkspaceCode.M && string.IsNullOrWhiteSpace(perpetualScheduleJson))
+            perpetualScheduleJson = await db.MPerpetualScheduleTemplates.AsNoTracking().Where(x => x.Id == 1)
+                .Select(x => x.ScheduleJson).SingleOrDefaultAsync(cancellationToken);
         var run = new ScheduleRun
         {
             Workspace = demand.Workspace,
@@ -52,7 +56,7 @@ public sealed class ScheduleRunService(NtmcDbContext db, ScheduleRunQueue queue,
             ProgramVersion = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown",
             InputSnapshotJson = snapshot,
             InputHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(snapshot))),
-            PerpetualScheduleJson = demand.PerpetualScheduleJson
+            PerpetualScheduleJson = perpetualScheduleJson
         };
         await using (var transaction = await db.Database.BeginTransactionAsync(cancellationToken))
         {
@@ -104,10 +108,10 @@ public sealed class ScheduleRunService(NtmcDbContext db, ScheduleRunQueue queue,
                 ?? throw new DomainValidationException("previous schedule 快照無法讀取。");
         }
         if (demand.PreviousAdoptedScheduleVersionId is not { } versionId)
-            throw new DomainValidationException("找不到上個月的已採用班表。");
+            throw new DomainValidationException("找不到選取的上月班表。");
         var version = await db.ScheduleVersions.AsNoTracking().Include(x => x.Employees).ThenInclude(x => x.Assignments)
             .SingleOrDefaultAsync(x => x.Id == versionId && !x.IsArchived, cancellationToken)
-            ?? throw new DomainValidationException("上個月的已採用班表不存在或已封存。");
+            ?? throw new DomainValidationException("選取的上月班表不存在或已封存。");
         return SolverScheduleMapper.ToMonthlySchedule(version);
     }
 

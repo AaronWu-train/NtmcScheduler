@@ -231,6 +231,28 @@ app.MapGet("/download/demands/{demandId:guid}/perpetual.csv", async (
     return Results.File(file.Content, "text/csv; charset=utf-8", file.FileName);
 }).RequireAuthorization();
 
+app.MapGet("/m/perpetual.csv", async (
+    HttpContext context,
+    NtmcDbContext db,
+    IMPerpetualScheduleService perpetual,
+    CancellationToken cancellationToken) =>
+{
+    var actor = await CreateHttpActorAsync(context.User, context, db, cancellationToken);
+    var file = await perpetual.ExportAsync(actor, cancellationToken);
+    return Results.Text(Encoding.UTF8.GetString(file.Content), "text/plain; charset=utf-8");
+}).RequireAuthorization();
+
+app.MapGet("/download/m/perpetual.csv", async (
+    HttpContext context,
+    NtmcDbContext db,
+    IMPerpetualScheduleService perpetual,
+    CancellationToken cancellationToken) =>
+{
+    var actor = await CreateHttpActorAsync(context.User, context, db, cancellationToken);
+    var file = await perpetual.ExportAsync(actor, cancellationToken);
+    return Results.File(file.Content, "text/csv; charset=utf-8", file.FileName);
+}).RequireAuthorization();
+
 app.MapGet("/download/templates/{workspace}/{kind}.csv", (string workspace, string kind) =>
 {
     if (!Enum.TryParse<WorkspaceCode>(workspace, true, out var workspaceCode)) return Results.NotFound();

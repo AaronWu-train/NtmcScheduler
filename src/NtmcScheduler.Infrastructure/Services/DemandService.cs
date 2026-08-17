@@ -247,7 +247,7 @@ public sealed class DemandService(
         db.ScheduleVersions.Add(version);
         demand.UploadedPreviousSchedule = upload;
         demand.PreviousSource = PreviousScheduleSource.Upload;
-        demand.PreviousAdoptedScheduleVersionId = null;
+        demand.PreviousAdoptedScheduleVersionId = version.Id;
         var previousByCode = schedule.Employees.ToDictionary(x => x.EmployeeId, StringComparer.Ordinal);
         foreach (var employee in demand.Employees)
         {
@@ -279,6 +279,47 @@ public sealed class DemandService(
         await transaction.CommitAsync(cancellationToken);
     }
 
+    public async Task SelectPreviousScheduleAsync(
+        Guid demandId,
+        Guid scheduleVersionId,
+        Guid revisionToken,
+        ActorContext actor,
+        CancellationToken cancellationToken = default)
+    {
+        var demand = await Query().SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
+            ?? throw new DomainValidationException("找不到本月需求。");
+        ServiceSupport.RequireEditor(actor, demand.Workspace);
+        if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
+        var version = await db.ScheduleVersions.AsNoTracking().Include(x => x.Employees)
+            .SingleOrDefaultAsync(x => x.Id == scheduleVersionId, cancellationToken)
+            ?? throw new DomainValidationException("找不到選取的上月班表。");
+        if (version.Workspace != demand.Workspace || version.Month != demand.Month.AddMonths(-1) || version.IsArchived)
+            throw new DomainValidationException("只能選擇同工作區、前一月份且尚未封存的班表。");
+        var previousByCode = version.Employees.ToDictionary(x => x.EmployeeCode, StringComparer.Ordinal);
+        foreach (var employee in demand.Employees)
+        {
+            if (previousByCode.TryGetValue(employee.EmployeeCode, out var previous))
+            {
+                employee.OpeningRest = previous.ClosingRest;
+                employee.OpeningSpecialRest = previous.ClosingSpecialRest;
+                employee.PerpetualScheduleId = demand.Workspace == WorkspaceCode.M ? previous.PerpetualScheduleId : null;
+            }
+            else
+            {
+                employee.OpeningRest = null;
+                employee.OpeningSpecialRest = null;
+                employee.PerpetualScheduleId = null;
+            }
+        }
+        var before = new { demand.PreviousSource, demand.PreviousAdoptedScheduleVersionId };
+        demand.PreviousSource = PreviousScheduleSource.AdoptedSchedule;
+        demand.PreviousAdoptedScheduleVersionId = version.Id;
+        Touch(demand, actor.UserId);
+        ServiceSupport.AddAudit(db, actor, "PreviousScheduleSelected", demand.Workspace, "DemandDraft", demand.Id, before,
+            new { ScheduleVersionId = version.Id, version.Month, version.Name });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task UploadPerpetualScheduleAsync(Guid demandId, string fileName, Stream csv, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
     {
         var demand = await Query().SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
@@ -308,6 +349,22 @@ public sealed class DemandService(
         var schedule = JsonSerializer.Deserialize<MPerpetualSchedule>(demand.PerpetualScheduleJson, ServiceSupport.JsonOptions)
             ?? throw new DomainValidationException("M 八週萬年班表無法讀取。");
         return new(demand.PerpetualScheduleFileName ?? "perpetual.csv", ScheduleCsv.WriteMPerpetualSchedule(schedule));
+    }
+
+    public async Task ClearPerpetualScheduleAsync(Guid demandId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        var demand = await db.DemandDrafts.SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
+            ?? throw new DomainValidationException("找不到本月需求。");
+        ServiceSupport.RequireEditor(actor, demand.Workspace);
+        if (demand.Workspace != WorkspaceCode.M) throw new DomainValidationException("只有 M 使用萬年班表。");
+        if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
+        var before = new { demand.PerpetualScheduleFileName, demand.PerpetualScheduleUploadedAtUtc };
+        demand.PerpetualScheduleJson = null;
+        demand.PerpetualScheduleFileName = null;
+        demand.PerpetualScheduleUploadedAtUtc = null;
+        Touch(demand, actor.UserId);
+        ServiceSupport.AddAudit(db, actor, "DemandPerpetualScheduleCleared", WorkspaceCode.M, "DemandDraft", demand.Id, before, null);
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     private IQueryable<DemandDraft> Query() => db.DemandDrafts.AsSplitQuery()

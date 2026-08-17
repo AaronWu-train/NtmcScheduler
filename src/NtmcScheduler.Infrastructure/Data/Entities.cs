@@ -101,6 +101,16 @@ public sealed class DemandDraft
     public List<DemandEmployee> Employees { get; set; } = [];
 }
 
+public sealed class MPerpetualScheduleTemplate
+{
+    public int Id { get; set; } = 1;
+    public string FileName { get; set; } = "perpetual.csv";
+    public string ScheduleJson { get; set; } = "";
+    public Guid UpdatedByUserId { get; set; }
+    public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public Guid RevisionToken { get; set; } = Guid.NewGuid();
+}
+
 public sealed class DemandEmployee
 {
     public Guid Id { get; set; } = Guid.NewGuid();

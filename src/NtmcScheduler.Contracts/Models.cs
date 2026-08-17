@@ -106,6 +106,7 @@ public sealed record DemandDraftDto(
     DateOnly Month,
     PreviousScheduleSource PreviousSource,
     bool HasUploadedPreviousSchedule,
+    Guid? PreviousScheduleVersionId,
     Guid ConfigurationRevisionId,
     Guid RevisionToken,
     DateTimeOffset UpdatedAtUtc,
@@ -116,6 +117,8 @@ public sealed record DemandDraftDto(
 public sealed record PreviousUploadDto(string FileName, DateTimeOffset UploadedAtUtc);
 public sealed record PerpetualUploadDto(string FileName, DateTimeOffset UploadedAtUtc);
 public sealed record PerpetualScheduleFileDto(string FileName, byte[] Content);
+public sealed record MPerpetualPatternDto(string Id, IReadOnlyList<string> Days, int EarlyCount, int AfternoonCount, int NightCount);
+public sealed record MPerpetualScheduleDto(string FileName, DateTimeOffset UpdatedAtUtc, Guid RevisionToken, IReadOnlyList<MPerpetualPatternDto> Patterns);
 
 public sealed record ImportPreviewDto(bool IsValid, IReadOnlyList<string> Errors, IReadOnlyList<string> Differences);
 public sealed record EmployeeImportPreviewDto(bool IsValid, IReadOnlyList<string> Errors, IReadOnlyList<string> Differences, Guid RevisionToken);

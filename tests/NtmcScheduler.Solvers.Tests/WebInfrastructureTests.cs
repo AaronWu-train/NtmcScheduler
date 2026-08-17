@@ -140,6 +140,12 @@ public sealed class WebInfrastructureTests
         }
         finally { File.Delete(previousPath); }
 
+        var globalSchedule = new MPerpetualSchedule(new Dictionary<string, IReadOnlyList<ScheduleCell?>>
+        {
+            ["P1"] = Enumerable.Repeat<ScheduleCell?>(null, 56).ToArray()
+        });
+        await new MPerpetualScheduleService(database.Context).UploadAsync("global.csv",
+            new MemoryStream(ScheduleCsv.WriteMPerpetualSchedule(globalSchedule)), actor);
         var runService = new ScheduleRunService(database.Context, new ScheduleRunQueue());
         var queued = await runService.QueueAsync(
             disposableDemand.Id, disposableDemand.RevisionToken, new ScheduleRunOptions(300, 4, 1), actor);
@@ -150,6 +156,7 @@ public sealed class WebInfrastructureTests
         Assert.AreEqual(300, savedRun.TimeLimitSeconds);
         Assert.IsGreaterThan(0, savedRun.RandomSeed);
         Assert.IsFalse(string.IsNullOrWhiteSpace(savedRun.InputSnapshotJson));
+        Assert.IsFalse(string.IsNullOrWhiteSpace(savedRun.PerpetualScheduleJson));
         CollectionAssert.AreEqual(new[] { queued.Id }, (await runService.ListActiveAsync(actor)).Select(x => x.Id).ToArray());
         CollectionAssert.AreEqual(new[] { queued.Id }, (await runService.ListRecentAsync(5, actor)).Select(x => x.Id).ToArray());
         var restoredInput = System.Text.Json.JsonSerializer.Deserialize<ScheduleInput>(savedRun.InputSnapshotJson,
@@ -297,10 +304,19 @@ public sealed class WebInfrastructureTests
         }
         finally { File.Delete(path); }
 
-        employee = (await service.GetAsync(WorkspaceCode.M, demand.Month, actor))!.Employees.Single();
+        var uploadedDemand = (await service.GetAsync(WorkspaceCode.M, demand.Month, actor))!;
+        employee = uploadedDemand.Employees.Single();
         Assert.AreEqual(uploadEmployee.ClosingUsage!.Rest, employee.OpeningRest);
         Assert.AreEqual(uploadEmployee.ClosingUsage.SpecialRest, employee.OpeningSpecialRest);
         Assert.AreEqual("P-UPLOAD", employee.PerpetualScheduleId);
+        Assert.IsNotNull(uploadedDemand.PreviousScheduleVersionId);
+
+        await service.SelectPreviousScheduleAsync(uploadedDemand.Id, adoptedVersion.Id, uploadedDemand.RevisionToken, actor);
+        var selected = (await service.GetAsync(WorkspaceCode.M, demand.Month, actor))!;
+        Assert.AreEqual(adoptedVersion.Id, selected.PreviousScheduleVersionId);
+        Assert.AreEqual(12, selected.Employees.Single().OpeningRest);
+        Assert.AreEqual(2, selected.Employees.Single().OpeningSpecialRest);
+        Assert.AreEqual("P-ADOPTED", selected.Employees.Single().PerpetualScheduleId);
     }
 
     [TestMethod]
@@ -327,6 +343,62 @@ public sealed class WebInfrastructureTests
         var file = await service.ExportPerpetualScheduleAsync(demand.Id, actor);
         Assert.AreEqual("my-pattern.csv", file.FileName);
         StringAssert.Contains(System.Text.Encoding.UTF8.GetString(file.Content), "P1,R");
+        await service.ClearPerpetualScheduleAsync(demand.Id, saved.RevisionToken, actor);
+        Assert.IsNull((await service.GetAsync(WorkspaceCode.M, demand.Month, actor))!.PerpetualUpload);
+    }
+
+    [TestMethod]
+    public async Task GlobalPerpetualSchedule_CanBeUploadedEditedAndDeleted()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var actor = Editor(WorkspaceCode.M);
+        var service = new MPerpetualScheduleService(database.Context);
+        ScheduleCell?[] cells =
+        [
+            new() { Kind = AssignmentKind.Work, Station = "LB01", Shift = Shift.Early },
+            new() { Kind = AssignmentKind.Work, Station = "LB02", Shift = Shift.Afternoon },
+            new() { Kind = AssignmentKind.Work, Station = "LB03", Shift = Shift.Night },
+            new() { Kind = AssignmentKind.Rest },
+            .. Enumerable.Repeat<ScheduleCell?>(null, 52)
+        ];
+        var uploaded = await service.UploadAsync("global.csv", new MemoryStream(ScheduleCsv.WriteMPerpetualSchedule(
+            new MPerpetualSchedule(new Dictionary<string, IReadOnlyList<ScheduleCell?>> { ["P1"] = cells }))), actor);
+
+        Assert.AreEqual("global.csv", uploaded.FileName);
+        Assert.AreEqual(1, uploaded.Patterns.Single().EarlyCount);
+        Assert.AreEqual(1, uploaded.Patterns.Single().AfternoonCount);
+        Assert.AreEqual(1, uploaded.Patterns.Single().NightCount);
+        var days = uploaded.Patterns.Single().Days.ToArray();
+        days[0] = "LB12夜";
+        var renamed = await service.SavePatternAsync("P1", "P-NEW", days, uploaded.RevisionToken, actor);
+        Assert.AreEqual(0, renamed.Patterns.Single().EarlyCount);
+        Assert.AreEqual(2, renamed.Patterns.Single().NightCount);
+        var added = await service.SavePatternAsync(null, "P2", Enumerable.Repeat("", 56).ToArray(), renamed.RevisionToken, actor);
+        var deleted = await service.DeletePatternAsync("P2", added.RevisionToken, actor);
+        CollectionAssert.AreEqual(new[] { "P-NEW" }, deleted!.Patterns.Select(x => x.Id).ToArray());
+        Assert.AreEqual(4, await database.Context.AuditLogs.CountAsync());
+    }
+
+    [TestMethod]
+    public async Task ScheduleListImport_CreatesIndependentMHistoryVersion()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var actor = Editor(WorkspaceCode.M);
+        var input = MSolverTests.ValidInput();
+        await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+            input.RestIntervals.Select(x => new RestIntervalDto(x.Start, x.End, x.NationalHolidays.ToArray())).ToArray(), [], null, actor);
+        var path = Path.GetTempFileName();
+        try
+        {
+            ScheduleCsv.WriteMonthly(path, input.PreviousMonth);
+            await using var csv = File.OpenRead(path);
+            var imported = await new ScheduleService(database.Context, new ScheduleValidationService(database.Context))
+                .ImportAsync(WorkspaceCode.M, input.PreviousMonth.MonthStart, "history.csv", csv, actor);
+            Assert.AreEqual(input.PreviousMonth.MonthStart, imported.Month);
+            Assert.AreEqual(ScheduleRunStatus.Imported, imported.SourceStatus);
+            Assert.IsFalse(imported.IsAdopted);
+        }
+        finally { File.Delete(path); }
     }
 
     [TestMethod]
