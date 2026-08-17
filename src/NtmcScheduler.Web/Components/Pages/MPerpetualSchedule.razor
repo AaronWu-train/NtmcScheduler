@@ -1,0 +1,185 @@
+@page "/m/perpetual"
+@rendermode InteractiveServer
+@attribute [Authorize]
+@inject IMPerpetualScheduleService PerpetualService
+@inject CurrentActorService CurrentActor
+
+<PageTitle>M 萬年班表</PageTitle>
+<WorkspaceNav Workspace="m"/>
+<div class="page-title">
+    <div>
+        <h1>M 全域萬年班表</h1>
+        <p>管理固定 56 天週期；建立班表時仍可另行上傳該月份的暫用版本。</p>
+    </div>
+    <PageHelp Title="萬年班表說明">
+        <p>全域萬年班表只保存一份。重新上傳會覆蓋全域內容；它只作為求解提示，不會建立班表版本。</p>
+    </PageHelp>
+</div>
+@if (message is not null)
+{
+    <p class="alert @messageClass" role="status">@message</p>
+}
+<section class="card">
+    <div class="section-heading">
+        <div>
+            <h2>全域萬年班表</h2>
+            <p>固定 56 天週期。</p>
+        </div>
+        <div class="toolbar">
+            <a class="button-link" href="/download/templates/m/perpetual.csv">下載範本</a>
+            @if (canEdit)
+            {
+                <label class="button-link primary file-upload-button">上傳並覆蓋<InputFile OnChange="UploadAsync" accept=".csv,text/csv" disabled="@isBusy"/></label>
+            }
+        </div>
+    </div>
+    @if (perpetual is null)
+    {
+        <p>尚未建立全域萬年班表；仍可直接求解。</p>
+    }
+    else
+    {
+        <p>檔名：@perpetual.FileName　最後修改：@Taipei(perpetual.UpdatedAtUtc)</p>
+        <div class="toolbar">
+            <a class="button-link" target="_blank" href="/m/perpetual.csv">預覽 CSV</a><a class="button-link" href="/download/m/perpetual.csv">下載 CSV</a>
+        </div>
+        <div class="table-scroll schedule-grid">
+            <table class="perpetual-table">
+                <thead>
+                <tr>
+                    <th>萬年班表</th>
+                    @for (var day = 1; day <= 56; day++)
+                    {
+                        <th>@day</th>
+                    }
+                    <th>早班數</th><th>小班數</th><th>夜班數</th><th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                @foreach (var pattern in patternEdits)
+                {
+                    <tr>
+                        <td><input class="inline-field perpetual-field" value="@pattern.Id" disabled="@(!canEdit || isBusy)" @onchange="args => RenameAsync(pattern, args.Value?.ToString())"/></td>
+                        @for (var day = 0; day < 56; day++)
+                        {
+                            var index = day;
+                            <td>
+                                <select class="cell-editor" value="@pattern.Days[index]" disabled="@(!canEdit || isBusy)" @onchange="args => ChangeDayAsync(pattern, index, args.Value?.ToString())">
+                                    <option value=""></option><option value="R">R</option>
+                                    @foreach (var station in Stations)
+                                    {
+                                        <option value="@(station)早">@ShortStation(station)早</option>
+                                        <option value="@(station)小">@ShortStation(station)小</option>
+                                        <option value="@(station)夜">@ShortStation(station)夜</option>
+                                    }
+                                </select>
+                            </td>
+                        }
+                        <td>@CountShift(pattern, "早")</td><td>@CountShift(pattern, "小")</td><td>@CountShift(pattern, "夜")</td>
+                        <td>
+                            @if (canEdit)
+                            {
+                                <button class="danger" disabled="@isBusy" @onclick="() => DeleteAsync(pattern)">刪除</button>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+        @if (canEdit)
+        {
+            <div class="toolbar">
+                <input class="inline-field" aria-label="新萬年班表代號" placeholder="新代號" @bind="newPatternId"/><button disabled="@(isBusy || string.IsNullOrWhiteSpace(newPatternId))" @onclick="AddAsync">新增代號</button>
+            </div>
+        }
+    }
+</section>
+
+@code {
+    private static readonly string[] Stations = ["LB01", "LB02", "LB03", "LB04", "LB05", "LB06", "LB07", "LB08", "LB09", "LB10", "LB11", "LB12"];
+    private MPerpetualScheduleDto? perpetual;
+    private List<PatternEdit> patternEdits = [];
+    private string newPatternId = "";
+    private string? message;
+    private string messageClass = "success";
+    private bool canEdit;
+    private bool isBusy;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        var actor = await CurrentActor.GetAsync();
+        canEdit = actor.CanEdit(WorkspaceCode.M) && !actor.MustChangePassword;
+        perpetual = await PerpetualService.GetAsync(actor);
+        patternEdits = perpetual?.Patterns.Select(x => new PatternEdit(x.Id, x.Days.ToList())).ToList() ?? [];
+    }
+
+    private Task UploadAsync(InputFileChangeEventArgs args) => RunAsync(async () =>
+    {
+        await using var input = args.File.OpenReadStream(5 * 1024 * 1024);
+        perpetual = await PerpetualService.UploadAsync(args.File.Name, input, await CurrentActor.GetAsync());
+        await ReloadAsync();
+    }, "全域萬年班表已覆蓋。");
+
+    private Task ChangeDayAsync(PatternEdit pattern, int day, string? value)
+    {
+        pattern.Days[day] = value ?? "";
+        return SaveAsync(pattern, pattern.Id);
+    }
+
+    private Task RenameAsync(PatternEdit pattern, string? value) => SaveAsync(pattern, value ?? "");
+
+    private Task SaveAsync(PatternEdit pattern, string id) => RunAsync(async () =>
+    {
+        perpetual = await PerpetualService.SavePatternAsync(pattern.OriginalId, id, pattern.Days, perpetual!.RevisionToken, await CurrentActor.GetAsync());
+        await ReloadAsync();
+    }, "萬年班表已自動儲存。");
+
+    private Task AddAsync() => RunAsync(async () =>
+    {
+        perpetual = await PerpetualService.SavePatternAsync(null, newPatternId, Enumerable.Repeat("", 56).ToArray(), perpetual!.RevisionToken, await CurrentActor.GetAsync());
+        newPatternId = "";
+        await ReloadAsync();
+    }, "已新增萬年班表代號。");
+
+    private Task DeleteAsync(PatternEdit pattern) => RunAsync(async () =>
+    {
+        perpetual = await PerpetualService.DeletePatternAsync(pattern.OriginalId, perpetual!.RevisionToken, await CurrentActor.GetAsync());
+        await ReloadAsync();
+    }, "已刪除萬年班表代號。");
+
+    private async Task RunAsync(Func<Task> action, string success)
+    {
+        isBusy = true;
+        messageClass = "success";
+        message = "處理中…";
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await action();
+            message = success;
+        }
+        catch (Exception exception)
+        {
+            messageClass = "error";
+            message = exception.Message;
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private static int CountShift(PatternEdit pattern, string suffix) => pattern.Days.Count(x => x.EndsWith(suffix, StringComparison.Ordinal));
+    private static string ShortStation(string station) => station[2..];
+    private static string Taipei(DateTimeOffset value) => value.ToOffset(TimeSpan.FromHours(8)).ToString("yyyy-MM-dd HH:mm");
+
+    private sealed class PatternEdit(string id, List<string> days)
+    {
+        public string OriginalId { get; } = id;
+        public string Id { get; set; } = id;
+        public List<string> Days { get; } = days;
+    }
+}

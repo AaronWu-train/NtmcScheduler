@@ -354,7 +354,19 @@
                             <td>@Taipei(run.CreatedAtUtc)</td><td>@RunStatusText(run)</td><td>@run.TimeLimitSeconds 秒／@run.WorkerCount workers／@run.SeedCount seeds</td><td>@(run.CompletedAtUtc is null ? "" : Taipei(run.CompletedAtUtc.Value))</td><td>
                                 @if (!string.IsNullOrWhiteSpace(run.Error))
                                 {
-                                    <div>@run.Error</div>
+                                    <details class="solve-details">
+                                        <summary>錯誤詳細資訊</summary>
+
+                                        <div class="solve-error-block">
+                                            <button type="button"
+                                                    class="copy-error-btn"
+                                                    @onclick="() => CopyErrorAsync(run.Error)">
+                                                複製
+                                            </button>
+
+                                            <pre class="solve-error-text">@run.Error</pre>
+                                        </div>
+                                    </details>
                                 }
                                 @foreach (var candidate in run.Candidates)
                                 {
@@ -896,4 +908,10 @@
         public string Description { get; set; } = "";
     }
 
+    private async Task CopyErrorAsync(string error)
+    {
+        await JS.InvokeVoidAsync(
+            "navigator.clipboard.writeText",
+            error);
+    }
 }
