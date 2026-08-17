@@ -61,19 +61,19 @@ public static partial class TSolver
     private static void AddExactlyOneAssignmentPerActiveDay(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
     {
         foreach (var employee in input.DemandMonth.Employees)
-        foreach (var date in dates)
-        {
-            var normalWorkCount = LinearExpr.Sum(Shifts.Select(shift => variables.Work[(employee.EmployeeId, date, shift)]));
-            var fixedWorkEvent = employee.Assignments.GetValueOrDefault(date)?.Kind == AssignmentKind.WorkEvent ? 1 : 0;
-            var requiredAssignmentCount = IsEmployedOn(employee, date) ? 1 : 0;
+            foreach (var date in dates)
+            {
+                var normalWorkCount = LinearExpr.Sum(Shifts.Select(shift => variables.Work[(employee.EmployeeId, date, shift)]));
+                var fixedWorkEvent = employee.Assignments.GetValueOrDefault(date)?.Kind == AssignmentKind.WorkEvent ? 1 : 0;
+                var requiredAssignmentCount = IsEmployedOn(employee, date) ? 1 : 0;
 
-            model.Add(normalWorkCount
-                + variables.Rest[(employee.EmployeeId, date)]
-                + variables.SpecialRest[(employee.EmployeeId, date)]
-                + variables.LeaveRest[(employee.EmployeeId, date)]
-                + fixedWorkEvent
-                == requiredAssignmentCount);
-        }
+                model.Add(normalWorkCount
+                    + variables.Rest[(employee.EmployeeId, date)]
+                    + variables.SpecialRest[(employee.EmployeeId, date)]
+                    + variables.LeaveRest[(employee.EmployeeId, date)]
+                    + fixedWorkEvent
+                    == requiredAssignmentCount);
+            }
     }
 
     // 每月 R休 上限——不得超過每位員工的目標月上限；null 視為零。
@@ -88,24 +88,24 @@ public static partial class TSolver
     private static void FixSuppliedAssignments(CpModel model, ScheduleInput input, ModelVariables variables)
     {
         foreach (var employee in input.DemandMonth.Employees)
-        foreach (var assignment in employee.Assignments.Where(pair => pair.Value.Kind is not null))
-        {
-            switch (assignment.Value.Kind)
+            foreach (var assignment in employee.Assignments.Where(pair => pair.Value.Kind is not null))
             {
-                case AssignmentKind.Work:
-                    model.Add(variables.Work[(employee.EmployeeId, assignment.Key, assignment.Value.Shift!.Value)] == 1);
-                    break;
-                case AssignmentKind.Rest:
-                    model.Add(variables.Rest[(employee.EmployeeId, assignment.Key)] == 1);
-                    break;
-                case AssignmentKind.SpecialRest:
-                    model.Add(variables.SpecialRest[(employee.EmployeeId, assignment.Key)] == 1);
-                    break;
-                case AssignmentKind.LeaveRest:
-                    model.Add(variables.LeaveRest[(employee.EmployeeId, assignment.Key)] == 1);
-                    break;
+                switch (assignment.Value.Kind)
+                {
+                    case AssignmentKind.Work:
+                        model.Add(variables.Work[(employee.EmployeeId, assignment.Key, assignment.Value.Shift!.Value)] == 1);
+                        break;
+                    case AssignmentKind.Rest:
+                        model.Add(variables.Rest[(employee.EmployeeId, assignment.Key)] == 1);
+                        break;
+                    case AssignmentKind.SpecialRest:
+                        model.Add(variables.SpecialRest[(employee.EmployeeId, assignment.Key)] == 1);
+                        break;
+                    case AssignmentKind.LeaveRest:
+                        model.Add(variables.LeaveRest[(employee.EmployeeId, assignment.Key)] == 1);
+                        break;
+                }
             }
-        }
     }
 
     // 最少十一小時休息——禁止工作區間重疊或間隔少於十一小時。
@@ -119,9 +119,9 @@ public static partial class TSolver
                           select (interval.Start, interval.End, Variable: variables.Work[(employee.EmployeeId, date, shift)]))
                 .ToArray();
             for (var first = 0; first < normal.Length; first++)
-            for (var second = first + 1; second < normal.Length; second++)
-                if (OverlapsOrLeavesLessThanMinimumRest(normal[first].Start, normal[first].End, normal[second].Start, normal[second].End))
-                    model.Add(normal[first].Variable + normal[second].Variable <= 1);
+                for (var second = first + 1; second < normal.Length; second++)
+                    if (OverlapsOrLeavesLessThanMinimumRest(normal[first].Start, normal[first].End, normal[second].Start, normal[second].End))
+                        model.Add(normal[first].Variable + normal[second].Variable <= 1);
 
             var fixedIntervals = employee.Assignments
                 .Where(pair => pair.Value.Kind == AssignmentKind.WorkEvent)
@@ -160,29 +160,29 @@ public static partial class TSolver
     {
         var lastModeledDate = dates[^1];
         foreach (var employee in input.DemandMonth.Employees)
-        foreach (var interval in input.RestIntervals.Where(interval => dates.Any(date => date >= interval.Start && date <= interval.End)))
-        {
-            var intervalDates = dates.Where(date => date >= interval.Start && date <= interval.End && IsEmployedOn(employee, date)).ToArray();
-            var prior = RestUsageBeforeModeledDates(input, employee, interval);
-            var rest = LinearExpr.Sum(intervalDates.Select(date => variables.Rest[(employee.EmployeeId, date)]));
-            var specialRest = LinearExpr.Sum(intervalDates.Select(date => variables.SpecialRest[(employee.EmployeeId, date)]));
-            const int requiredRest = 16;
-            var requiredSpecialRest = interval.NationalHolidays.Count;
-
-            if (interval.End <= lastModeledDate)
+            foreach (var interval in input.RestIntervals.Where(interval => dates.Any(date => date >= interval.Start && date <= interval.End)))
             {
-                model.Add(prior.Rest + rest == requiredRest);
-                model.Add(prior.SpecialRest + specialRest == requiredSpecialRest);
-                continue;
-            }
+                var intervalDates = dates.Where(date => date >= interval.Start && date <= interval.End && IsEmployedOn(employee, date)).ToArray();
+                var prior = RestUsageBeforeModeledDates(input, employee, interval);
+                var rest = LinearExpr.Sum(intervalDates.Select(date => variables.Rest[(employee.EmployeeId, date)]));
+                var specialRest = LinearExpr.Sum(intervalDates.Select(date => variables.SpecialRest[(employee.EmployeeId, date)]));
+                const int requiredRest = 16;
+                var requiredSpecialRest = interval.NationalHolidays.Count;
 
-            var futureDays = interval.End.DayNumber - lastModeledDate.DayNumber;
-            model.Add(prior.Rest + rest <= requiredRest);
-            model.Add(prior.SpecialRest + specialRest <= requiredSpecialRest);
-            model.Add(prior.Rest + rest + futureDays >= requiredRest);
-            model.Add(prior.SpecialRest + specialRest + futureDays >= requiredSpecialRest);
-            model.Add(prior.Rest + prior.SpecialRest + rest + specialRest + futureDays >= requiredRest + requiredSpecialRest);
-        }
+                if (interval.End <= lastModeledDate)
+                {
+                    model.Add(prior.Rest + rest == requiredRest);
+                    model.Add(prior.SpecialRest + specialRest == requiredSpecialRest);
+                    continue;
+                }
+
+                var futureDays = interval.End.DayNumber - lastModeledDate.DayNumber;
+                model.Add(prior.Rest + rest <= requiredRest);
+                model.Add(prior.SpecialRest + specialRest <= requiredSpecialRest);
+                model.Add(prior.Rest + rest + futureDays >= requiredRest);
+                model.Add(prior.SpecialRest + specialRest + futureDays >= requiredSpecialRest);
+                model.Add(prior.Rest + prior.SpecialRest + rest + specialRest + futureDays >= requiredRest + requiredSpecialRest);
+            }
     }
 
     // Target-month preference uses T月班別; seven extension dates use the next monthly rotation.

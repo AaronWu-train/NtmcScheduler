@@ -273,12 +273,18 @@ public sealed class WebInfrastructureTests
         var adoptedVersion = Version(revision, input.PreviousMonth.MonthStart, "上月採用班表");
         adoptedVersion.Employees.Add(new()
         {
-            EmployeeCode = previousEmployee.EmployeeId, Name = previousEmployee.Name, Affiliation = previousEmployee.Affiliation,
-            ClosingRest = 12, ClosingSpecialRest = 2, PerpetualScheduleId = "P-ADOPTED"
+            EmployeeCode = previousEmployee.EmployeeId,
+            Name = previousEmployee.Name,
+            Affiliation = previousEmployee.Affiliation,
+            ClosingRest = 12,
+            ClosingSpecialRest = 2,
+            PerpetualScheduleId = "P-ADOPTED"
         });
         database.Context.AdoptedSchedules.Add(new()
         {
-            Workspace = WorkspaceCode.M, Month = input.PreviousMonth.MonthStart, ScheduleVersion = adoptedVersion,
+            Workspace = WorkspaceCode.M,
+            Month = input.PreviousMonth.MonthStart,
+            ScheduleVersion = adoptedVersion,
             AdoptedByUserId = actor.UserId
         });
         await database.Context.SaveChangesAsync();
@@ -561,18 +567,25 @@ public sealed class WebInfrastructureTests
         var revision = new ConfigurationRevision { Version = 1, CreatedByUserId = Guid.NewGuid() };
         revision.RestIntervals.Add(new RestIntervalEntity
         {
-            Start = new DateOnly(2026, 7, 6), End = new DateOnly(2026, 8, 30),
+            Start = new DateOnly(2026, 7, 6),
+            End = new DateOnly(2026, 8, 30),
             NationalHolidays = [new NationalHoliday { Date = new DateOnly(2026, 8, 8) }]
         });
         var version = Version(revision, new DateOnly(2026, 8, 1), "M 班表");
         version.Employees.Add(new ScheduleEmployeeSnapshot
         {
-            EmployeeCode = "M001", Name = "王小明", Affiliation = "LB01", OpeningRest = 7,
+            EmployeeCode = "M001",
+            Name = "王小明",
+            Affiliation = "LB01",
+            OpeningRest = 7,
             Assignments = [new ScheduleAssignment { Date = version.Month, Kind = "Rest" }]
         });
         version.ExternalAssignments.Add(new ExternalAssignment
         {
-            Date = version.Month, Station = "LB09", Shift = "Early", Count = 1
+            Date = version.Month,
+            Station = "LB09",
+            Shift = "Early",
+            Count = 1
         });
         database.Context.AddRange(revision, version);
         await database.Context.SaveChangesAsync();
@@ -629,8 +642,12 @@ public sealed class WebInfrastructureTests
         var input = new ScheduleInput(previous, current, [], new NonStandardShiftTable([]));
         var run = new ScheduleRun
         {
-            Workspace = WorkspaceCode.M, Month = september, DemandDraftId = Guid.NewGuid(),
-            ConfigurationRevisionId = revision.Id, RequestedByUserId = actor.UserId, RequestedByName = actor.UserName,
+            Workspace = WorkspaceCode.M,
+            Month = september,
+            DemandDraftId = Guid.NewGuid(),
+            ConfigurationRevisionId = revision.Id,
+            RequestedByUserId = actor.UserId,
+            RequestedByName = actor.UserName,
             InputSnapshotJson = System.Text.Json.JsonSerializer.Serialize(input,
                 new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))
         };
@@ -638,10 +655,14 @@ public sealed class WebInfrastructureTests
         version.SourceRun = run;
         version.Employees.Add(new()
         {
-            EmployeeCode = "M001", Name = "王小明", Affiliation = "LB01",
+            EmployeeCode = "M001",
+            Name = "王小明",
+            Affiliation = "LB01",
             Assignments = currentAssignments.Select(pair => new ScheduleAssignment
             {
-                Date = pair.Key, Kind = pair.Value.Kind!.Value.ToString(), Station = pair.Value.Station,
+                Date = pair.Key,
+                Kind = pair.Value.Kind!.Value.ToString(),
+                Station = pair.Value.Station,
                 Shift = pair.Value.Shift?.ToString()
             }).ToList()
         });

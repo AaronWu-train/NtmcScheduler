@@ -549,41 +549,41 @@ public sealed class MSolverTests
         string[] homes = ["LB01", "LB04", "LB07", "LB10"];
 
         for (var group = 0; group < homes.Length; group++)
-        for (var index = 0; index < 10; index++)
-        {
-            var id = $"M{group + 1}-{index + 1:D2}";
-            var targetAssignments = new Dictionary<DateOnly, ScheduleCell>();
-            foreach (var day in Enumerable.Range(0, 30))
+            for (var index = 0; index < 10; index++)
             {
-                var date = month.AddDays(day);
-                if (!IsRestDay(day, index)) continue;
-                var requestedLeaveRest = group == 0 && index == 0 && day == 0;
-                targetAssignments[date] = new()
+                var id = $"M{group + 1}-{index + 1:D2}";
+                var targetAssignments = new Dictionary<DateOnly, ScheduleCell>();
+                foreach (var day in Enumerable.Range(0, 30))
                 {
-                    Kind = requestedLeaveRest ? null : AssignmentKind.Rest,
-                    RequestedRest = requestedLeaveRest
-                };
-            }
-            if (group == 0 && index == 0) targetAssignments[month.AddDays(1)] = Event(month.AddDays(1));
-            if (group == 0 && index == 1) targetAssignments[month] = new() { Kind = AssignmentKind.Work, Station = "LB01", Shift = Shift.Early };
-            if (group == 0 && index == 2) targetAssignments[month] = new() { Kind = AssignmentKind.Work, Station = "LB01", Shift = Shift.Afternoon };
+                    var date = month.AddDays(day);
+                    if (!IsRestDay(day, index)) continue;
+                    var requestedLeaveRest = group == 0 && index == 0 && day == 0;
+                    targetAssignments[date] = new()
+                    {
+                        Kind = requestedLeaveRest ? null : AssignmentKind.Rest,
+                        RequestedRest = requestedLeaveRest
+                    };
+                }
+                if (group == 0 && index == 0) targetAssignments[month.AddDays(1)] = Event(month.AddDays(1));
+                if (group == 0 && index == 1) targetAssignments[month] = new() { Kind = AssignmentKind.Work, Station = "LB01", Shift = Shift.Early };
+                if (group == 0 && index == 2) targetAssignments[month] = new() { Kind = AssignmentKind.Work, Station = "LB01", Shift = Shift.Afternoon };
 
-            var firstIntervalRests = targetAssignments.Count(pair => pair.Key <= firstInterval.End && pair.Value.Kind == AssignmentKind.Rest);
-            var closing = new RestUsage(16 - firstIntervalRests, 1);
-            var historyAssignments = Enumerable.Range(0, 31).ToDictionary(
-                day => new DateOnly(2026, 8, 1).AddDays(day),
-                day => IsRestDay(day, index)
-                    ? new ScheduleCell { Kind = AssignmentKind.Rest }
-                    : new ScheduleCell { Kind = AssignmentKind.Work, Station = homes[group], Shift = Shift.Early });
-            if (group == 0 && index is 1 or 2)
-            {
-                historyAssignments[new(2026, 8, 30)] = new() { Kind = AssignmentKind.Work, Station = "LB01", Shift = Shift.Night };
-                historyAssignments[new(2026, 8, 31)] = new() { Kind = AssignmentKind.Rest };
-            }
+                var firstIntervalRests = targetAssignments.Count(pair => pair.Key <= firstInterval.End && pair.Value.Kind == AssignmentKind.Rest);
+                var closing = new RestUsage(16 - firstIntervalRests, 1);
+                var historyAssignments = Enumerable.Range(0, 31).ToDictionary(
+                    day => new DateOnly(2026, 8, 1).AddDays(day),
+                    day => IsRestDay(day, index)
+                        ? new ScheduleCell { Kind = AssignmentKind.Rest }
+                        : new ScheduleCell { Kind = AssignmentKind.Work, Station = homes[group], Shift = Shift.Early });
+                if (group == 0 && index is 1 or 2)
+                {
+                    historyAssignments[new(2026, 8, 30)] = new() { Kind = AssignmentKind.Work, Station = "LB01", Shift = Shift.Night };
+                    historyAssignments[new(2026, 8, 31)] = new() { Kind = AssignmentKind.Rest };
+                }
 
-            previous.Add(Row(id, $"M Employee {id}", homes[group], null, historyAssignments, null, closing, historyAssignments.Count(pair => pair.Value.Kind == AssignmentKind.Work)));
-            demand.Add(Row(id, $"M Employee {id}", homes[group], null, targetAssignments, closing, null, null, group == 0 && index == 0 ? 1 : null));
-        }
+                previous.Add(Row(id, $"M Employee {id}", homes[group], null, historyAssignments, null, closing, historyAssignments.Count(pair => pair.Value.Kind == AssignmentKind.Work)));
+                demand.Add(Row(id, $"M Employee {id}", homes[group], null, targetAssignments, closing, null, null, group == 0 && index == 0 ? 1 : null));
+            }
 
         return new(
             new MonthlySchedule(month.AddMonths(-1), previous),

@@ -63,9 +63,9 @@ public static partial class MSolver
     // 指定休假滿足——計算結果不是實際休假的 R* 格數。
     private static LinearExpr CountUnfulfilledRequestedRests(ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables) =>
         LinearExpr.Sum(from employee in input.DemandMonth.Employees
-            from date in targetDates
-            where employee.Assignments.GetValueOrDefault(date)?.RequestedRest == true
-            select 1 - variables.AnyRest[(employee.EmployeeId, date)]);
+                       from date in targetDates
+                       where employee.Assignments.GetValueOrDefault(date)?.RequestedRest == true
+                       select 1 - variables.AnyRest[(employee.EmployeeId, date)]);
 
     // 未使用 R休 額度——計算每人上限與目標月實際使用數的差額。
     private static LinearExpr MeasureUnusedLeaveRests(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
@@ -128,18 +128,18 @@ public static partial class MSolver
         var penalties = new List<IntVar>();
         var monthEnd = targetDates[^1];
         foreach (var employee in input.DemandMonth.Employees)
-        foreach (var interval in input.RestIntervals.Where(interval => targetDates.Any(date => date >= interval.Start && date <= interval.End)))
-        {
-            var dates = targetDates.Where(date => date >= interval.Start && date <= interval.End && IsEmployedOn(employee, date)).ToArray();
-            var prior = RestUsageBeforeModeledDates(input, employee, interval).SpecialRest;
-            var expected = interval.NationalHolidays.Count(date => date <= (interval.End < monthEnd ? interval.End : monthEnd));
-            var values = Enumerable.Range(0, dates.Length + 1).Select(count => SpecialRestBalancePenaltyValue(prior + count, expected)).ToArray();
-            var count = model.NewIntVar(0, dates.Length, $"special_rest_balance_count_{employee.EmployeeId}_{interval.Start:yyyyMMdd}");
-            var penalty = model.NewIntVar(0, values.Max(), $"special_rest_balance_penalty_{employee.EmployeeId}_{interval.Start:yyyyMMdd}");
-            model.Add(count == LinearExpr.Sum(dates.Select(date => rests[(employee.EmployeeId, date)])));
-            model.AddElement(count, values, penalty);
-            penalties.Add(penalty);
-        }
+            foreach (var interval in input.RestIntervals.Where(interval => targetDates.Any(date => date >= interval.Start && date <= interval.End)))
+            {
+                var dates = targetDates.Where(date => date >= interval.Start && date <= interval.End && IsEmployedOn(employee, date)).ToArray();
+                var prior = RestUsageBeforeModeledDates(input, employee, interval).SpecialRest;
+                var expected = interval.NationalHolidays.Count(date => date <= (interval.End < monthEnd ? interval.End : monthEnd));
+                var values = Enumerable.Range(0, dates.Length + 1).Select(count => SpecialRestBalancePenaltyValue(prior + count, expected)).ToArray();
+                var count = model.NewIntVar(0, dates.Length, $"special_rest_balance_count_{employee.EmployeeId}_{interval.Start:yyyyMMdd}");
+                var penalty = model.NewIntVar(0, values.Max(), $"special_rest_balance_penalty_{employee.EmployeeId}_{interval.Start:yyyyMMdd}");
+                model.Add(count == LinearExpr.Sum(dates.Select(date => rests[(employee.EmployeeId, date)])));
+                model.AddElement(count, values, penalty);
+                penalties.Add(penalty);
+            }
         return LinearExpr.Sum(penalties);
     }
 
@@ -153,8 +153,8 @@ public static partial class MSolver
     // Disabled at BuildObjectiveGroups while its weight is zero.
     private static LinearExpr CountCrossStationAssignments(ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables) =>
         LinearExpr.Sum(from employee in input.DemandMonth.Employees
-            from date in targetDates
-            select variables.SupportsOtherStation[(employee.EmployeeId, date)]);
+                       from date in targetDates
+                       select variables.SupportsOtherStation[(employee.EmployeeId, date)]);
 
     // 連續工作區段——計算已結束的實際工作區段；R、R1、R休會結束區段。
     private static LinearExpr MeasureWorkStreakPenalties(
@@ -379,15 +379,15 @@ public static partial class MSolver
                 if (date <= targetEnd)
                 {
                     foreach (var current in Shifts)
-                    foreach (var prior in Shifts.Where(prior => prior != current && !preferred.Contains((prior, current))))
-                    {
-                        var currentWork = variables.WorksShift[(employee.EmployeeId, date, current)];
-                        var violation = model.NewBoolVar($"nonpreferred_rotation_{employee.EmployeeId}_{date:yyyyMMdd}_{prior}_{current}");
-                        model.Add(violation <= currentWork);
-                        model.Add(violation <= previousByShift[prior]);
-                        model.Add(violation >= currentWork + previousByShift[prior] - 1);
-                        violations.Add(violation);
-                    }
+                        foreach (var prior in Shifts.Where(prior => prior != current && !preferred.Contains((prior, current))))
+                        {
+                            var currentWork = variables.WorksShift[(employee.EmployeeId, date, current)];
+                            var violation = model.NewBoolVar($"nonpreferred_rotation_{employee.EmployeeId}_{date:yyyyMMdd}_{prior}_{current}");
+                            model.Add(violation <= currentWork);
+                            model.Add(violation <= previousByShift[prior]);
+                            model.Add(violation >= currentWork + previousByShift[prior] - 1);
+                            violations.Add(violation);
+                        }
                 }
 
                 var state = model.NewIntVar(0, 3, $"rotation_last_{employee.EmployeeId}_{date:yyyyMMdd}");

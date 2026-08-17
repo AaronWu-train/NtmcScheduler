@@ -266,16 +266,16 @@ public sealed class ScheduleService(
         string[] shifts = ["Early", "Afternoon", "Night"];
         var result = new List<ScheduleCoverageDto>();
         for (var date = version.Month; date <= monthEnd; date = date.AddDays(1))
-        foreach (var station in stations)
-        foreach (var shift in shifts)
-        {
-            var required = shift is "Early" or "Afternoon" ? 1 : station is "LB01" or "LB06" or "LB08" or "LB12" ? 1 : 0;
-            var allowsMultiple = (station is "LB01" or "LB06" or "LB07" or "LB12") &&
-                shift is "Early" or "Afternoon";
-            var internalCount = version.Employees.SelectMany(x => x.Assignments).Count(x => x.Date == date && x.Kind == "Work" && x.Station == station && x.Shift == shift);
-            var externalCount = version.ExternalAssignments.Where(x => x.Date == date && x.Station == station && x.Shift == shift).Sum(x => x.Count);
-            result.Add(new(date, station, shift, required, allowsMultiple, internalCount, externalCount));
-        }
+            foreach (var station in stations)
+                foreach (var shift in shifts)
+                {
+                    var required = shift is "Early" or "Afternoon" ? 1 : station is "LB01" or "LB06" or "LB08" or "LB12" ? 1 : 0;
+                    var allowsMultiple = (station is "LB01" or "LB06" or "LB07" or "LB12") &&
+                        shift is "Early" or "Afternoon";
+                    var internalCount = version.Employees.SelectMany(x => x.Assignments).Count(x => x.Date == date && x.Kind == "Work" && x.Station == station && x.Shift == shift);
+                    var externalCount = version.ExternalAssignments.Where(x => x.Date == date && x.Station == station && x.Shift == shift).Sum(x => x.Count);
+                    result.Add(new(date, station, shift, required, allowsMultiple, internalCount, externalCount));
+                }
         return result;
     }
 

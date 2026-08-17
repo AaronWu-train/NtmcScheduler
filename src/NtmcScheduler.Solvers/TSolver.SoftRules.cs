@@ -49,9 +49,9 @@ public static partial class TSolver
     // 指定休假滿足——計算結果不是實際休假的 R* 格數。
     private static LinearExpr CountUnfulfilledRequestedRests(ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables) =>
         LinearExpr.Sum(from employee in input.DemandMonth.Employees
-            from date in targetDates
-            where employee.Assignments.GetValueOrDefault(date)?.RequestedRest == true
-            select 1 - variables.AnyRest[(employee.EmployeeId, date)]);
+                       from date in targetDates
+                       where employee.Assignments.GetValueOrDefault(date)?.RequestedRest == true
+                       select 1 - variables.AnyRest[(employee.EmployeeId, date)]);
 
     // 未使用 R休 額度——計算每人上限與目標月實際使用數的差額。
     private static LinearExpr MeasureUnusedLeaveRests(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
@@ -70,26 +70,26 @@ public static partial class TSolver
     // 月班別一致性——計算不符合目標月班別或延伸日輪轉班別的正常工作格。
     private static LinearExpr CountNonMonthlyShiftAssignments(ScheduleInput input, IReadOnlyList<DateOnly> modelDates, ModelVariables variables) =>
         LinearExpr.Sum(from employee in input.DemandMonth.Employees
-            from date in modelDates
-            from shift in Shifts
-            where shift != MonthlyShiftOnDate(employee, date, input.DemandMonth.MonthStart)
-            select variables.Work[(employee.EmployeeId, date, shift)]);
+                       from date in modelDates
+                       from shift in Shifts
+                       where shift != MonthlyShiftOnDate(employee, date, input.DemandMonth.MonthStart)
+                       select variables.Work[(employee.EmployeeId, date, shift)]);
 
     // 班組出勤人數——比較月班組目標與該班實際出勤的所有人員。
     private static LinearExpr MeasureAttendanceShortfall(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
     {
         var deficits = new List<IntVar>();
         foreach (var date in targetDates)
-        foreach (var shift in Shifts)
-        {
-            var members = input.DemandMonth.Employees.Where(employee => IsEmployedOn(employee, date) && employee.MonthlyShift == shift).ToArray();
-            var attendance = LinearExpr.Sum(input.DemandMonth.Employees
-                .Where(employee => IsEmployedOn(employee, date))
-                .Select(employee => variables.Work[(employee.EmployeeId, date, shift)]));
-            var deficit = model.NewIntVar(0, members.Length / 2, $"attendance_deficit_{date:yyyyMMdd}_{shift}");
-            model.AddMaxEquality(deficit, [members.Length / 2 - attendance, LinearExpr.Constant(0)]);
-            deficits.Add(deficit);
-        }
+            foreach (var shift in Shifts)
+            {
+                var members = input.DemandMonth.Employees.Where(employee => IsEmployedOn(employee, date) && employee.MonthlyShift == shift).ToArray();
+                var attendance = LinearExpr.Sum(input.DemandMonth.Employees
+                    .Where(employee => IsEmployedOn(employee, date))
+                    .Select(employee => variables.Work[(employee.EmployeeId, date, shift)]));
+                var deficit = model.NewIntVar(0, members.Length / 2, $"attendance_deficit_{date:yyyyMMdd}_{shift}");
+                model.AddMaxEquality(deficit, [members.Length / 2 - attendance, LinearExpr.Constant(0)]);
+                deficits.Add(deficit);
+            }
         return LinearExpr.Sum(deficits);
     }
 
@@ -98,19 +98,19 @@ public static partial class TSolver
     {
         var missing = new List<BoolVar>();
         foreach (var date in targetDates)
-        foreach (var shift in Shifts)
-        {
-            var members = input.DemandMonth.Employees.Where(employee => IsEmployedOn(employee, date) && employee.MonthlyShift == shift).ToArray();
-            foreach (var specialty in members.Select(employee => employee.Affiliation).Distinct())
+            foreach (var shift in Shifts)
             {
-                var specialists = input.DemandMonth.Employees.Where(employee => IsEmployedOn(employee, date) && employee.Affiliation == specialty).ToArray();
-                var attendance = LinearExpr.Sum(specialists.Select(employee => variables.Work[(employee.EmployeeId, date, shift)]));
-                var absent = model.NewBoolVar($"specialty_absent_{date:yyyyMMdd}_{shift}_{specialty}");
-                model.Add(attendance >= 1 - absent);
-                model.Add(attendance <= specialists.Length * (1 - absent));
-                missing.Add(absent);
+                var members = input.DemandMonth.Employees.Where(employee => IsEmployedOn(employee, date) && employee.MonthlyShift == shift).ToArray();
+                foreach (var specialty in members.Select(employee => employee.Affiliation).Distinct())
+                {
+                    var specialists = input.DemandMonth.Employees.Where(employee => IsEmployedOn(employee, date) && employee.Affiliation == specialty).ToArray();
+                    var attendance = LinearExpr.Sum(specialists.Select(employee => variables.Work[(employee.EmployeeId, date, shift)]));
+                    var absent = model.NewBoolVar($"specialty_absent_{date:yyyyMMdd}_{shift}_{specialty}");
+                    model.Add(attendance >= 1 - absent);
+                    model.Add(attendance <= specialists.Length * (1 - absent));
+                    missing.Add(absent);
+                }
             }
-        }
         return LinearExpr.Sum(missing);
     }
 
@@ -119,20 +119,20 @@ public static partial class TSolver
     {
         var deficits = new List<IntVar>();
         foreach (var date in targetDates)
-        foreach (var shift in Shifts)
-        {
-            var highAbilityAttendance = LinearExpr.Sum(input.DemandMonth.Employees
-                .Where(employee => IsEmployedOn(employee, date) && employee.Ability >= 4)
-                .Select(employee => variables.Work[(employee.EmployeeId, date, shift)]));
-            var deficit = model.NewIntVar(0, 2, $"ability_deficit_{date:yyyyMMdd}_{shift}");
-            model.AddMaxEquality(deficit, [2 - highAbilityAttendance, LinearExpr.Constant(0)]);
-            var noHighAbility = model.NewBoolVar($"no_high_ability_{date:yyyyMMdd}_{shift}");
-            model.Add(highAbilityAttendance == 0).OnlyEnforceIf(noHighAbility);
-            model.Add(highAbilityAttendance >= 1).OnlyEnforceIf(noHighAbility.Not());
-            var penalty = model.NewIntVar(0, 10, $"ability_penalty_{date:yyyyMMdd}_{shift}");
-            model.Add(penalty == deficit + 8 * noHighAbility);
-            deficits.Add(penalty);
-        }
+            foreach (var shift in Shifts)
+            {
+                var highAbilityAttendance = LinearExpr.Sum(input.DemandMonth.Employees
+                    .Where(employee => IsEmployedOn(employee, date) && employee.Ability >= 4)
+                    .Select(employee => variables.Work[(employee.EmployeeId, date, shift)]));
+                var deficit = model.NewIntVar(0, 2, $"ability_deficit_{date:yyyyMMdd}_{shift}");
+                model.AddMaxEquality(deficit, [2 - highAbilityAttendance, LinearExpr.Constant(0)]);
+                var noHighAbility = model.NewBoolVar($"no_high_ability_{date:yyyyMMdd}_{shift}");
+                model.Add(highAbilityAttendance == 0).OnlyEnforceIf(noHighAbility);
+                model.Add(highAbilityAttendance >= 1).OnlyEnforceIf(noHighAbility.Not());
+                var penalty = model.NewIntVar(0, 10, $"ability_penalty_{date:yyyyMMdd}_{shift}");
+                model.Add(penalty == deficit + 8 * noHighAbility);
+                deficits.Add(penalty);
+            }
         return LinearExpr.Sum(deficits);
     }
 
@@ -170,18 +170,18 @@ public static partial class TSolver
         var penalties = new List<IntVar>();
         var monthEnd = targetDates[^1];
         foreach (var employee in input.DemandMonth.Employees)
-        foreach (var interval in input.RestIntervals.Where(interval => targetDates.Any(date => date >= interval.Start && date <= interval.End)))
-        {
-            var dates = targetDates.Where(date => date >= interval.Start && date <= interval.End && IsEmployedOn(employee, date)).ToArray();
-            var prior = RestUsageBeforeModeledDates(input, employee, interval).SpecialRest;
-            var expected = interval.NationalHolidays.Count(date => date <= (interval.End < monthEnd ? interval.End : monthEnd));
-            var values = Enumerable.Range(0, dates.Length + 1).Select(count => SpecialRestBalancePenaltyValue(prior + count, expected)).ToArray();
-            var count = model.NewIntVar(0, dates.Length, $"special_rest_balance_count_{employee.EmployeeId}_{interval.Start:yyyyMMdd}");
-            var penalty = model.NewIntVar(0, values.Max(), $"special_rest_balance_penalty_{employee.EmployeeId}_{interval.Start:yyyyMMdd}");
-            model.Add(count == LinearExpr.Sum(dates.Select(date => rests[(employee.EmployeeId, date)])));
-            model.AddElement(count, values, penalty);
-            penalties.Add(penalty);
-        }
+            foreach (var interval in input.RestIntervals.Where(interval => targetDates.Any(date => date >= interval.Start && date <= interval.End)))
+            {
+                var dates = targetDates.Where(date => date >= interval.Start && date <= interval.End && IsEmployedOn(employee, date)).ToArray();
+                var prior = RestUsageBeforeModeledDates(input, employee, interval).SpecialRest;
+                var expected = interval.NationalHolidays.Count(date => date <= (interval.End < monthEnd ? interval.End : monthEnd));
+                var values = Enumerable.Range(0, dates.Length + 1).Select(count => SpecialRestBalancePenaltyValue(prior + count, expected)).ToArray();
+                var count = model.NewIntVar(0, dates.Length, $"special_rest_balance_count_{employee.EmployeeId}_{interval.Start:yyyyMMdd}");
+                var penalty = model.NewIntVar(0, values.Max(), $"special_rest_balance_penalty_{employee.EmployeeId}_{interval.Start:yyyyMMdd}");
+                model.Add(count == LinearExpr.Sum(dates.Select(date => rests[(employee.EmployeeId, date)])));
+                model.AddElement(count, values, penalty);
+                penalties.Add(penalty);
+            }
         return LinearExpr.Sum(penalties);
     }
 

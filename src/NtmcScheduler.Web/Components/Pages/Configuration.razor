@@ -5,46 +5,132 @@
 @inject CurrentActorService CurrentActor
 
 <PageTitle>共同設定</PageTitle>
-<div class="page-title"><div><h1>共同設定</h1><p>維護八週區間、國定假日與非常態班型。</p></div><PageHelp Title="共同設定說明"><p>儲存後只影響之後新建的需求與求解。區間必須連續且各為 56 日；國定假日只填週一至週五。非常態班型名稱可空白，代碼與時間必填。</p></PageHelp></div>
-@if (message is not null) { <p class="alert @messageClass" role="status">@message</p> }
+<div class="page-title">
+    <div>
+        <h1>共同設定</h1>
+        <p>維護八週區間、國定假日與非常態班型。</p>
+    </div>
+    <PageHelp Title="共同設定說明">
+        <p>儲存後只影響之後新建的需求與求解。區間必須連續且各為 56 日；國定假日只填週一至週五。非常態班型名稱可空白，代碼與時間必填。</p>
+    </PageHelp>
+</div>
+@if (message is not null)
+{
+    <p class="alert @messageClass" role="status">@message</p>
+}
 
 <section class="card">
     <div class="section-heading">
-        <h2>八週 16R 區間</h2>@if (canEdit) {
-        <div class="configuration-actions"><a class="button-link"
-                                                  href="/download/templates/m/rest-intervals.csv">下載範本</a><label class="button-link file-upload-button">上傳
-            CSV
-            <InputFile OnChange="UploadIntervalsAsync" accept=".csv,text/csv" disabled="@isBusy" />
-        </label><button type="button" disabled="@isBusy" @onclick="AddInterval">新增區間</button><button type="button" class="primary" disabled="@isBusy"
-                                                                                  @onclick="SaveIntervalsAsync">@(isBusy ? "處理中…" : "儲存八週區間")</button></div>
-    }
-</div>
+        <h2>八週 16R 區間</h2>
+        @if (canEdit)
+        {
+            <div class="configuration-actions">
+                <a class="button-link"
+                   href="/download/templates/m/rest-intervals.csv">
+                    下載範本
+                </a>
+                <label class="button-link file-upload-button">
+                    上傳
+                    CSV
+                    <InputFile OnChange="UploadIntervalsAsync" accept=".csv,text/csv" disabled="@isBusy"/>
+                </label><button type="button" disabled="@isBusy" @onclick="AddInterval">新增區間</button>
+                <button type="button" class="primary" disabled="@isBusy"
+                        @onclick="SaveIntervalsAsync">
+                    @(isBusy ? "處理中…" : "儲存八週區間")
+                </button>
+            </div>
+        }
+    </div>
     <p class="format-help">UTF-8（可含 BOM）、固定表頭，最大 5 MB；上傳會取代下方尚未儲存的八週區間。</p>
-    <div class="table-scroll"><table><thead><tr><th>開始</th><th>結束</th><th>國定假日（分號分隔）</th><th></th></tr></thead><tbody>
-    @foreach (var row in intervals)
-    {
-        <tr><td><input type="date" @bind="row.Start" /></td><td><input type="date" @bind="row.End" /></td><td><input class="wide-input" @bind="row.Holidays" /></td><td>@if (canEdit) { <button type="button" class="danger" @onclick="() => intervals.Remove(row)">移除</button> }</td></tr>
-    }
-    </tbody></table></div>
+    <div class="table-scroll">
+        <table>
+            <thead>
+            <tr>
+                <th>開始</th><th>結束</th><th>國定假日（分號分隔）</th><th></th>
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (var row in intervals)
+            {
+                <tr>
+                    <td>
+                        <input type="date" @bind="row.Start"/>
+                    </td>
+                    <td>
+                        <input type="date" @bind="row.End"/>
+                    </td>
+                    <td>
+                        <input class="wide-input" @bind="row.Holidays"/>
+                    </td>
+                    <td>
+                        @if (canEdit)
+                        {
+                            <button type="button" class="danger" @onclick="() => intervals.Remove(row)">移除</button>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
 </section>
 <section class="card">
     <div class="section-heading">
-        <h2>非常態班型</h2>@if (canEdit) {
-        <div class="configuration-actions"><a class="button-link"
-                                                  href="/download/templates/m/non-standard-shifts.csv">下載範本</a><label
-            class="button-link file-upload-button">上傳 CSV
-            <InputFile OnChange="UploadShiftsAsync" accept=".csv,text/csv" disabled="@isBusy" />
-        </label><button type="button" disabled="@isBusy" @onclick="AddShift">新增班型</button><button type="button" class="primary" disabled="@isBusy"
-                                                                               @onclick="SaveShiftsAsync">@(isBusy ? "處理中…" : "儲存非常態班型")</button></div>
-    }
-</div>
+        <h2>非常態班型</h2>
+        @if (canEdit)
+        {
+            <div class="configuration-actions">
+                <a class="button-link"
+                   href="/download/templates/m/non-standard-shifts.csv">
+                    下載範本
+                </a>
+                <label
+                    class="button-link file-upload-button">
+                    上傳 CSV
+                    <InputFile OnChange="UploadShiftsAsync" accept=".csv,text/csv" disabled="@isBusy"/>
+                </label><button type="button" disabled="@isBusy" @onclick="AddShift">新增班型</button>
+                <button type="button" class="primary" disabled="@isBusy"
+                        @onclick="SaveShiftsAsync">
+                    @(isBusy ? "處理中…" : "儲存非常態班型")
+                </button>
+            </div>
+        }
+    </div>
     <p class="format-help">UTF-8（可含 BOM）、表頭「班型,時間,代碼」，時間使用 HH:mm~HH:mm，最大 5 MB；上傳會取代下方尚未儲存的班型。</p>
-    <div class="table-scroll"><table><thead><tr><th>名稱</th><th>代碼</th><th>開始</th><th>結束</th><th></th></tr></thead><tbody>
-    @foreach (var row in shifts)
-    {
-        <tr><td><input @bind="row.Name" /></td><td><input @bind="row.Code" /></td><td><input type="time" @bind="row.Start" /></td><td><input type="time" @bind="row.End" /></td><td>@if (canEdit) { <button type="button" class="danger" @onclick="() => shifts.Remove(row)">移除</button> }</td></tr>
-    }
-    </tbody></table></div>
+    <div class="table-scroll">
+        <table>
+            <thead>
+            <tr>
+                <th>名稱</th><th>代碼</th><th>開始</th><th>結束</th><th></th>
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (var row in shifts)
+            {
+                <tr>
+                    <td>
+                        <input @bind="row.Name"/>
+                    </td>
+                    <td>
+                        <input @bind="row.Code"/>
+                    </td>
+                    <td>
+                        <input type="time" @bind="row.Start"/>
+                    </td>
+                    <td>
+                        <input type="time" @bind="row.End"/>
+                    </td>
+                    <td>
+                        @if (canEdit)
+                        {
+                            <button type="button" class="danger" @onclick="() => shifts.Remove(row)">移除</button>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
 </section>
 
 @code {
@@ -61,7 +147,12 @@
         var actor = await CurrentActor.GetAsync();
         canEdit = actor.IsAdministrator || actor.EditableWorkspaces.Count > 0;
         current = await Service.GetCurrentAsync(actor);
-        if (current is null) { AddInterval(); return; }
+        if (current is null)
+        {
+            AddInterval();
+            return;
+        }
+
         intervals.AddRange(current.RestIntervals.Select(x => new IntervalRow { Start = x.Start, End = x.End, Holidays = string.Join(';', x.NationalHolidays.Select(d => d.ToString("yyyy-MM-dd"))) }));
         shifts.AddRange(current.NonStandardShifts.Select(x => new ShiftRow { Name = x.Name ?? "", Code = x.Code, Start = x.StartTime, End = x.EndTime }));
     }
@@ -71,6 +162,7 @@
         var start = intervals.Count == 0 ? DateOnly.FromDateTime(DateTime.Today) : intervals[^1].End.AddDays(1);
         intervals.Add(new() { Start = start, End = start.AddDays(55) });
     }
+
     private void AddShift() => shifts.Add(new() { Start = new(8, 0), End = new(16, 0) });
 
     private async Task UploadIntervalsAsync(InputFileChangeEventArgs args) => await RunUploadAsync(async () =>
@@ -91,39 +183,89 @@
 
     private async Task RunUploadAsync(Func<Task> action, string success)
     {
-        isBusy = true; messageClass = "success"; message = "處理中…"; await InvokeAsync(StateHasChanged); try { await action(); message = success; }
-        catch (Exception exception) { messageClass = "error"; message = exception.Message; }
-        finally { isBusy = false; }
+        isBusy = true;
+        messageClass = "success";
+        message = "處理中…";
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await action();
+            message = success;
+        }
+        catch (Exception exception)
+        {
+            messageClass = "error";
+            message = exception.Message;
+        }
+        finally
+        {
+            isBusy = false;
+        }
     }
 
     private async Task SaveIntervalsAsync()
     {
-        isBusy = true; messageClass = "success"; message = "處理中…"; await InvokeAsync(StateHasChanged);
+        isBusy = true;
+        messageClass = "success";
+        message = "處理中…";
+        await InvokeAsync(StateHasChanged);
         try
         {
             var intervalDtos = intervals.Select(row => new RestIntervalDto(row.Start, row.End,
                 string.IsNullOrWhiteSpace(row.Holidays) ? [] : row.Holidays.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Select(value => DateOnly.ParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture)).ToArray())).ToArray();
             current = await Service.CreateRevisionAsync(intervalDtos, current?.NonStandardShifts ?? [], current?.CurrentRevisionToken, await CurrentActor.GetAsync());
-            messageClass = "success"; message = "八週 16R 區間已儲存。";
+            messageClass = "success";
+            message = "八週 16R 區間已儲存。";
         }
-        catch (Exception exception) { messageClass = "error"; message = exception.Message; }
-        finally { isBusy = false; }
+        catch (Exception exception)
+        {
+            messageClass = "error";
+            message = exception.Message;
+        }
+        finally
+        {
+            isBusy = false;
+        }
     }
 
     private async Task SaveShiftsAsync()
     {
-        isBusy = true; messageClass = "success"; message = "處理中…"; await InvokeAsync(StateHasChanged);
+        isBusy = true;
+        messageClass = "success";
+        message = "處理中…";
+        await InvokeAsync(StateHasChanged);
         try
         {
             if (current is null) throw new DomainValidationException("請先儲存八週 16R 區間。");
             var shiftDtos = shifts.Select(row => new NonStandardShiftDto(string.IsNullOrWhiteSpace(row.Name) ? null : row.Name, row.Code, row.Start, row.End)).ToArray();
             current = await Service.CreateRevisionAsync(current.RestIntervals, shiftDtos, current.CurrentRevisionToken, await CurrentActor.GetAsync());
-            messageClass = "success"; message = "非常態班型已儲存。";
+            messageClass = "success";
+            message = "非常態班型已儲存。";
         }
-        catch (Exception exception) { messageClass = "error"; message = exception.Message; }
-        finally { isBusy = false; }
+        catch (Exception exception)
+        {
+            messageClass = "error";
+            message = exception.Message;
+        }
+        finally
+        {
+            isBusy = false;
+        }
     }
 
-    private sealed class IntervalRow { public DateOnly Start { get; set; } public DateOnly End { get; set; } public string Holidays { get; set; } = ""; }
-    private sealed class ShiftRow { public string Name { get; set; } = ""; public string Code { get; set; } = ""; public TimeOnly Start { get; set; } public TimeOnly End { get; set; } }
+    private sealed class IntervalRow
+    {
+        public DateOnly Start { get; set; }
+        public DateOnly End { get; set; }
+        public string Holidays { get; set; } = "";
+    }
+
+    private sealed class ShiftRow
+    {
+        public string Name { get; set; } = "";
+        public string Code { get; set; } = "";
+        public TimeOnly Start { get; set; }
+        public TimeOnly End { get; set; }
+    }
+
 }

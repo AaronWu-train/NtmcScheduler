@@ -6,51 +6,131 @@
 @inject IJSRuntime JS
 
 <PageTitle>@workspaceCode 員工資料</PageTitle>
-<WorkspaceNav Workspace="@Workspace.ToLowerInvariant()" />
-<div class="page-title"><div><h1>@workspaceCode 員工資料</h1><p>維護之後建立月份時會使用的人員名單。</p></div><PageHelp Title="員工資料說明"><p>到職日期只供本月新進員工判斷何時開始排班。修改或刪除不會回寫既有需求或班表；回任時可使用相同 ID 重新建立。</p></PageHelp></div>
-@if (message is not null) { <p class="alert @messageClass" role="status">@message</p> }
+<WorkspaceNav Workspace="@Workspace.ToLowerInvariant()"/>
+<div class="page-title">
+    <div>
+        <h1>@workspaceCode 員工資料</h1>
+        <p>維護之後建立月份時會使用的人員名單。</p>
+    </div>
+    <PageHelp Title="員工資料說明">
+        <p>到職日期只供本月新進員工判斷何時開始排班。修改或刪除不會回寫既有需求或班表；回任時可使用相同 ID 重新建立。</p>
+    </PageHelp>
+</div>
+@if (message is not null)
+{
+    <p class="alert @messageClass" role="status">@message</p>
+}
 @if (canEdit)
 {
     @if (importPreview is null)
     {
         <section class="card">
             <h2>@workspaceCode 員工 CSV 匯入</h2>
-            <p class="format-help"><strong>固定表頭：</strong>@EmployeeCsvColumns</p>
+            <p class="format-help">
+                <strong>固定表頭：</strong>@EmployeeCsvColumns
+            </p>
             <p class="format-help">UTF-8（可含 BOM），最大 5 MB。到職日期可留空；有填寫時使用 yyyy-MM-dd。匯入會新增或更新員工，未出現的既有員工不會刪除。</p>
             <div class="toolbar">
                 <a class="button-link" href="/download/templates/@Workspace.ToLowerInvariant()/employees.csv">下載 @workspaceCode 範本</a>
-                <label class="button-link primary file-upload-button">匯入員工 CSV<InputFile OnChange="PreviewImportAsync" accept=".csv,text/csv" aria-label="匯入員工 CSV" disabled="@isBusy" /></label>
+                <label class="button-link primary file-upload-button">匯入員工 CSV<InputFile OnChange="PreviewImportAsync" accept=".csv,text/csv" aria-label="匯入員工 CSV" disabled="@isBusy"/></label>
             </div>
         </section>
     }
     else
     {
-        <section class="card"><h2>員工匯入預覽</h2>@foreach (var error in importPreview.Errors) { <p class="error-text">@error</p> }@foreach (var difference in importPreview.Differences) { <p>@difference</p> }<div class="step-actions"><button disabled="@isBusy" @onclick="CancelImport">取消匯入</button>@if (importPreview.IsValid) { <button class="primary" disabled="@isBusy" @onclick="ConfirmImportAsync">@(isBusy ? "處理中…" : "確認匯入員工")</button> }</div></section>
+        <section class="card">
+            <h2>員工匯入預覽</h2>
+            @foreach (var error in importPreview.Errors)
+            {
+                <p class="error-text">@error</p>
+            }
+            @foreach (var difference in importPreview.Differences)
+            {
+                <p>@difference</p>
+            }
+            <div class="step-actions">
+                <button disabled="@isBusy" @onclick="CancelImport">取消匯入</button>
+                @if (importPreview.IsValid)
+                {
+                    <button class="primary" disabled="@isBusy" @onclick="ConfirmImportAsync">@(isBusy ? "處理中…" : "確認匯入員工")</button>
+                }
+            </div>
+        </section>
     }
+
     <EditForm Model="form" OnValidSubmit="SaveAsync" class="card form-grid">
-        <DataAnnotationsValidator /><ValidationSummary />
-        <label>員工 ID<InputText @bind-Value="form.EmployeeCode" /></label>
-        <label>姓名<InputText @bind-Value="form.Name" /></label>
-        <label>所屬<InputText @bind-Value="form.Affiliation" placeholder="@(workspaceCode == WorkspaceCode.M ? "LB01" : "專業分組")" /></label>
-        <label>到職日期（新進員工）<InputDate @bind-Value="form.EmploymentStartDate" /></label>
-        @if (workspaceCode == WorkspaceCode.T) { <label>能力<InputNumber @bind-Value="form.Ability" min="1" max="5" /></label> }
+        <DataAnnotationsValidator/><ValidationSummary/>
+        <label>員工 ID<InputText @bind-Value="form.EmployeeCode"/></label>
+        <label>姓名<InputText @bind-Value="form.Name"/></label>
+        <label>所屬<InputText @bind-Value="form.Affiliation" placeholder="@(workspaceCode == WorkspaceCode.M ? "LB01" : "專業分組")"/></label>
+        <label>到職日期（新進員工）<InputDate @bind-Value="form.EmploymentStartDate"/></label>
+        @if (workspaceCode == WorkspaceCode.T)
+        {
+            <label>能力<InputNumber @bind-Value="form.Ability" min="1" max="5"/></label>
+        }
         <button type="submit" class="primary" disabled="@isBusy">@(isBusy ? "處理中…" : form.Id is null ? "新增員工" : "儲存員工")</button>
-        @if (form.Id is not null) { <button type="button" @onclick="ClearForm">取消編輯</button> }
+        @if (form.Id is not null)
+        {
+            <button type="button" @onclick="ClearForm">取消編輯</button>
+        }
     </EditForm>
 }
-<div class="table-scroll employee-table"><table><thead><tr>
-    <th class="sortable" aria-sort='@AriaSort("id")'><button class="sort-button" @onclick='() => SortBy("id")'><span>ID</span><span class="sort-indicator" aria-hidden="true"></span></button></th>
-    <th class="sortable" aria-sort='@AriaSort("name")'><button class="sort-button" @onclick='() => SortBy("name")'><span>姓名</span><span class="sort-indicator" aria-hidden="true"></span></button></th>
-    <th class="sortable" aria-sort='@AriaSort("affiliation")'><button class="sort-button" @onclick='() => SortBy("affiliation")'><span>所屬</span><span class="sort-indicator" aria-hidden="true"></span></button></th>
-    <th class="sortable" aria-sort='@AriaSort("start")'><button class="sort-button" @onclick='() => SortBy("start")'><span>到職日期</span><span class="sort-indicator" aria-hidden="true"></span></button></th>
-    @if (workspaceCode == WorkspaceCode.T) { <th class="sortable" aria-sort='@AriaSort("ability")'><button class="sort-button" @onclick='() => SortBy("ability")'><span>能力</span><span class="sort-indicator" aria-hidden="true"></span></button></th> }
-    <th>操作</th>
-</tr></thead><tbody>
-@foreach (var employee in SortedEmployees())
-{
-    <tr><td>@employee.EmployeeCode</td><td>@employee.Name</td><td>@employee.Affiliation</td><td>@employee.EmploymentStartDate?.ToString("yyyy-MM-dd")</td>@if (workspaceCode == WorkspaceCode.T) { <td>@employee.Ability</td> }<td>@if (canEdit) { <button @onclick="() => Edit(employee)">編輯</button> <button class="danger" @onclick="() => DeleteAsync(employee)">刪除</button> }</td></tr>
-}
-</tbody></table></div>
+<div class="table-scroll employee-table">
+    <table>
+        <thead>
+        <tr>
+            <th class="sortable" aria-sort='@AriaSort("id")'>
+                <button class="sort-button" @onclick='() => SortBy("id")'>
+                    <span>ID</span><span class="sort-indicator" aria-hidden="true"></span>
+                </button>
+            </th>
+            <th class="sortable" aria-sort='@AriaSort("name")'>
+                <button class="sort-button" @onclick='() => SortBy("name")'>
+                    <span>姓名</span><span class="sort-indicator" aria-hidden="true"></span>
+                </button>
+            </th>
+            <th class="sortable" aria-sort='@AriaSort("affiliation")'>
+                <button class="sort-button" @onclick='() => SortBy("affiliation")'>
+                    <span>所屬</span><span class="sort-indicator" aria-hidden="true"></span>
+                </button>
+            </th>
+            <th class="sortable" aria-sort='@AriaSort("start")'>
+                <button class="sort-button" @onclick='() => SortBy("start")'>
+                    <span>到職日期</span><span class="sort-indicator" aria-hidden="true"></span>
+                </button>
+            </th>
+            @if (workspaceCode == WorkspaceCode.T)
+            {
+                <th class="sortable" aria-sort='@AriaSort("ability")'>
+                    <button class="sort-button" @onclick='() => SortBy("ability")'>
+                        <span>能力</span><span class="sort-indicator" aria-hidden="true"></span>
+                    </button>
+                </th>
+            }
+            <th>操作</th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var employee in SortedEmployees())
+        {
+            <tr>
+                <td>@employee.EmployeeCode</td><td>@employee.Name</td><td>@employee.Affiliation</td><td>@employee.EmploymentStartDate?.ToString("yyyy-MM-dd")</td>
+                @if (workspaceCode == WorkspaceCode.T)
+                {
+                    <td>@employee.Ability</td>
+                }
+                <td>
+                    @if (canEdit)
+                    {
+                        <button @onclick="() => Edit(employee)">編輯</button>
+                        <button class="danger" @onclick="() => DeleteAsync(employee)">刪除</button>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
 
 @code {
     [Parameter] public string Workspace { get; set; } = "";
@@ -66,6 +146,7 @@
     private bool isBusy;
     private byte[]? pendingImport;
     private EmployeeImportPreviewDto? importPreview;
+
     private string EmployeeCsvColumns => workspaceCode == WorkspaceCode.M
         ? "ID、姓名、所屬車站、到職日期"
         : "ID、姓名、所屬、到職日期、能力";
@@ -77,7 +158,9 @@
         canEdit = actor.CanEdit(workspaceCode) && !actor.MustChangePassword;
         await ReloadAsync();
     }
+
     private async Task ReloadAsync() => employees = await Service.ListAsync(workspaceCode, await CurrentActor.GetAsync());
+
     private IEnumerable<EmployeeDto> SortedEmployees()
     {
         Func<EmployeeDto, string> key = sortColumn switch
@@ -95,24 +178,35 @@
             ? sorted.ThenByDescending(employee => employee.EmployeeCode, SortComparer)
             : sorted.ThenBy(employee => employee.EmployeeCode, SortComparer);
     }
+
     private void SortBy(string column)
     {
         if (sortColumn == column) sortDescending = !sortDescending;
-        else { sortColumn = column; sortDescending = false; }
+        else
+        {
+            sortColumn = column;
+            sortDescending = false;
+        }
     }
+
     private string? AriaSort(string column) => sortColumn == column ? sortDescending ? "descending" : "ascending" : null;
+
     private void Edit(EmployeeDto employee) => form = new()
     {
         Id = employee.Id, RevisionToken = employee.RevisionToken, EmployeeCode = employee.EmployeeCode, Name = employee.Name,
         Affiliation = employee.Affiliation, EmploymentStartDate = employee.EmploymentStartDate, Ability = employee.Ability
     };
+
     private void ClearForm() => form = new();
+
     private async Task SaveAsync() => await RunAsync(async () =>
     {
         await Service.SaveAsync(new(form.Id, workspaceCode, form.EmployeeCode, form.Name, form.Affiliation, form.EmploymentStartDate,
             workspaceCode == WorkspaceCode.T ? form.Ability : null, form.RevisionToken), await CurrentActor.GetAsync());
-        ClearForm(); await ReloadAsync();
+        ClearForm();
+        await ReloadAsync();
     }, "員工資料已儲存。");
+
     private async Task DeleteAsync(EmployeeDto employee)
     {
         var confirmed = await JS.InvokeAsync<bool>("confirm",
@@ -120,34 +214,64 @@
         if (!confirmed) return;
         await RunAsync(async () =>
         {
-            await Service.DeleteAsync(employee.Id, employee.RevisionToken, await CurrentActor.GetAsync()); await ReloadAsync();
+            await Service.DeleteAsync(employee.Id, employee.RevisionToken, await CurrentActor.GetAsync());
+            await ReloadAsync();
         }, "員工已刪除；既有需求、班表與 Log 紀錄仍保留。");
     }
+
     private Task PreviewImportAsync(InputFileChangeEventArgs args) => RunAsync(async () =>
     {
         await using var stream = args.File.OpenReadStream(5 * 1024 * 1024);
-        using var memory = new MemoryStream(); await stream.CopyToAsync(memory); pendingImport = memory.ToArray();
+        using var memory = new MemoryStream();
+        await stream.CopyToAsync(memory);
+        pendingImport = memory.ToArray();
         importPreview = await Service.PreviewImportAsync(workspaceCode, new MemoryStream(pendingImport), await CurrentActor.GetAsync());
     }, "已完成員工 CSV 預覽。");
+
     private Task ConfirmImportAsync() => RunAsync(async () =>
     {
         await Service.ImportAsync(workspaceCode, new MemoryStream(pendingImport!), importPreview!.RevisionToken, await CurrentActor.GetAsync());
-        CancelImport(); await ReloadAsync();
+        CancelImport();
+        await ReloadAsync();
     }, "員工 CSV 已匯入。");
-    private void CancelImport() { pendingImport = null; importPreview = null; }
+
+    private void CancelImport()
+    {
+        pendingImport = null;
+        importPreview = null;
+    }
+
     private async Task RunAsync(Func<Task> action, string success)
     {
-        isBusy = true; messageClass = "success"; message = "處理中…"; await InvokeAsync(StateHasChanged); try { await action(); message = success; }
-        catch (Exception exception) { messageClass = "error"; message = exception.Message; }
-        finally { isBusy = false; }
+        isBusy = true;
+        messageClass = "success";
+        message = "處理中…";
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await action();
+            message = success;
+        }
+        catch (Exception exception)
+        {
+            messageClass = "error";
+            message = exception.Message;
+        }
+        finally
+        {
+            isBusy = false;
+        }
     }
+
     private sealed class EmployeeForm
     {
-        public Guid? Id { get; set; } public Guid? RevisionToken { get; set; }
+        public Guid? Id { get; set; }
+        public Guid? RevisionToken { get; set; }
         [Required, StringLength(32)] public string EmployeeCode { get; set; } = "";
         [Required, StringLength(100)] public string Name { get; set; } = "";
         [Required, StringLength(64)] public string Affiliation { get; set; } = "";
         public DateOnly? EmploymentStartDate { get; set; }
         [Range(1, 5)] public int? Ability { get; set; }
     }
+
 }

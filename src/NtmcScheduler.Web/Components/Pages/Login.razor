@@ -8,15 +8,26 @@
 @inject IdentityRedirectManager Redirect
 
 <PageTitle>登入</PageTitle>
-<div class="page-title"><div><h1>登入</h1><p>使用管理者核發的帳號登入。</p></div><PageHelp Title="登入說明"><p>本系統不開放自行註冊或忘記密碼。忘記密碼時請由管理者重設一次性密碼；首次登入後必須立即修改。</p></PageHelp></div>
+<div class="page-title">
+    <div>
+        <h1>登入</h1>
+        <p>使用管理者核發的帳號登入。</p>
+    </div>
+    <PageHelp Title="登入說明">
+        <p>本系統不開放自行註冊或忘記密碼。忘記密碼時請由管理者重設一次性密碼；首次登入後必須立即修改。</p>
+    </PageHelp>
+</div>
 <EditForm EditContext="editContext" method="post" OnSubmit="LoginAsync" FormName="login" class="card narrow-form">
-    <DataAnnotationsValidator />
-    <ValidationSummary />
-    @if (error is not null) { <p class="alert error" role="alert">@error</p> }
+    <DataAnnotationsValidator/>
+    <ValidationSummary/>
+    @if (error is not null)
+    {
+        <p class="alert error" role="alert">@error</p>
+    }
     <label for="username">帳號</label>
-    <InputText id="username" @bind-Value="Input.UserName" autocomplete="username" />
+    <InputText id="username" @bind-Value="Input.UserName" autocomplete="username"/>
     <label for="password">密碼</label>
-    <InputText id="password" type="password" @bind-Value="Input.Password" autocomplete="current-password" />
+    <InputText id="password" type="password" @bind-Value="Input.Password" autocomplete="current-password"/>
     <button type="submit" class="primary">登入</button>
 </EditForm>
 
@@ -57,6 +68,7 @@
             error = "帳號或密碼錯誤，或暫時無法登入。";
             return;
         }
+
         RateLimiter.ResetAccount(Input.UserName);
         Redirect.RedirectTo(user!.MustChangePassword ? "/Account/ChangePassword" : ReturnUrl);
     }
@@ -83,7 +95,11 @@
 
     private sealed class LoginInput
     {
-        [Required(ErrorMessage = "請輸入帳號。"), StringLength(100)] public string UserName { get; set; } = "";
-        [Required(ErrorMessage = "請輸入密碼。"), DataType(DataType.Password)] public string Password { get; set; } = "";
+        [Required(ErrorMessage = "請輸入帳號。"), StringLength(100)]
+        public string UserName { get; set; } = "";
+
+        [Required(ErrorMessage = "請輸入密碼。"), DataType(DataType.Password)]
+        public string Password { get; set; } = "";
     }
+
 }

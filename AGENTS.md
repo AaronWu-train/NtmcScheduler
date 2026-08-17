@@ -1,4 +1,4 @@
-# 新北捷人員排班系統（NtmcScheduler）
+# 新北捷運人員排班系統（NtmcScheduler）
 
 新北捷運公司內部的人員排班系統。輸入人員資料、指定休假（R\*）、每人本月 R休數、公務事件（X）與歷史班表後，
 系統以 OR-Tools CP-SAT 依規則產生月班表候選（最多 3 份），同月可永久保存多份版本並選一份 `★` 採用版；
@@ -21,7 +21,7 @@
 
 一般產品規格以 `docs/` Markdown 與決策紀錄為準；solver 數學公式另以單一報告
 [`tex/main2.tex`](tex/main2.tex) 為真相來源（決策 D-21）。原始規格書
-[docs/新北捷人員排班系統_完整開發規格書_v6.pdf](docs/新北捷人員排班系統_完整開發規格書_v6.pdf)
+[docs/新北捷運人員排班系統_完整開發規格書_v6.pdf](docs/新北捷運人員排班系統_完整開發規格書_v6.pdf)
 應一併參考；若 PDF 與 Markdown／決策衝突，**以 Markdown 與決策為準**。
 
 | 文件 | 內容 |
@@ -37,7 +37,7 @@
 | [docs/09-acceptance.md](docs/09-acceptance.md) | 最低驗收案例 |
 | [docs/10-decisions.md](docs/10-decisions.md) | 決策紀錄（規格釐清的問答結果與裁定） |
 | [docs/11-implementation-plan.md](docs/11-implementation-plan.md) | 實作架構、CP-SAT 演算法、頁面／服務／里程碑 |
-| [docs/新北捷人員排班系統_完整開發規格書_v6.pdf](docs/新北捷人員排班系統_完整開發規格書_v6.pdf) | 原始規格書 v6（交叉比對用） |
+| [docs/新北捷運人員排班系統_完整開發規格書_v6.pdf](docs/新北捷運人員排班系統_完整開發規格書_v6.pdf) | 原始規格書 v6（交叉比對用） |
 
 ## Agent 工作守則
 

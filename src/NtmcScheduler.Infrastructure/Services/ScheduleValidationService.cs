@@ -140,35 +140,35 @@ public sealed class ScheduleValidationService(NtmcDbContext db) : IScheduleValid
     {
         var monthEnd = version.Month.AddMonths(1).AddDays(-1);
         foreach (var employee in version.Employees)
-        foreach (var interval in version.ConfigurationRevision.RestIntervals.Where(x => x.Start <= monthEnd && x.End >= version.Month))
-        {
-            var start = interval.Start < version.Month ? version.Month : interval.Start;
-            var end = interval.End > monthEnd ? monthEnd : interval.End;
-            var cells = employee.Assignments.Where(x => x.Date >= start && x.Date <= end).ToArray();
-            var rest = (interval.Start < version.Month ? employee.OpeningRest ?? 0 : 0) + cells.Count(x => x.Kind == "Rest");
-            var special = (interval.Start < version.Month ? employee.OpeningSpecialRest ?? 0 : 0) + cells.Count(x => x.Kind == "SpecialRest");
-            var requiredSpecial = interval.NationalHolidays.Count;
-            if (rest > 16 || special > requiredSpecial || interval.End <= monthEnd && (rest != 16 || special != requiredSpecial))
-                issues.Add(new(ValidationSeverity.Error, "八週 R/R1 額度", $"截至 {end:yyyy-MM-dd} 的區間累計為 R={rest}、R1={special}，不符合 R=16、R1={requiredSpecial}。", employee.EmployeeCode, end));
-            else if (interval.End > monthEnd)
+            foreach (var interval in version.ConfigurationRevision.RestIntervals.Where(x => x.Start <= monthEnd && x.End >= version.Month))
             {
-                var remainingDays = interval.End.DayNumber - monthEnd.DayNumber;
-                if (rest + remainingDays < 16 || special + remainingDays < requiredSpecial || rest + special + remainingDays < 16 + requiredSpecial)
-                    issues.Add(new(ValidationSeverity.Error, "八週 R/R1 可完成性", $"截至 {monthEnd:yyyy-MM-dd} 的剩餘日數不足以完成 R=16、R1={requiredSpecial}。", employee.EmployeeCode, monthEnd));
+                var start = interval.Start < version.Month ? version.Month : interval.Start;
+                var end = interval.End > monthEnd ? monthEnd : interval.End;
+                var cells = employee.Assignments.Where(x => x.Date >= start && x.Date <= end).ToArray();
+                var rest = (interval.Start < version.Month ? employee.OpeningRest ?? 0 : 0) + cells.Count(x => x.Kind == "Rest");
+                var special = (interval.Start < version.Month ? employee.OpeningSpecialRest ?? 0 : 0) + cells.Count(x => x.Kind == "SpecialRest");
+                var requiredSpecial = interval.NationalHolidays.Count;
+                if (rest > 16 || special > requiredSpecial || interval.End <= monthEnd && (rest != 16 || special != requiredSpecial))
+                    issues.Add(new(ValidationSeverity.Error, "八週 R/R1 額度", $"截至 {end:yyyy-MM-dd} 的區間累計為 R={rest}、R1={special}，不符合 R=16、R1={requiredSpecial}。", employee.EmployeeCode, end));
+                else if (interval.End > monthEnd)
+                {
+                    var remainingDays = interval.End.DayNumber - monthEnd.DayNumber;
+                    if (rest + remainingDays < 16 || special + remainingDays < requiredSpecial || rest + special + remainingDays < 16 + requiredSpecial)
+                        issues.Add(new(ValidationSeverity.Error, "八週 R/R1 可完成性", $"截至 {monthEnd:yyyy-MM-dd} 的剩餘日數不足以完成 R=16、R1={requiredSpecial}。", employee.EmployeeCode, monthEnd));
+                }
             }
-        }
     }
 
     private static void ValidateM(ScheduleVersion version, List<ValidationIssue> issues)
     {
         var monthEnd = version.Month.AddMonths(1).AddDays(-1);
         foreach (var employee in version.Employees)
-        foreach (var cell in employee.Assignments.Where(x => x.Kind == "Work"))
-        {
-            if (cell.Station is null || cell.Shift is null || !MStations.Contains(cell.Station) ||
-                !StationsInSameGroup(employee.Affiliation).Contains(cell.Station))
-                issues.Add(new(ValidationSeverity.Error, "M 合法站群", "正常班必須同時指定合法車站與班別，且車站須位於員工所屬三站群組。", employee.EmployeeCode, cell.Date, cell.Station, cell.Shift));
-        }
+            foreach (var cell in employee.Assignments.Where(x => x.Kind == "Work"))
+            {
+                if (cell.Station is null || cell.Shift is null || !MStations.Contains(cell.Station) ||
+                    !StationsInSameGroup(employee.Affiliation).Contains(cell.Station))
+                    issues.Add(new(ValidationSeverity.Error, "M 合法站群", "正常班必須同時指定合法車站與班別，且車站須位於員工所屬三站群組。", employee.EmployeeCode, cell.Date, cell.Station, cell.Shift));
+            }
         foreach (var employee in version.Employees)
         {
             var byDate = employee.Assignments.ToDictionary(x => x.Date);
@@ -193,20 +193,20 @@ public sealed class ScheduleValidationService(NtmcDbContext db) : IScheduleValid
         }
         var monthEnd = version.Month.AddMonths(1).AddDays(-1);
         for (var date = version.Month; date <= monthEnd; date = date.AddDays(1))
-        foreach (var shift in new[] { "Early", "Afternoon", "Night" })
-        {
-            var working = version.Employees.Where(employee => employee.Assignments.Any(x => x.Date == date && x.Kind == "Work" && x.Shift == shift)).ToArray();
-            var expected = version.Employees.Count(x => x.MonthlyShift == shift);
-            if (working.Length < Math.Max(0, expected - 2))
-                issues.Add(new(ValidationSeverity.Warning, "班組出勤不足", $"{ShiftLabel(shift)}正常出勤 {working.Length} 人，低於月班組人數 {expected} 減 2。", null, date, null, shift));
-            var missingSpecialties = version.Employees.Where(x => x.MonthlyShift == shift).Select(x => x.Affiliation).Distinct()
-                .Except(working.Select(x => x.Affiliation)).ToArray();
-            if (missingSpecialties.Length > 0)
-                issues.Add(new(ValidationSeverity.Warning, "專業缺席", $"{ShiftLabel(shift)}缺少專業：{string.Join('、', missingSpecialties)}。", null, date, null, shift));
-            var highAbility = working.Count(x => x.Ability >= 4);
-            if (highAbility < 2)
-                issues.Add(new(ValidationSeverity.Warning, "高能力人員不足", $"{ShiftLabel(shift)}能力 4–5 僅 {highAbility} 人。", null, date, null, shift));
-        }
+            foreach (var shift in new[] { "Early", "Afternoon", "Night" })
+            {
+                var working = version.Employees.Where(employee => employee.Assignments.Any(x => x.Date == date && x.Kind == "Work" && x.Shift == shift)).ToArray();
+                var expected = version.Employees.Count(x => x.MonthlyShift == shift);
+                if (working.Length < Math.Max(0, expected - 2))
+                    issues.Add(new(ValidationSeverity.Warning, "班組出勤不足", $"{ShiftLabel(shift)}正常出勤 {working.Length} 人，低於月班組人數 {expected} 減 2。", null, date, null, shift));
+                var missingSpecialties = version.Employees.Where(x => x.MonthlyShift == shift).Select(x => x.Affiliation).Distinct()
+                    .Except(working.Select(x => x.Affiliation)).ToArray();
+                if (missingSpecialties.Length > 0)
+                    issues.Add(new(ValidationSeverity.Warning, "專業缺席", $"{ShiftLabel(shift)}缺少專業：{string.Join('、', missingSpecialties)}。", null, date, null, shift));
+                var highAbility = working.Count(x => x.Ability >= 4);
+                if (highAbility < 2)
+                    issues.Add(new(ValidationSeverity.Warning, "高能力人員不足", $"{ShiftLabel(shift)}能力 4–5 僅 {highAbility} 人。", null, date, null, shift));
+            }
     }
 
     private static IReadOnlyList<ScheduleEmployeeStats> CalculateStats(ScheduleVersion version)

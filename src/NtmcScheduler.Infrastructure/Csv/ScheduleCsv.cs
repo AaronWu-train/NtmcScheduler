@@ -248,23 +248,23 @@ public static partial class ScheduleCsv
         IReadOnlyDictionary<string, NonStandardShift> nonStandardShifts,
         bool historical,
         string field) => text switch
-    {
-        "R" => new() { Kind = AssignmentKind.Rest },
-        "R1" => new() { Kind = AssignmentKind.SpecialRest },
-        "R休" => new() { Kind = AssignmentKind.LeaveRest },
-        "R休*" => new() { Kind = AssignmentKind.LeaveRest, RequestedRest = true },
-        "R*" when historical => new() { Kind = AssignmentKind.Rest, RequestedRest = true },
-        "R1*" when historical => new() { Kind = AssignmentKind.SpecialRest, RequestedRest = true },
-        "R*" => new() { RequestedRest = true },
-        "R*[R]" => new() { Kind = AssignmentKind.Rest, RequestedRest = true },
-        "R*[R1]" => new() { Kind = AssignmentKind.SpecialRest, RequestedRest = true },
-        "R*[R休]" => new() { Kind = AssignmentKind.LeaveRest, RequestedRest = true },
-        _ when EventPattern().Match(text) is { Success: true } match => EventCell(match, date, field),
-        _ when monthlyShift is not null && ShiftFromText(text) is { } shift => new() { Kind = AssignmentKind.Work, Shift = shift },
-        _ when nonStandardShifts.GetValueOrDefault(text) is { } shift => EventCell(shift.StartTime, shift.EndTime, date),
-        _ when MWorkCell(text) is { } cell => cell,
-        _ => throw new ScheduleCsvException(field, $"Unsupported schedule cell '{text}'.")
-    };
+        {
+            "R" => new() { Kind = AssignmentKind.Rest },
+            "R1" => new() { Kind = AssignmentKind.SpecialRest },
+            "R休" => new() { Kind = AssignmentKind.LeaveRest },
+            "R休*" => new() { Kind = AssignmentKind.LeaveRest, RequestedRest = true },
+            "R*" when historical => new() { Kind = AssignmentKind.Rest, RequestedRest = true },
+            "R1*" when historical => new() { Kind = AssignmentKind.SpecialRest, RequestedRest = true },
+            "R*" => new() { RequestedRest = true },
+            "R*[R]" => new() { Kind = AssignmentKind.Rest, RequestedRest = true },
+            "R*[R1]" => new() { Kind = AssignmentKind.SpecialRest, RequestedRest = true },
+            "R*[R休]" => new() { Kind = AssignmentKind.LeaveRest, RequestedRest = true },
+            _ when EventPattern().Match(text) is { Success: true } match => EventCell(match, date, field),
+            _ when monthlyShift is not null && ShiftFromText(text) is { } shift => new() { Kind = AssignmentKind.Work, Shift = shift },
+            _ when nonStandardShifts.GetValueOrDefault(text) is { } shift => EventCell(shift.StartTime, shift.EndTime, date),
+            _ when MWorkCell(text) is { } cell => cell,
+            _ => throw new ScheduleCsvException(field, $"Unsupported schedule cell '{text}'.")
+        };
 
     internal static ScheduleCell? ParseMPerpetualCell(string text, string field) => text switch
     {

@@ -21,19 +21,19 @@ internal static class SolverAcceptanceAssertions
         }
 
         foreach (var date in TargetDates(input))
-        foreach (var station in Stations)
-        foreach (var shift in Shifts)
-        {
-            var employeeCount = assigned.Count(item => item.Key == date && item.Cell.Kind == AssignmentKind.Work && item.Cell.Station == station && item.Cell.Shift == shift);
-            var externalCount = candidate.ExternalAssignments.Where(item => item.Date == date && item.Station == station && item.Shift == shift).Sum(item => item.Count);
-            var required = shift is Shift.Early or Shift.Afternoon || shift == Shift.Night && station is "LB01" or "LB06" or "LB08" or "LB12" ? 1 : 0;
-            if (required > 0)
-                Assert.IsGreaterThanOrEqualTo(required, employeeCount + externalCount, $"Coverage shortfall for {date:yyyy-MM-dd}/{station}/{shift}.");
-            else
-                Assert.AreEqual(0, employeeCount + externalCount, $"Zero-demand position staffed for {date:yyyy-MM-dd}/{station}/{shift}.");
-            if (shift == Shift.Night || station is not ("LB01" or "LB06" or "LB07" or "LB12"))
-                Assert.IsLessThanOrEqualTo(1, employeeCount + externalCount, $"Position exceeds its staffing limit for {date:yyyy-MM-dd}/{station}/{shift}.");
-        }
+            foreach (var station in Stations)
+                foreach (var shift in Shifts)
+                {
+                    var employeeCount = assigned.Count(item => item.Key == date && item.Cell.Kind == AssignmentKind.Work && item.Cell.Station == station && item.Cell.Shift == shift);
+                    var externalCount = candidate.ExternalAssignments.Where(item => item.Date == date && item.Station == station && item.Shift == shift).Sum(item => item.Count);
+                    var required = shift is Shift.Early or Shift.Afternoon || shift == Shift.Night && station is "LB01" or "LB06" or "LB08" or "LB12" ? 1 : 0;
+                    if (required > 0)
+                        Assert.IsGreaterThanOrEqualTo(required, employeeCount + externalCount, $"Coverage shortfall for {date:yyyy-MM-dd}/{station}/{shift}.");
+                    else
+                        Assert.AreEqual(0, employeeCount + externalCount, $"Zero-demand position staffed for {date:yyyy-MM-dd}/{station}/{shift}.");
+                    if (shift == Shift.Night || station is not ("LB01" or "LB06" or "LB07" or "LB12"))
+                        Assert.IsLessThanOrEqualTo(1, employeeCount + externalCount, $"Position exceeds its staffing limit for {date:yyyy-MM-dd}/{station}/{shift}.");
+                }
 
         Assert.IsTrue(candidate.ExternalAssignments.All(item => item.Station is "LB02" or "LB04" or "LB09" or "LB11"));
     }

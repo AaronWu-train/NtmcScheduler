@@ -15,8 +15,12 @@
 </div>
 <section>
     <div class="workspace-grid">
-        <a class="workspace-card" href="/m/demand"><strong>M</strong><span>建立站務班表</span></a>
-        <a class="workspace-card" href="/t/demand"><strong>T</strong><span>建立檢測班表</span></a>
+        <a class="workspace-card" href="/m/demand">
+            <strong>M</strong><span>建立站務班表</span>
+        </a>
+        <a class="workspace-card" href="/t/demand">
+            <strong>T</strong><span>建立檢測班表</span>
+        </a>
     </div>
 </section>
 
@@ -31,27 +35,82 @@
         </PageHelp>
     </div>
 </div>
-<section class="card dashboard-card"><div class="section-heading"><h2>最近工作</h2><span>狀態會自動更新</span>
-</div>
-@if (runs.Count == 0) { <p class="empty-state">還沒有求解紀錄。請先進入 M 或 T 建立班表。</p> }
-else
-{
-    <div class="table-scroll"><table class="dashboard-table"><thead><tr><th>單位／月份</th><th>狀態</th><th>分數</th><th>送出時間</th></tr></thead><tbody>
-    @foreach (var run in runs)
+<section class="card dashboard-card">
+    <div class="section-heading">
+        <h2>最近工作</h2><span>狀態會自動更新</span>
+    </div>
+    @if (runs.Count == 0)
     {
-        <tr><td><strong>@run.Workspace</strong><br /><span>@run.Month.ToString("yyyy-MM")</span></td><td><span class="status @RunStatusClass(run)">@RunStatusText(run)</span>@if (run.CompletedAtUtc is not null) { <small>@Taipei(run.CompletedAtUtc.Value)</small> }</td>
-        <td class="score-cell">@if (run.Candidates.Count == 0) { <span>—</span> } else { @foreach (var candidate in run.Candidates) { <div class="candidate-score"><strong>候選 @candidate.Number</strong>@foreach (var objective in candidate.Objectives.OrderBy(x => x.Priority)) { <div>優先層級 @objective.Priority－@ObjectiveText(objective.Name)：總加權分 @objective.Value</div>@foreach (var component in objective.Components) { <small>@ComponentText(component.Name)：違反量 @component.Value（@ComponentDescription(component.Name)），權重 @component.Weight，加權分 @(component.Value * component.Weight)</small> } }</div> } }</td>
-        <td>@Taipei(run.CreatedAtUtc)<small>@run.TimeLimitSeconds 秒／@run.WorkerCount worker@(run.Workspace == WorkspaceCode.M ? $"／{run.SeedCount} 次嘗試" : "")</small></td></tr>
+        <p class="empty-state">還沒有求解紀錄。請先進入 M 或 T 建立班表。</p>
     }
-    </tbody></table></div>
-}
+    else
+    {
+        <div class="table-scroll">
+            <table class="dashboard-table">
+                <thead>
+                <tr>
+                    <th>單位／月份</th><th>狀態</th><th>分數</th><th>送出時間</th>
+                </tr>
+                </thead>
+                <tbody>
+                @foreach (var run in runs)
+                {
+                    <tr>
+                        <td>
+                            <strong>@run.Workspace</strong><br/><span>@run.Month.ToString("yyyy-MM")</span>
+                        </td>
+                        <td>
+                            <span class="status @RunStatusClass(run)">@RunStatusText(run)</span>
+                            @if (run.CompletedAtUtc is not null)
+                            {
+                                <small>@Taipei(run.CompletedAtUtc.Value)</small>
+                            }
+                        </td>
+                        <td class="score-cell">
+                            @if (run.Candidates.Count == 0)
+                            {
+                                <span>—</span>
+                            }
+                            else
+                            {
+                                @foreach (var candidate in run.Candidates)
+                                {
+                                    <div class="candidate-score">
+                                        <strong>候選 @candidate.Number</strong>
+                                        @foreach (var objective in candidate.Objectives.OrderBy(x => x.Priority))
+                                        {
+                                            <div>優先層級 @objective.Priority－@ObjectiveText(objective.Name)：總加權分 @objective.Value</div> @foreach (var component in objective.Components)
+                                            {
+                                                <small>@ComponentText(component.Name)：違反量 @component.Value（@ComponentDescription(component.Name)），權重 @component.Weight，加權分 @(component.Value * component.Weight)</small>
+                                            }
+                                        }
+                                    </div>
+                                }
+                            }
+                        </td>
+                        <td>
+                            @Taipei(run.CreatedAtUtc)<small>@run.TimeLimitSeconds 秒／@run.WorkerCount worker@(run.Workspace == WorkspaceCode.M ? $"／{run.SeedCount} 次嘗試" : "")</small>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
 </section>
 
 @code {
     private IReadOnlyList<ScheduleRunDto> runs = [];
-    protected override async Task OnInitializedAsync() { await ReloadAsync(); Notifier.Changed += OnRunChanged; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+        Notifier.Changed += OnRunChanged;
+    }
+
     private void OnRunChanged(ScheduleRunDto run) => _ = InvokeAsync(ReloadAsync);
     private async Task ReloadAsync() => runs = await RunService.ListRecentAsync(5, await CurrentActor.GetAsync());
+
     private static string RunStatusText(ScheduleRunDto run) => run.Status switch
     {
         ScheduleRunStatus.Queued => "等待中",
@@ -64,13 +123,16 @@ else
         ScheduleRunStatus.Imported => "已匯入",
         _ => "失敗"
     };
+
     private static string RunStatusClass(ScheduleRunDto run) => run.Status switch { ScheduleRunStatus.Optimal or ScheduleRunStatus.Imported => "ok", ScheduleRunStatus.TimeLimit when run.Candidates.Count > 0 => "ok", ScheduleRunStatus.Queued or ScheduleRunStatus.Running => "working", _ => "error" };
     private static string ObjectiveText(string name) => name switch { "RequestedRest" => "指定休假", "ScheduleQualityAndFairness" => "排班品質與公平性", "StaffingQuality" => "班組人力品質", "RestDistribution" => "休假分布", "WorkPatternQuality" => "工作型態品質", "RestFairness" => "休假公平", _ => name };
     private static string ComponentText(string name) => name switch { "RequestedRest" => "未滿足 R*", "UnusedLeaveRest" => "未使用指定 R休額度", "ExternalStaffing" => "外援人力", "MonthlyRest" => "每月一般 R 偏差", "SpecialRestBalance" => "八週累積 R1 餘額", "WorkStreak" => "連續工作區段", "MixedShiftWorkStreak" => "連續工作區段混合班型", "NightRestEarly" => "夜R早", "NightRestAfternoon" => "夜R午", "ShiftChangeWithoutRest" => "未休假直接換班", "WeekdayRestFairness" => "平日休假公平", "HolidayRestFairness" => "假日休假公平", "EarlyAfternoonImbalance" => "早午班差距", "NightShiftTarget" => "夜班 3, 4 天目標", "NonMonthlyShift" => "月班別不一致", "Attendance" => "班組出勤不足", "Specialty" => "專業缺席", "Ability" => "高能力人員不足", "NightToEarlyRest" => "跨月夜轉早休假不足", "MonthBoundaryRestBalance" => "月交界休假不平衡", _ => name };
+
     private static string ComponentDescription(string name) => name switch
     {
         "RequestedRest" => "R* 最後未排成 R、R1 或 R休的格數", "UnusedLeaveRest" => "指定 R休上限減去實際 R休數", "ExternalStaffing" => "超過門檻的外援人力", "MonthlyRest" => "實際 R 與目標差額平方", "SpecialRestBalance" => "八週累積 R1 的超額或欠額", "WorkStreak" => "連續工作區段依長度計分", "MixedShiftWorkStreak" => "混合正常班型的工作區段", "NightRestEarly" => "夜班、休假、早班組合", "NightRestAfternoon" => "夜班、休假、午班組合", "ShiftChangeWithoutRest" => "未休假直接換班", "WeekdayRestFairness" => "T 月班別內平日休假差", "HolidayRestFairness" => "群組內假日休假公平性", "EarlyAfternoonImbalance" => "早班與小班差超過 4", "NightShiftTarget" => "夜班 3 至 4 天目標", "NonMonthlyShift" => "不同於指定月班別", "Attendance" => "班組每日出勤缺額", "Specialty" => "應有專業組缺席", "Ability" => "能力 4 至 5 人員不足", "NightToEarlyRest" => "跨月夜轉早休假不足", "MonthBoundaryRestBalance" => "月交界休假人數差", _ => "此項規則的計算結果"
     };
+
     private static string Taipei(DateTimeOffset value) => value.ToOffset(TimeSpan.FromHours(8)).ToString("yyyy-MM-dd HH:mm");
     public void Dispose() => Notifier.Changed -= OnRunChanged;
 }
