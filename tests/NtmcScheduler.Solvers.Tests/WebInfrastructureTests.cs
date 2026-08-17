@@ -306,17 +306,17 @@ public sealed class WebInfrastructureTests
 
         var uploadedDemand = (await service.GetAsync(WorkspaceCode.M, demand.Month, actor))!;
         employee = uploadedDemand.Employees.Single();
-        Assert.AreEqual(uploadEmployee.ClosingUsage!.Rest, employee.OpeningRest);
-        Assert.AreEqual(uploadEmployee.ClosingUsage.SpecialRest, employee.OpeningSpecialRest);
-        Assert.AreEqual("P-UPLOAD", employee.PerpetualScheduleId);
-        Assert.IsNotNull(uploadedDemand.PreviousScheduleVersionId);
+        Assert.AreEqual(adoptedVersion.Id, uploadedDemand.PreviousScheduleVersionId);
+        Assert.AreEqual(12, employee.OpeningRest);
+        Assert.AreEqual(2, employee.OpeningSpecialRest);
+        Assert.AreEqual("P-ADOPTED", employee.PerpetualScheduleId);
 
-        await service.SelectPreviousScheduleAsync(uploadedDemand.Id, adoptedVersion.Id, uploadedDemand.RevisionToken, actor);
-        var selected = (await service.GetAsync(WorkspaceCode.M, demand.Month, actor))!;
-        Assert.AreEqual(adoptedVersion.Id, selected.PreviousScheduleVersionId);
-        Assert.AreEqual(12, selected.Employees.Single().OpeningRest);
-        Assert.AreEqual(2, selected.Employees.Single().OpeningSpecialRest);
-        Assert.AreEqual("P-ADOPTED", selected.Employees.Single().PerpetualScheduleId);
+        await service.UseUploadedPreviousScheduleAsync(uploadedDemand.Id, uploadedDemand.RevisionToken, actor);
+        var reselected = (await service.GetAsync(WorkspaceCode.M, demand.Month, actor))!;
+        Assert.AreEqual(PreviousScheduleSource.Upload, reselected.PreviousSource);
+        Assert.AreEqual(uploadEmployee.ClosingUsage!.Rest, reselected.Employees.Single().OpeningRest);
+        Assert.AreEqual(uploadEmployee.ClosingUsage.SpecialRest, reselected.Employees.Single().OpeningSpecialRest);
+        Assert.AreEqual("P-UPLOAD", reselected.Employees.Single().PerpetualScheduleId);
     }
 
     [TestMethod]
@@ -402,7 +402,7 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
-    public async Task PreviousUpload_CreatesVersionThatCanBeAdopted()
+    public async Task PreviousUpload_StoresDemandHistoryWithoutCreatingScheduleVersion()
     {
         await using var database = await TestDatabase.CreateAsync();
         var actor = Editor(WorkspaceCode.T);
@@ -435,14 +435,15 @@ public sealed class WebInfrastructureTests
         }
         finally { File.Delete(path); }
 
-        var imported = await database.Context.ScheduleVersions.SingleAsync(x => x.SourceStatus == ScheduleRunStatus.Imported);
-        Assert.AreEqual(month, imported.Month);
-        Assert.IsFalse(imported.HasErrors);
-        Assert.AreEqual(1, await database.Context.AuditLogs.CountAsync(x => x.Action == "ScheduleVersionImported"));
-
-        var scheduleService = new ScheduleService(database.Context, new ScheduleValidationService(database.Context));
-        await scheduleService.AdoptAsync(imported.Id, imported.RevisionToken, actor);
-        Assert.AreEqual(imported.Id, (await database.Context.AdoptedSchedules.SingleAsync()).ScheduleVersionId);
+        Assert.AreEqual(1, await database.Context.UploadedPreviousSchedules.CountAsync());
+        Assert.AreEqual(0, await database.Context.ScheduleVersions.CountAsync());
+        Assert.AreEqual(0, await database.Context.AuditLogs.CountAsync(x => x.Action == "ScheduleVersionImported"));
+        var preview = await demandService.GetPreviousSchedulePreviewAsync(demand.Id, actor);
+        Assert.AreEqual(month, preview.Month);
+        Assert.AreEqual("T001", preview.Employees.Single().EmployeeCode);
+        var file = await demandService.ExportPreviousScheduleAsync(demand.Id, actor);
+        Assert.AreEqual("previous.csv", file.FileName);
+        Assert.AreEqual(0xEF, file.Content[0]);
     }
 
     [TestMethod]
@@ -676,7 +677,7 @@ public sealed class WebInfrastructureTests
         new(Guid.NewGuid(), "editor", false, new HashSet<WorkspaceCode> { workspace }, Guid.NewGuid().ToString("N"));
 
     private static DemandService DemandService(NtmcDbContext db) =>
-        new(db, new ScheduleValidationService(db));
+        new(db);
 
     private static ScheduleVersion Version(ConfigurationRevision revision, DateOnly month, string name) => new()
     {

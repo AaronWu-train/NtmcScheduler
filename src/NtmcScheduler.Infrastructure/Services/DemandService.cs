@@ -7,9 +7,7 @@ using NtmcScheduler.Solvers;
 
 namespace NtmcScheduler.Infrastructure.Services;
 
-public sealed class DemandService(
-    NtmcDbContext db,
-    IScheduleValidationService validation) : IDemandService
+public sealed class DemandService(NtmcDbContext db) : IDemandService
 {
     public async Task<IReadOnlyList<DateOnly>> ListMonthsAsync(WorkspaceCode workspace, ActorContext actor, CancellationToken cancellationToken = default)
     {
@@ -239,42 +237,20 @@ public sealed class DemandService(
             FileName = Path.GetFileName(fileName),
             ParsedScheduleJson = JsonSerializer.Serialize(schedule, ServiceSupport.JsonOptions)
         };
-        var version = SolverScheduleMapper.ToImportedVersion(
-            schedule, demand.Workspace, demand.ConfigurationRevisionId, actor.UserId);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var previousUpload = demand.UploadedPreviousSchedule;
         db.UploadedPreviousSchedules.Add(upload);
-        db.ScheduleVersions.Add(version);
         demand.UploadedPreviousSchedule = upload;
-        demand.PreviousSource = PreviousScheduleSource.Upload;
-        demand.PreviousAdoptedScheduleVersionId = version.Id;
-        var previousByCode = schedule.Employees.ToDictionary(x => x.EmployeeId, StringComparer.Ordinal);
-        foreach (var employee in demand.Employees)
+        if (demand.PreviousSource == PreviousScheduleSource.Upload || demand.PreviousAdoptedScheduleVersionId is null)
         {
-            if (previousByCode.TryGetValue(employee.EmployeeCode, out var previous))
-            {
-                employee.OpeningRest = previous.ClosingUsage?.Rest;
-                employee.OpeningSpecialRest = previous.ClosingUsage?.SpecialRest;
-                employee.PerpetualScheduleId = demand.Workspace == WorkspaceCode.M ? previous.PerpetualScheduleId : null;
-            }
-            else
-            {
-                employee.OpeningRest = null;
-                employee.OpeningSpecialRest = null;
-                employee.PerpetualScheduleId = null;
-            }
+            demand.PreviousSource = PreviousScheduleSource.Upload;
+            demand.PreviousAdoptedScheduleVersionId = null;
+            ApplyPreviousSchedule(demand, schedule);
         }
         Touch(demand, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "PreviousScheduleUploaded", demand.Workspace, "DemandDraft", demand.Id, null,
             new { upload.Id, upload.Month, upload.FileName, EmployeeCount = schedule.Employees.Count });
-        ServiceSupport.AddAudit(db, actor, "ScheduleVersionImported", demand.Workspace, "ScheduleVersion", version.Id, null,
-            new { version.Month, version.Name, EmployeeCount = schedule.Employees.Count });
         if (previousUpload is not null) db.UploadedPreviousSchedules.Remove(previousUpload);
-        await db.SaveChangesAsync(cancellationToken);
-        var checkedSchedule = await validation.ValidateAsync(version.Id, actor, cancellationToken);
-        version.HasErrors = false;
-        version.WarningCount = checkedSchedule.Issues.Count;
-        await db.SaveChangesAsync(cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
@@ -318,6 +294,46 @@ public sealed class DemandService(
         ServiceSupport.AddAudit(db, actor, "PreviousScheduleSelected", demand.Workspace, "DemandDraft", demand.Id, before,
             new { ScheduleVersionId = version.Id, version.Month, version.Name });
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task UseUploadedPreviousScheduleAsync(Guid demandId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        var demand = await Query().SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
+            ?? throw new DomainValidationException("找不到本月需求。");
+        ServiceSupport.RequireEditor(actor, demand.Workspace);
+        if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
+        if (demand.UploadedPreviousSchedule is null) throw new DomainValidationException("尚未上傳上月班表。");
+        var schedule = JsonSerializer.Deserialize<MonthlySchedule>(demand.UploadedPreviousSchedule.ParsedScheduleJson, ServiceSupport.JsonOptions)
+            ?? throw new DomainValidationException("上月班表快照無法讀取。");
+        var before = new { demand.PreviousSource, demand.PreviousAdoptedScheduleVersionId };
+        ApplyPreviousSchedule(demand, schedule);
+        demand.PreviousSource = PreviousScheduleSource.Upload;
+        demand.PreviousAdoptedScheduleVersionId = null;
+        Touch(demand, actor.UserId);
+        ServiceSupport.AddAudit(db, actor, "UploadedPreviousScheduleSelected", demand.Workspace, "DemandDraft", demand.Id, before, new { demand.UploadedPreviousSchedule.FileName });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<PreviousSchedulePreviewDto> GetPreviousSchedulePreviewAsync(Guid demandId, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        ServiceSupport.RequireViewer(actor);
+        var demand = await Query().AsNoTracking().SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
+            ?? throw new DomainValidationException("找不到本月需求。");
+        var schedule = await GetPreviousScheduleAsync(demand, cancellationToken);
+        return new(demand.Workspace, schedule.MonthStart, schedule.Employees.Select(employee =>
+            new PreviousScheduleEmployeeDto(employee.EmployeeId, employee.Name, employee.Affiliation, ScheduleCsv.MonthlyRow(schedule, employee))).ToArray());
+    }
+
+    public async Task<PreviousScheduleFileDto> ExportPreviousScheduleAsync(Guid demandId, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        ServiceSupport.RequireViewer(actor);
+        var demand = await Query().AsNoTracking().SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
+            ?? throw new DomainValidationException("找不到本月需求。");
+        var schedule = await GetPreviousScheduleAsync(demand, cancellationToken);
+        var fileName = demand.PreviousSource == PreviousScheduleSource.Upload
+            ? demand.UploadedPreviousSchedule?.FileName ?? $"previous-{schedule.MonthStart:yyyy-MM}.csv"
+            : $"previous-{schedule.MonthStart:yyyy-MM}.csv";
+        return new(fileName, ScheduleCsv.WriteMonthly(schedule));
     }
 
     public async Task UploadPerpetualScheduleAsync(Guid demandId, string fileName, Stream csv, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
@@ -379,10 +395,46 @@ public sealed class DemandService(
         return await UploadFile.ParseAsync(csv, path => ScheduleCsv.ReadMonthly(path, month, shifts, historical), cancellationToken);
     }
 
+    private async Task<MonthlySchedule> GetPreviousScheduleAsync(DemandDraft demand, CancellationToken cancellationToken)
+    {
+        if (demand.PreviousSource == PreviousScheduleSource.Upload)
+            return demand.UploadedPreviousSchedule is null
+                ? throw new DomainValidationException("請先上傳上月班表。")
+                : JsonSerializer.Deserialize<MonthlySchedule>(demand.UploadedPreviousSchedule.ParsedScheduleJson, ServiceSupport.JsonOptions)
+                    ?? throw new DomainValidationException("上月班表快照無法讀取。");
+
+        if (demand.PreviousAdoptedScheduleVersionId is not { } versionId)
+            throw new DomainValidationException("找不到選取的上月班表。");
+        var version = await db.ScheduleVersions.AsNoTracking().Include(x => x.Employees).ThenInclude(x => x.Assignments)
+            .SingleOrDefaultAsync(x => x.Id == versionId && !x.IsArchived, cancellationToken)
+            ?? throw new DomainValidationException("選取的上月班表不存在或已封存。");
+        return SolverScheduleMapper.ToMonthlySchedule(version);
+    }
+
     private static void ValidateWorkspace(MonthlySchedule schedule, WorkspaceCode workspace)
     {
         var isT = schedule.Employees.Any(x => x.Ability is not null || x.MonthlyShift is not null);
         if (isT != (workspace == WorkspaceCode.T)) throw new DomainValidationException("CSV 的 M/T 欄位與目前工作區不符。");
+    }
+
+    private static void ApplyPreviousSchedule(DemandDraft demand, MonthlySchedule schedule)
+    {
+        var previousByCode = schedule.Employees.ToDictionary(x => x.EmployeeId, StringComparer.Ordinal);
+        foreach (var employee in demand.Employees)
+        {
+            if (previousByCode.TryGetValue(employee.EmployeeCode, out var previous))
+            {
+                employee.OpeningRest = previous.ClosingUsage?.Rest;
+                employee.OpeningSpecialRest = previous.ClosingUsage?.SpecialRest;
+                employee.PerpetualScheduleId = demand.Workspace == WorkspaceCode.M ? previous.PerpetualScheduleId : null;
+            }
+            else
+            {
+                employee.OpeningRest = null;
+                employee.OpeningSpecialRest = null;
+                employee.PerpetualScheduleId = null;
+            }
+        }
     }
 
     private static DateOnly MonthStart(DateOnly month) => new(month.Year, month.Month, 1);

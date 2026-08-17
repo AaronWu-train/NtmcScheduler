@@ -38,6 +38,9 @@ public interface IDemandService
     Task ImportDemandAsync(Guid demandId, Stream csv, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task UploadPreviousAsync(Guid demandId, string fileName, Stream csv, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task SelectPreviousScheduleAsync(Guid demandId, Guid scheduleVersionId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
+    Task UseUploadedPreviousScheduleAsync(Guid demandId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<PreviousSchedulePreviewDto> GetPreviousSchedulePreviewAsync(Guid demandId, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<PreviousScheduleFileDto> ExportPreviousScheduleAsync(Guid demandId, ActorContext actor, CancellationToken cancellationToken = default);
     Task UploadPerpetualScheduleAsync(Guid demandId, string fileName, Stream csv, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task ClearPerpetualScheduleAsync(Guid demandId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task<PerpetualScheduleFileDto> ExportPerpetualScheduleAsync(Guid demandId, ActorContext actor, CancellationToken cancellationToken = default);

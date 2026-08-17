@@ -42,13 +42,20 @@
     }
     else if (activeStep == 2)
     {
-        <section class="card"><h2>上月班表</h2><p>目前來源：<strong>@PreviousLabel()</strong></p><p class="format-help">可選擇資料庫內的上月班表，或上傳完整且已決定的上月班表。選取資料庫版本不會自動採用該版本。</p>
-        @if (previousOptions.Count > 0) { <div class="toolbar"><label>資料庫既有班表 <select value="@previousVersion?.Id" disabled="@(!canEdit || isBusy)" @onchange="SelectPreviousVersionAsync">@foreach (var option in previousOptions) { <option value="@option.Id">@PreviousOptionText(option)</option> }</select></label></div> }
-        <div class="toolbar"><a class="button-link" href="/download/templates/@Workspace.ToLowerInvariant()/previous.csv">下載範本</a>@if (canEdit) { <label class="button-link primary file-upload-button">上傳上月班表<InputFile OnChange="UploadPreviousAsync" accept=".csv,text/csv" disabled="@isBusy" /></label> }</div>
-        @if (previousVersion is not null)
+        <section class="card"><h2>上月班表</h2><p>目前來源：<strong>@PreviousLabel()</strong></p><p class="format-help">從下拉清單選擇資料庫班表或上傳班表。上傳檔只作這次建立班表的歷史來源，不會建立資料庫班表版本。</p>
+        <div class="toolbar"><label>上月班表來源 <select value="@PreviousSourceValue" disabled="@(!canEdit || isBusy)" @onchange="SelectPreviousVersionAsync"><option value="" disabled>請選擇上月班表來源</option><option value="upload">（採用上傳班表）</option>@foreach (var option in previousOptions) { <option value="@option.Id">@PreviousOptionText(option)</option> }</select></label></div>
+        @if (IsUploadPreviousSelected)
         {
-            @if (demand.PreviousSource == PreviousScheduleSource.Upload && demand.PreviousUpload is not null) { <p>檔名：@demand.PreviousUpload.FileName　上傳時間：@Taipei(demand.PreviousUpload.UploadedAtUtc)</p> } else { <p>班表：@previousVersion.Name　建立時間：@Taipei(previousVersion.CreatedAtUtc)</p> }
-            <div class="toolbar"><a class="button-link" href="/schedules/@previousVersion.Id">開啟班表</a><a class="button-link" href="/download/schedules/@(previousVersion.Id).csv">下載 CSV</a>@if (canEdit) { <button class="primary adopted-action" disabled="@(isBusy || previousVersion.IsAdopted || previousVersion.IsArchived)" @onclick="AdoptPreviousAsync">@(isBusy ? "處理中…" : previousVersion.IsAdopted ? "已採用" : "採用這份班表")</button> }</div>
+            <div class="toolbar"><a class="button-link" href="/download/templates/@Workspace.ToLowerInvariant()/previous.csv">下載範本</a>@if (canEdit) { <label class="button-link primary file-upload-button">上傳上月班表<InputFile OnChange="UploadPreviousAsync" accept=".csv,text/csv" disabled="@isBusy" /></label> }</div>
+            @if (demand.PreviousUpload is not null)
+            {
+                <p>檔名：@demand.PreviousUpload.FileName　上傳時間：@Taipei(demand.PreviousUpload.UploadedAtUtc)</p><div class="toolbar"><button @onclick="OpenPreviousPreviewAsync">預覽</button><a class="button-link" href="/download/demands/@(demand.Id)/previous.csv">下載 CSV</a></div>
+            }
+        }
+        else if (previousVersion is not null)
+        {
+            <p>班表：@previousVersion.Name　建立時間：@Taipei(previousVersion.CreatedAtUtc)</p>
+            <div class="toolbar"><button @onclick="OpenPreviousPreviewAsync">預覽</button><a class="button-link" href="/download/demands/@(demand.Id)/previous.csv">下載 CSV</a></div>
         }
         @if (workspaceCode == WorkspaceCode.M)
         {
@@ -164,17 +171,24 @@
     <div class="step-actions"><button disabled="@isBusy" @onclick="CloseEditors">取消</button><button class="primary" disabled="@isBusy" @onclick="SaveOtherCellAsync">@(isBusy ? "處理中…" : "儲存 X")</button></div></section>
 }
 
+@if (previousSchedulePreview is not null)
+{
+    <div class="modal-backdrop"></div><section class="previous-preview-dialog" role="dialog" aria-modal="true" aria-label="上月班表預覽"><header><h2>上月班表預覽</h2><button @onclick="ClosePreviousPreview">關閉</button></header><div class="table-scroll schedule-grid compact-schedule"><table><thead><tr><th class="sticky-col sticky-id">ID</th><th class="sticky-col sticky-name">姓名</th><th class="sticky-col sticky-affiliation">所屬</th>@foreach (var day in PreviousDays()) { <th class="day-header"><span>@day</span></th> }</tr></thead><tbody>@foreach (var employee in previousSchedulePreview.Employees) { <tr><td class="sticky-col sticky-id">@employee.EmployeeCode</td><td class="sticky-col sticky-name">@employee.Name</td><td class="sticky-col sticky-affiliation">@employee.Affiliation</td>@foreach (var day in PreviousDays()) { <td class="day-cell">@employee.MonthlyCsvValues[7 + day]</td> }</tr> }</tbody></table></div></section>
+}
+
 @code {
     [Parameter] public string Workspace { get; set; } = "";
     private WorkspaceCode workspaceCode; private string monthText = DateTime.Today.ToString("yyyy-MM"); private string selectedMonth = "new"; private bool canEdit; private int activeStep = 1;
     private IReadOnlyList<DateOnly> availableMonths = [];
     private int SolveStep => 4;
     private DemandDraftDto? demand; private ConfigurationRevisionDto? configuration; private IReadOnlyList<ScheduleRunDto> runs = [];
+    private PreviousSchedulePreviewDto? previousSchedulePreview;
     private MPerpetualScheduleDto? globalPerpetual;
     private ScheduleVersionDto? previousVersion; private IReadOnlyList<ScheduleVersionDto> previousOptions = [];
     private string? message; private string messageClass = "success"; private byte[]? pendingDemand; private ImportPreviewDto? preview;
     private bool isBusy; private int solveTimeLimitSeconds = 300; private int solveWorkerCount = 8; private int solveSeedCount = 1;
     private string sortColumn = "ID"; private bool sortDescending;
+    private bool pendingUploadPreviousSource;
     private Dictionary<Guid, EmployeeEdit> employeeEdits = [];
     private DemandEmployeeDto? editingCellEmployee; private DateOnly editingDate; private readonly CellEdit cellEdit = new();
 
@@ -188,7 +202,7 @@
         availableMonths = await DemandService.ListMonthsAsync(workspaceCode, actor);
         var initial = availableMonths.FirstOrDefault(x => MonthValue(x) == monthText);
         if (initial == default) initial = availableMonths.FirstOrDefault();
-        if (initial == default) { selectedMonth = "new"; demand = null; configuration = null; previousVersion = null; previousOptions = []; runs = []; employeeEdits.Clear(); globalPerpetual = workspaceCode == WorkspaceCode.M ? await PerpetualService.GetAsync(actor) : null; return; }
+        if (initial == default) { selectedMonth = "new"; demand = null; configuration = null; previousVersion = null; previousOptions = []; runs = []; employeeEdits.Clear(); pendingUploadPreviousSource = false; globalPerpetual = workspaceCode == WorkspaceCode.M ? await PerpetualService.GetAsync(actor) : null; return; }
         selectedMonth = monthText = MonthValue(initial);
         await LoadAsync();
     }
@@ -197,7 +211,7 @@
     private async Task SelectMonthAsync(ChangeEventArgs args)
     {
         selectedMonth = args.Value?.ToString() ?? "new";
-        if (selectedMonth == "new") { demand = null; configuration = null; previousVersion = null; previousOptions = []; runs = []; employeeEdits.Clear(); activeStep = 1; return; }
+        if (selectedMonth == "new") { demand = null; configuration = null; previousVersion = null; previousOptions = []; runs = []; employeeEdits.Clear(); pendingUploadPreviousSource = false; activeStep = 1; return; }
         monthText = selectedMonth;
         await LoadAsync();
         activeStep = 2;
@@ -211,9 +225,7 @@
         previousOptions = demand is null ? [] : await ScheduleService.ListVersionsAsync(workspaceCode, demand.Month.AddMonths(-1), actor);
         previousVersion = demand?.PreviousScheduleVersionId is { } selectedId
             ? previousOptions.FirstOrDefault(x => x.Id == selectedId)
-            : demand?.PreviousUpload is { } upload
-                ? previousOptions.Where(x => x.SourceStatus == ScheduleRunStatus.Imported).MinBy(x => Math.Abs((x.CreatedAtUtc - upload.UploadedAtUtc).Ticks))
-                : null;
+            : null;
         InitializeEmployeeEdits();
         await LoadRunsAsync();
     }
@@ -227,7 +239,7 @@
             var actor = await CurrentActor.GetAsync();
             await DemandService.DeleteAsync(demand.Id, demand.RevisionToken, actor);
             availableMonths = await DemandService.ListMonthsAsync(workspaceCode, actor);
-            demand = null; configuration = null; previousVersion = null; previousOptions = []; runs = []; employeeEdits.Clear(); activeStep = 1;
+            demand = null; configuration = null; previousVersion = null; previousOptions = []; runs = []; employeeEdits.Clear(); pendingUploadPreviousSource = false; activeStep = 1;
             if (availableMonths.Count == 0) selectedMonth = "new";
             else { selectedMonth = monthText = MonthValue(availableMonths[0]); await LoadAsync(); }
         }, "本月需求已刪除；既有求解紀錄與班表均已保留。");
@@ -237,9 +249,13 @@
     private string PreviousLabel() => demand switch
     {
         { PreviousSource: PreviousScheduleSource.AdoptedSchedule } => "資料庫既有班表",
-        { HasUploadedPreviousSchedule: true } => "此月份保存的上傳班表",
-        _ => "尚未上傳"
+        { PreviousSource: PreviousScheduleSource.Upload, HasUploadedPreviousSchedule: true } => "上傳的上月班表",
+        _ when pendingUploadPreviousSource => "等待上傳班表",
+        { PreviousSource: PreviousScheduleSource.Upload } => "等待上傳班表",
+        _ => "尚未選擇"
     };
+    private bool IsUploadPreviousSelected => demand?.PreviousSource == PreviousScheduleSource.Upload || pendingUploadPreviousSource;
+    private string PreviousSourceValue => IsUploadPreviousSelected ? "upload" : previousVersion?.Id.ToString() ?? "";
     private string PerpetualSourceLabel() => demand?.PerpetualUpload is not null ? "本月份暫用萬年班表" : globalPerpetual is not null ? "全域萬年班表" : "未使用萬年班表";
     private static bool TryDay(string header, out int day) => int.TryParse(header, NumberStyles.None, CultureInfo.InvariantCulture, out day);
     private IReadOnlyList<string> InputHeaders => ScheduleCsv.MonthlyHeaders.Where(header => !PostSolveHeaders.Contains(header) &&
@@ -268,14 +284,38 @@
     private void SortBy(string column) { if (sortColumn == column) sortDescending = !sortDescending; else { sortColumn = column; sortDescending = false; } }
     private string SortMark(string column) => sortColumn == column ? sortDescending ? "▼" : "▲" : "";
     private static string ShortStation(string station) => int.Parse(station[2..], CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
+    private IEnumerable<int> PreviousDays() => previousSchedulePreview is null ? [] : Enumerable.Range(1, DateTime.DaysInMonth(previousSchedulePreview.Month.Year, previousSchedulePreview.Month.Month));
     private async Task LoadRunsAsync() => runs = await RunService.ListAsync(workspaceCode, Month(), await CurrentActor.GetAsync());
     private async Task QueueAsync() => await RunUiAsync(async () => { await RunService.QueueAsync(demand!.Id, demand.RevisionToken, new ScheduleRunOptions(solveTimeLimitSeconds, solveWorkerCount, workspaceCode == WorkspaceCode.M ? solveSeedCount : 1), await CurrentActor.GetAsync()); await LoadRunsAsync(); }, "已送出，已排入背景求解佇列。請到首頁 Dashboard 查看即時進度。");
 
     private async Task PreviewDemandAsync(InputFileChangeEventArgs args) => await RunUiAsync(async () => { pendingDemand = await ReadFileAsync(args.File); preview = await DemandService.PreviewDemandImportAsync(demand!.Id, new MemoryStream(pendingDemand), await CurrentActor.GetAsync()); }, "已完成匯入預覽。");
     private async Task ConfirmDemandImportAsync() => await RunUiAsync(async () => { await DemandService.ImportDemandAsync(demand!.Id, new MemoryStream(pendingDemand!), demand.RevisionToken, await CurrentActor.GetAsync()); CancelPreview(); await LoadAsync(); }, "需求已由 CSV 更新。");
-    private async Task UploadPreviousAsync(InputFileChangeEventArgs args) => await RunUiAsync(async () => { var bytes = await ReadFileAsync(args.File); await DemandService.UploadPreviousAsync(demand!.Id, args.File.Name, new MemoryStream(bytes), demand.RevisionToken, await CurrentActor.GetAsync()); await LoadAsync(); }, "上月班表已建立，可開啟檢查、編輯或採用。");
-    private async Task SelectPreviousVersionAsync(ChangeEventArgs args) => await RunUiAsync(async () => { if (!Guid.TryParse(args.Value?.ToString(), out var versionId)) throw new DomainValidationException("請選擇上月班表。"); await DemandService.SelectPreviousScheduleAsync(demand!.Id, versionId, demand.RevisionToken, await CurrentActor.GetAsync()); await LoadAsync(); }, "已改用選取的上月班表。");
-    private async Task AdoptPreviousAsync() => await RunUiAsync(async () => { await ScheduleService.AdoptAsync(previousVersion!.Id, previousVersion.RevisionToken, await CurrentActor.GetAsync()); await LoadAsync(); }, "已採用這份上月班表。");
+    private async Task UploadPreviousAsync(InputFileChangeEventArgs args) => await RunUiAsync(async () =>
+    {
+        var shouldUseUpload = IsUploadPreviousSelected;
+        var actor = await CurrentActor.GetAsync();
+        var bytes = await ReadFileAsync(args.File);
+        await DemandService.UploadPreviousAsync(demand!.Id, args.File.Name, new MemoryStream(bytes), demand.RevisionToken, actor);
+        await LoadAsync();
+        if (shouldUseUpload && demand is { PreviousUpload: not null, PreviousSource: not PreviousScheduleSource.Upload })
+        {
+            await DemandService.UseUploadedPreviousScheduleAsync(demand.Id, demand.RevisionToken, actor);
+            await LoadAsync();
+        }
+        pendingUploadPreviousSource = false;
+    }, "上月班表已上傳，可在來源選單採用。");
+    private async Task OpenPreviousPreviewAsync() => await RunUiAsync(async () => previousSchedulePreview = await DemandService.GetPreviousSchedulePreviewAsync(demand!.Id, await CurrentActor.GetAsync()), "已開啟上月班表預覽。");
+    private void ClosePreviousPreview() => previousSchedulePreview = null;
+    private async Task SelectPreviousVersionAsync(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (value == "upload")
+        {
+            if (demand?.PreviousUpload is null) { pendingUploadPreviousSource = true; previousSchedulePreview = null; return; }
+            await RunUiAsync(async () => { await DemandService.UseUploadedPreviousScheduleAsync(demand!.Id, demand.RevisionToken, await CurrentActor.GetAsync()); pendingUploadPreviousSource = false; await LoadAsync(); }, "已改用上傳的上月班表。");
+        }
+        else if (Guid.TryParse(value, out var versionId)) await RunUiAsync(async () => { pendingUploadPreviousSource = false; await DemandService.SelectPreviousScheduleAsync(demand!.Id, versionId, demand.RevisionToken, await CurrentActor.GetAsync()); await LoadAsync(); }, "已改用選取的上月班表。");
+    }
     private async Task UploadPerpetualAsync(InputFileChangeEventArgs args) => await RunUiAsync(async () => { var bytes = await ReadFileAsync(args.File); await DemandService.UploadPerpetualScheduleAsync(demand!.Id, args.File.Name, new MemoryStream(bytes), demand.RevisionToken, await CurrentActor.GetAsync()); await LoadAsync(); }, "萬年班表已保存。");
     private async Task UseGlobalPerpetualAsync() => await RunUiAsync(async () => { await DemandService.ClearPerpetualScheduleAsync(demand!.Id, demand.RevisionToken, await CurrentActor.GetAsync()); await LoadAsync(); }, globalPerpetual is null ? "已清除本月份暫用萬年班表。" : "已改用全域萬年班表。");
     private static string PreviousOptionText(ScheduleVersionDto version) => $"{version.Name}（{(version.IsAdopted ? "已採用" : SourceText(version.SourceStatus))}，{Taipei(version.UpdatedAtUtc)}）";

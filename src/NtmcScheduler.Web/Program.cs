@@ -231,6 +231,18 @@ app.MapGet("/download/demands/{demandId:guid}/perpetual.csv", async (
     return Results.File(file.Content, "text/csv; charset=utf-8", file.FileName);
 }).RequireAuthorization();
 
+app.MapGet("/download/demands/{demandId:guid}/previous.csv", async (
+    Guid demandId,
+    HttpContext context,
+    NtmcDbContext db,
+    IDemandService demands,
+    CancellationToken cancellationToken) =>
+{
+    var actor = await CreateHttpActorAsync(context.User, context, db, cancellationToken);
+    var file = await demands.ExportPreviousScheduleAsync(demandId, actor, cancellationToken);
+    return Results.File(file.Content, "text/csv; charset=utf-8", file.FileName);
+}).RequireAuthorization();
+
 app.MapGet("/m/perpetual.csv", async (
     HttpContext context,
     NtmcDbContext db,

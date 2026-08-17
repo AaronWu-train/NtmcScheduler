@@ -115,6 +115,9 @@ public sealed record DemandDraftDto(
     IReadOnlyList<DemandEmployeeDto> Employees);
 
 public sealed record PreviousUploadDto(string FileName, DateTimeOffset UploadedAtUtc);
+public sealed record PreviousSchedulePreviewDto(WorkspaceCode Workspace, DateOnly Month, IReadOnlyList<PreviousScheduleEmployeeDto> Employees);
+public sealed record PreviousScheduleEmployeeDto(string EmployeeCode, string Name, string Affiliation, IReadOnlyList<string> MonthlyCsvValues);
+public sealed record PreviousScheduleFileDto(string FileName, byte[] Content);
 public sealed record PerpetualUploadDto(string FileName, DateTimeOffset UploadedAtUtc);
 public sealed record PerpetualScheduleFileDto(string FileName, byte[] Content);
 public sealed record MPerpetualPatternDto(string Id, IReadOnlyList<string> Days, int EarlyCount, int AfternoonCount, int NightCount);
