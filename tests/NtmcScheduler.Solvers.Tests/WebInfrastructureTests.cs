@@ -262,6 +262,48 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
+    public async Task DemandCrossGroupWork_IsSnapshottedAsNamedWorkEvent()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var actor = Editor(WorkspaceCode.M);
+        var input = MSolverTests.ValidInput();
+        var seedEmployee = input.DemandMonth.Employees.First(x => x.Affiliation == "LB01");
+        await new EmployeeService(database.Context).SaveAsync(
+            new(null, WorkspaceCode.M, seedEmployee.EmployeeId, seedEmployee.Name, seedEmployee.Affiliation, null, null, null), actor);
+        await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+            input.RestIntervals.Select(x => new RestIntervalDto(x.Start, x.End, x.NationalHolidays.ToArray())).ToArray(), [], null, actor);
+        var service = DemandService(database);
+        var demand = await service.CreateAsync(WorkspaceCode.M, input.DemandMonth.MonthStart, actor);
+        var path = Path.GetTempFileName();
+        try
+        {
+            ScheduleCsv.WriteMonthly(path, input.DemandMonth);
+            await service.ImportDemandAsync(demand.Id, new MemoryStream(await File.ReadAllBytesAsync(path)), demand.RevisionToken, actor);
+            demand = (await service.GetAsync(WorkspaceCode.M, demand.Month, actor))!;
+            ScheduleCsv.WriteMonthly(path, input.PreviousMonth);
+            await service.UploadPreviousAsync(demand.Id, "previous.csv", new MemoryStream(await File.ReadAllBytesAsync(path)), demand.RevisionToken, actor);
+        }
+        finally { File.Delete(path); }
+
+        demand = (await service.GetAsync(WorkspaceCode.M, demand.Month, actor))!;
+        var employee = demand.Employees.First(x => x.Affiliation == "LB01");
+        demand = await service.UpdateAssignmentAsync(demand.Id, employee.EmployeeCode, demand.Month, "Work", false,
+            "LB11", "Early", null, null, null, demand.RevisionToken, actor);
+
+        var queued = await new ScheduleRunService(database.Context, new ScheduleRunQueue()).QueueAsync(
+            demand.Id, demand.RevisionToken, new ScheduleRunOptions(300, 4, 1), actor);
+        var snapshot = await database.Context.ScheduleRuns.Where(x => x.Id == queued.Id).Select(x => x.InputSnapshotJson).SingleAsync();
+        var solverInput = System.Text.Json.JsonSerializer.Deserialize<ScheduleInput>(snapshot, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
+        var cell = solverInput.DemandMonth.Employees.Single(x => x.EmployeeId == employee.EmployeeCode).Assignments[demand.Month];
+
+        Assert.AreEqual(AssignmentKind.WorkEvent, cell.Kind);
+        Assert.AreEqual("LB11早", cell.EventDescription);
+        Assert.AreEqual(new TimeOnly(6, 30), TimeOnly.FromDateTime(cell.EventStart!.Value.DateTime));
+        Assert.AreEqual(new TimeOnly(14, 30), TimeOnly.FromDateTime(cell.EventEnd!.Value.DateTime));
+        Assert.AreNotEqual(SolveStatus.InvalidInput, MSolver.Solve(solverInput, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(3) }).Status);
+    }
+
+    [TestMethod]
     public async Task DemandEdits_UseFreshContextWhenExistingContextTracksStaleDraft()
     {
         await using var database = await TestDatabase.CreateAsync();
@@ -279,7 +321,7 @@ public sealed class WebInfrastructureTests
 
         demand = await service.UpdateAssignmentAsync(demand.Id, employee.EmployeeCode, demand.Month, "Rest", false,
             null, null, null, null, null, demand.RevisionToken, actor);
-        demand = await service.UpdateAssignmentAsync(demand.Id, employee.EmployeeCode, demand.Month.AddDays(1), "SpecialRest", false,
+        demand = await service.UpdateAssignmentAsync(demand.Id, employee.EmployeeCode, demand.Month.AddDays(1), "LeaveRest", false,
             null, null, null, null, null, demand.RevisionToken, actor);
 
         Assert.AreEqual(staleRevision, staleDraft.RevisionToken);
@@ -679,6 +721,33 @@ public sealed class WebInfrastructureTests
         Assert.AreEqual(1, detail.IntervalStats.Single().RequiredSpecialRest);
         Assert.AreEqual(1, detail.Coverage.Single(x => x.Date == version.Month && x.Station == "LB09" && x.Shift == "Early").External);
         Assert.IsTrue(detail.Coverage.Single(x => x.Date == version.Month && x.Station == "LB01" && x.Shift == "Early").AllowsMultiple);
+    }
+
+    [TestMethod]
+    public async Task ScheduleEdit_AllowsLeaveRestWithoutRequestedRestMarker()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var actor = Editor(WorkspaceCode.M);
+        var revision = new ConfigurationRevision { Version = 1, CreatedByUserId = actor.UserId };
+        var version = Version(revision, new DateOnly(2026, 8, 1), "M 班表");
+        var assignment = new ScheduleAssignment { Date = version.Month, Kind = "Rest" };
+        version.Employees.Add(new ScheduleEmployeeSnapshot
+        {
+            EmployeeCode = "M001",
+            Name = "王小明",
+            Affiliation = "LB01",
+            Assignments = [assignment]
+        });
+        database.Context.AddRange(revision, version);
+        await database.Context.SaveChangesAsync();
+
+        var service = new ScheduleService(database.Context, new ScheduleValidationService(database.Context));
+        var detail = await service.UpdateAssignmentAsync(version.Id, assignment.Id, "LeaveRest", false,
+            null, null, null, null, null, version.RevisionToken, actor);
+
+        var edited = detail.Assignments.Single();
+        Assert.AreEqual("LeaveRest", edited.Kind);
+        Assert.IsFalse(edited.RequestedRest);
     }
 
     [TestMethod]

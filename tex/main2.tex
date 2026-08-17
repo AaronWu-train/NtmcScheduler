@@ -1011,13 +1011,15 @@ T 模型的輸入包括：
 \]
 
 \paragraph{八週累積 R1 餘額（\texttt{CS03}）}
-沿用上述 \(g\)。令 \(p^{T,1}_{eI}\) 為目標月前已使用或折抵的 \(R1\) 數，則
+令 \(p^{T,1}_{eI}\) 為目標月前已使用或折抵的 \(R1\) 數，則
 \[
   A^{T,1}_{eI}=p^{T,1}_{eI}
   +\sum_{d\in\mathcal D^{\mathrm{tar}}\cap I}r^{T,1}_{ed},
   \qquad
-  \Phi^{T,balance,R1}=\sum_{e\in\mathcal E^T}\sum_I g(A^{T,1}_{eI},H_I(c_I)).
+  \Phi^{T,balance,R1}=\sum_{e\in\mathcal E^T}\sum_I
+  \left(A^{T,1}_{eI}-H_I(c_I)\right)^2.
 \]
+T 不保留 M 的暫欠一日免罰；因此當月分配到的 \(R1\) 會在可行的前提下盡量於當月休完。
 
 \subsubsection{\texorpdfstring{$J^T_4$}{J4}：工作型態品質}
 

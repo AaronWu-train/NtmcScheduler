@@ -80,10 +80,20 @@ public sealed class MSolverTests
     [DataRow(0, 2, 1L)]
     [DataRow(0, 3, 4L)]
     [DataRow(2, 1, 1L)]
-    public void SpecialRestBalanceAllowsOneOutstandingDay(int actual, int expected, long penalty)
+    public void MSpecialRestBalanceAllowsOneOutstandingDay(int actual, int expected, long penalty)
     {
         const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
         Assert.AreEqual(penalty, typeof(MSolver).GetMethod("SpecialRestBalancePenaltyValue", flags)!.Invoke(null, [actual, expected]));
+    }
+
+    [TestMethod]
+    [DataRow(0, 1, 1L)]
+    [DataRow(0, 2, 4L)]
+    [DataRow(0, 3, 9L)]
+    [DataRow(2, 1, 1L)]
+    public void TSpecialRestBalancePenalizesEveryOutstandingDay(int actual, int expected, long penalty)
+    {
+        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
         Assert.AreEqual(penalty, typeof(TSolver).GetMethod("SpecialRestBalancePenaltyValue", flags)!.Invoke(null, [actual, expected]));
     }
 

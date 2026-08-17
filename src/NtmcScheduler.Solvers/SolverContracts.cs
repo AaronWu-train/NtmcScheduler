@@ -51,6 +51,7 @@ public sealed record ScheduleCell
     public Shift? Shift { get; init; }
     public DateTimeOffset? EventStart { get; init; }
     public DateTimeOffset? EventEnd { get; init; }
+    public string? EventDescription { get; init; }
 }
 
 /// <summary>R and R1 already counted against one eight-week interval.</summary>

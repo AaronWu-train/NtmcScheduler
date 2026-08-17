@@ -160,7 +160,7 @@ public static partial class TSolver
         return LinearExpr.Sum(penalties);
     }
 
-    // 八週累積 R1 餘額——每個區間可暫欠一日；超額與其餘欠額平方計分。
+    // 八週累積 R1 餘額——實際與應有 R1 數量的差額平方計分。
     private static LinearExpr MeasureSpecialRestBalance(
         CpModel model,
         ScheduleInput input,
@@ -187,9 +187,8 @@ public static partial class TSolver
 
     private static long SpecialRestBalancePenaltyValue(int actual, int expected)
     {
-        var balance = actual - expected;
-        var penalizedDeviation = balance > 0 ? balance : Math.Max(0, -balance - 1);
-        return (long)penalizedDeviation * penalizedDeviation;
+        var deviation = actual - expected;
+        return (long)deviation * deviation;
     }
 
     // 連續工作區段——計算已結束的實際工作區段；R、R1、R休會結束區段。

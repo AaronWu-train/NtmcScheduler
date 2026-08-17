@@ -364,7 +364,6 @@ public sealed class ScheduleService(
     {
         if (kind is not ("Work" or "Rest" or "SpecialRest" or "LeaveRest" or "WorkEvent"))
             throw new DomainValidationException("不支援的日格狀態。");
-        if (kind == "LeaveRest" && !requestedRest) throw new DomainValidationException("R休 必須保留 R* 標記。");
         if (requestedRest && kind is not ("Rest" or "SpecialRest" or "LeaveRest"))
             throw new DomainValidationException("R* 標記只能套用在休假日格。");
         if (kind == "Work")
