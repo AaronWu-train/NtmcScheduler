@@ -38,7 +38,7 @@
 
     @if (activeStep == 1)
     {
-        <section class="card"><h2>@MonthLabel(demand.Month)</h2><p>最後儲存：@Taipei(demand.UpdatedAtUtc)</p>@if (canEdit) { <button class="danger" disabled="@isBusy" @onclick="DeleteDemandAsync">@(isBusy ? "處理中…" : "刪除本月需求")</button> }</section>
+        <section class="card"><h2>@MonthLabel(demand.Month)</h2><p>最後儲存：@Taipei(demand.UpdatedAtUtc)</p>@if (canEdit) { <button class="danger" disabled="@isBusy" @onclick="DeleteDemandAsync">@(isBusy ? "處理中…" : "刪除本月需求")</button> }<div class="step-actions"><span></span><button class="primary" @onclick="() => activeStep = 2">下一步：準備上月班表</button></div></section>
     }
     else if (activeStep == 2)
     {
