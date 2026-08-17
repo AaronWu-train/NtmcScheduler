@@ -5,8 +5,9 @@
 @inject CurrentActorService CurrentActor
 @inject IJSRuntime JS
 
-<PageTitle>@workspaceCode 員工列表</PageTitle>
-<div class="page-title"><div><h1>@workspaceCode 員工列表</h1><p>維護建立新月份 Demand 時使用的人員主檔。</p></div><PageHelp Title="員工列表說明"><p>員工主檔只會複製到之後新建的月份；修改或刪除不會回寫既有 Demand 或班表。刪除後可用相同 ID 重新建立回任人員。M 的所屬為 LB01–LB12；T 的所屬為專業分組，能力必須為 1–5。</p></PageHelp></div>
+<PageTitle>@workspaceCode 員工資料</PageTitle>
+<WorkspaceNav Workspace="@Workspace.ToLowerInvariant()" />
+<div class="page-title"><div><h1>@workspaceCode 員工資料</h1><p>維護之後建立月份時會使用的人員名單。</p></div><PageHelp Title="員工資料說明"><p>到職日期只供本月新進員工判斷何時開始排班。修改或刪除不會回寫既有需求或班表；回任時可使用相同 ID 重新建立。</p></PageHelp></div>
 @if (message is not null) { <p class="alert @messageClass" role="status">@message</p> }
 @if (canEdit)
 {
@@ -18,22 +19,22 @@
             <p class="format-help">UTF-8（可含 BOM），最大 5 MB。到職日期可留空；有填寫時使用 yyyy-MM-dd。匯入會新增或更新員工，未出現的既有員工不會刪除。</p>
             <div class="toolbar">
                 <a class="button-link" href="/download/templates/@Workspace.ToLowerInvariant()/employees.csv">下載 @workspaceCode 範本</a>
-                <label class="button-link primary file-upload-button">上傳 CSV<InputFile OnChange="PreviewImportAsync" accept=".csv,text/csv" aria-label="上傳員工 CSV" /></label>
+                <label class="button-link primary file-upload-button">匯入員工 CSV<InputFile OnChange="PreviewImportAsync" accept=".csv,text/csv" aria-label="匯入員工 CSV" disabled="@isBusy" /></label>
             </div>
         </section>
     }
     else
     {
-        <section class="card"><h2>匯入預覽</h2>@foreach (var error in importPreview.Errors) { <p class="error-text">@error</p> }@foreach (var difference in importPreview.Differences) { <p>@difference</p> }@if (importPreview.IsValid) { <button class="primary" @onclick="ConfirmImportAsync">確認匯入</button> } <button @onclick="CancelImport">取消</button></section>
+        <section class="card"><h2>員工匯入預覽</h2>@foreach (var error in importPreview.Errors) { <p class="error-text">@error</p> }@foreach (var difference in importPreview.Differences) { <p>@difference</p> }<div class="step-actions"><button disabled="@isBusy" @onclick="CancelImport">取消匯入</button>@if (importPreview.IsValid) { <button class="primary" disabled="@isBusy" @onclick="ConfirmImportAsync">@(isBusy ? "處理中…" : "確認匯入員工")</button> }</div></section>
     }
     <EditForm Model="form" OnValidSubmit="SaveAsync" class="card form-grid">
         <DataAnnotationsValidator /><ValidationSummary />
         <label>員工 ID<InputText @bind-Value="form.EmployeeCode" /></label>
         <label>姓名<InputText @bind-Value="form.Name" /></label>
         <label>所屬<InputText @bind-Value="form.Affiliation" placeholder="@(workspaceCode == WorkspaceCode.M ? "LB01" : "專業分組")" /></label>
-        <label>到職日期<InputDate @bind-Value="form.EmploymentStartDate" /></label>
+        <label>到職日期（新進員工）<InputDate @bind-Value="form.EmploymentStartDate" /></label>
         @if (workspaceCode == WorkspaceCode.T) { <label>能力<InputNumber @bind-Value="form.Ability" min="1" max="5" /></label> }
-        <button type="submit" class="primary">@(form.Id is null ? "新增員工" : "儲存修改")</button>
+        <button type="submit" class="primary" disabled="@isBusy">@(isBusy ? "處理中…" : form.Id is null ? "新增員工" : "儲存員工")</button>
         @if (form.Id is not null) { <button type="button" @onclick="ClearForm">取消編輯</button> }
     </EditForm>
 }
@@ -60,13 +61,14 @@
     private string? message;
     private string messageClass = "success";
     private static readonly StringComparer SortComparer = StringComparer.Create(CultureInfo.GetCultureInfo("zh-TW"), false);
-    private string sortColumn = "affiliation";
+    private string sortColumn = "id";
     private bool sortDescending;
+    private bool isBusy;
     private byte[]? pendingImport;
     private EmployeeImportPreviewDto? importPreview;
     private string EmployeeCsvColumns => workspaceCode == WorkspaceCode.M
         ? "ID、姓名、所屬車站、到職日期"
-        : "ID、姓名、專業分組、到職日期、能力";
+        : "ID、姓名、所屬、到職日期、能力";
 
     protected override async Task OnParametersSetAsync()
     {
@@ -114,12 +116,12 @@
     private async Task DeleteAsync(EmployeeDto employee)
     {
         var confirmed = await JS.InvokeAsync<bool>("confirm",
-            $"確定要刪除員工「{employee.EmployeeCode} {employee.Name}」嗎？\n\n刪除後無法復原，但既有 Demand 與班表不受影響；同一人回任時可用相同 ID 重新建立。");
+            $"確定要刪除員工「{employee.EmployeeCode} {employee.Name}」嗎？\n\n刪除後無法復原，但既有需求與班表不受影響；回任時可用相同 ID 重新建立。");
         if (!confirmed) return;
         await RunAsync(async () =>
         {
             await Service.DeleteAsync(employee.Id, employee.RevisionToken, await CurrentActor.GetAsync()); await ReloadAsync();
-        }, "員工已刪除；既有 Demand、班表與稽核紀錄仍保留。");
+        }, "員工已刪除；既有需求、班表與 Log 紀錄仍保留。");
     }
     private Task PreviewImportAsync(InputFileChangeEventArgs args) => RunAsync(async () =>
     {
@@ -135,8 +137,9 @@
     private void CancelImport() { pendingImport = null; importPreview = null; }
     private async Task RunAsync(Func<Task> action, string success)
     {
-        try { await action(); messageClass = "success"; message = success; }
+        isBusy = true; messageClass = "success"; message = "處理中…"; await InvokeAsync(StateHasChanged); try { await action(); message = success; }
         catch (Exception exception) { messageClass = "error"; message = exception.Message; }
+        finally { isBusy = false; }
     }
     private sealed class EmployeeForm
     {

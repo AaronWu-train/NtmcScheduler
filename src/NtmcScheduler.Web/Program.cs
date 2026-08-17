@@ -33,12 +33,15 @@ else
     builder.Logging.AddJsonConsole();
 }
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
+var secureCookies = !builder.Environment.IsDevelopment();
+builder.Services.AddSingleton<ScheduleRunNotifier>();
+builder.Services.AddSingleton<IScheduleRunNotifier>(services => services.GetRequiredService<ScheduleRunNotifier>());
 builder.Services.AddAntiforgery(options =>
 {
-    options.Cookie.Name = "__Host-NtmcAntiforgery";
+    options.Cookie.Name = secureCookies ? "__Host-NtmcAntiforgery" : "NtmcAntiforgery-Dev";
     options.Cookie.HttpOnly = true;
     options.Cookie.SameSite = SameSiteMode.Strict;
-    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.SecurePolicy = secureCookies ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest;
 });
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddHttpContextAccessor();
@@ -66,10 +69,10 @@ builder.Services.AddAuthentication(options =>
     {
         options.ApplicationCookie!.Configure(cookie =>
         {
-            cookie.Cookie.Name = "__Host-NtmcScheduler";
+            cookie.Cookie.Name = secureCookies ? "__Host-NtmcScheduler" : "NtmcScheduler-Dev";
             cookie.Cookie.HttpOnly = true;
             cookie.Cookie.SameSite = SameSiteMode.Strict;
-            cookie.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+            cookie.Cookie.SecurePolicy = secureCookies ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest;
             cookie.LoginPath = "/Account/Login";
             cookie.AccessDeniedPath = "/Account/AccessDenied";
             cookie.ExpireTimeSpan = TimeSpan.FromMinutes(30);
@@ -204,13 +207,37 @@ app.MapGet("/download/schedules/{versionId:guid}-external.csv", async (
     return Results.File(bytes, "text/csv; charset=utf-8", $"schedule-{versionId:N}-external.csv");
 }).RequireAuthorization();
 
+app.MapGet("/demands/{demandId:guid}/perpetual.csv", async (
+    Guid demandId,
+    HttpContext context,
+    NtmcDbContext db,
+    IDemandService demands,
+    CancellationToken cancellationToken) =>
+{
+    var actor = await CreateHttpActorAsync(context.User, context, db, cancellationToken);
+    var file = await demands.ExportPerpetualScheduleAsync(demandId, actor, cancellationToken);
+    return Results.Text(Encoding.UTF8.GetString(file.Content), "text/plain; charset=utf-8");
+}).RequireAuthorization();
+
+app.MapGet("/download/demands/{demandId:guid}/perpetual.csv", async (
+    Guid demandId,
+    HttpContext context,
+    NtmcDbContext db,
+    IDemandService demands,
+    CancellationToken cancellationToken) =>
+{
+    var actor = await CreateHttpActorAsync(context.User, context, db, cancellationToken);
+    var file = await demands.ExportPerpetualScheduleAsync(demandId, actor, cancellationToken);
+    return Results.File(file.Content, "text/csv; charset=utf-8", file.FileName);
+}).RequireAuthorization();
+
 app.MapGet("/download/templates/{workspace}/{kind}.csv", (string workspace, string kind) =>
 {
     if (!Enum.TryParse<WorkspaceCode>(workspace, true, out var workspaceCode)) return Results.NotFound();
     var header = kind.ToLowerInvariant() switch
     {
         "employees" when workspaceCode == WorkspaceCode.M => "ID,姓名,所屬車站,到職日期",
-        "employees" when workspaceCode == WorkspaceCode.T => "ID,姓名,專業分組,到職日期,能力",
+        "employees" when workspaceCode == WorkspaceCode.T => "ID,姓名,所屬,到職日期,能力",
         "demand" or "previous" => ScheduleCsv.MonthlyHeader,
         "perpetual" when workspaceCode == WorkspaceCode.M => ScheduleCsv.MPerpetualHeader,
         "rest-intervals" => "區間開始日期,區間結束日期,國定假日日期",

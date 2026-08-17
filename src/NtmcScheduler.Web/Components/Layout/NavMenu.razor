@@ -1,13 +1,9 @@
 <nav aria-label="主要導覽">
-    <a href="/m/employees">M 員工</a>
-    <a href="/m/demand">M 排班</a>
-    <a href="/m/schedules">M 班表</a>
-    <a href="/t/employees">T 員工</a>
-    <a href="/t/demand">T 排班</a>
-    <a href="/t/schedules">T 班表</a>
-    <a href="/configuration">共同設定</a>
+    <NavLink href="/" Match="NavLinkMatch.All">Dashboard</NavLink>
+    <NavLink href="/m/demand">站務 M</NavLink>
+    <NavLink href="/t/demand">檢測 T</NavLink>
+    <NavLink href="/configuration">共同設定</NavLink>
     <AuthorizeView Roles="Administrator">
-        <a href="/admin/users">帳號</a>
-        <a href="/admin/audit">稽核</a>
+        <details class="nav-more"><summary>管理功能</summary><div><NavLink href="/admin/users">帳號管理</NavLink><NavLink href="/admin/audit">Log 紀錄</NavLink></div></details>
     </AuthorizeView>
 </nav>

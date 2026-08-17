@@ -5,7 +5,7 @@
 @inject CurrentActorService CurrentActor
 
 <PageTitle>共同設定</PageTitle>
-<div class="page-title"><div><h1>共同設定</h1><p>八週區間、國定假日與非常態班型。</p></div><PageHelp Title="共同設定說明"><p>儲存後只影響之後新建的 Demand 與求解。區間必須連續且各為 56 日；國定假日只填週一至週五。非常態班型名稱可空白，代碼與時間必填。</p></PageHelp></div>
+<div class="page-title"><div><h1>共同設定</h1><p>維護八週區間、國定假日與非常態班型。</p></div><PageHelp Title="共同設定說明"><p>儲存後只影響之後新建的需求與求解。區間必須連續且各為 56 日；國定假日只填週一至週五。非常態班型名稱可空白，代碼與時間必填。</p></PageHelp></div>
 @if (message is not null) { <p class="alert @messageClass" role="status">@message</p> }
 
 <section class="card">
@@ -14,9 +14,9 @@
         <div class="configuration-actions"><a class="button-link"
                                                   href="/download/templates/m/rest-intervals.csv">下載範本</a><label class="button-link file-upload-button">上傳
             CSV
-            <InputFile OnChange="UploadIntervalsAsync" accept=".csv,text/csv" />
-        </label><button type="button" @onclick="AddInterval">新增區間</button><button type="button" class="primary"
-                                                                                  @onclick="SaveIntervalsAsync">儲存設定</button></div>
+            <InputFile OnChange="UploadIntervalsAsync" accept=".csv,text/csv" disabled="@isBusy" />
+        </label><button type="button" disabled="@isBusy" @onclick="AddInterval">新增區間</button><button type="button" class="primary" disabled="@isBusy"
+                                                                                  @onclick="SaveIntervalsAsync">@(isBusy ? "處理中…" : "儲存八週區間")</button></div>
     }
 </div>
     <p class="format-help">UTF-8（可含 BOM）、固定表頭，最大 5 MB；上傳會取代下方尚未儲存的八週區間。</p>
@@ -33,9 +33,9 @@
         <div class="configuration-actions"><a class="button-link"
                                                   href="/download/templates/m/non-standard-shifts.csv">下載範本</a><label
             class="button-link file-upload-button">上傳 CSV
-            <InputFile OnChange="UploadShiftsAsync" accept=".csv,text/csv" />
-        </label><button type="button" @onclick="AddShift">新增班型</button><button type="button" class="primary"
-                                                                               @onclick="SaveShiftsAsync">儲存設定</button></div>
+            <InputFile OnChange="UploadShiftsAsync" accept=".csv,text/csv" disabled="@isBusy" />
+        </label><button type="button" disabled="@isBusy" @onclick="AddShift">新增班型</button><button type="button" class="primary" disabled="@isBusy"
+                                                                               @onclick="SaveShiftsAsync">@(isBusy ? "處理中…" : "儲存非常態班型")</button></div>
     }
 </div>
     <p class="format-help">UTF-8（可含 BOM）、表頭「班型,時間,代碼」，時間使用 HH:mm~HH:mm，最大 5 MB；上傳會取代下方尚未儲存的班型。</p>
@@ -52,6 +52,7 @@
     private readonly List<IntervalRow> intervals = [];
     private readonly List<ShiftRow> shifts = [];
     private bool canEdit;
+    private bool isBusy;
     private string? message;
     private string messageClass = "success";
 
@@ -90,12 +91,14 @@
 
     private async Task RunUploadAsync(Func<Task> action, string success)
     {
-        try { await action(); messageClass = "success"; message = success; }
+        isBusy = true; messageClass = "success"; message = "處理中…"; await InvokeAsync(StateHasChanged); try { await action(); message = success; }
         catch (Exception exception) { messageClass = "error"; message = exception.Message; }
+        finally { isBusy = false; }
     }
 
     private async Task SaveIntervalsAsync()
     {
+        isBusy = true; messageClass = "success"; message = "處理中…"; await InvokeAsync(StateHasChanged);
         try
         {
             var intervalDtos = intervals.Select(row => new RestIntervalDto(row.Start, row.End,
@@ -104,10 +107,12 @@
             messageClass = "success"; message = "八週 16R 區間已儲存。";
         }
         catch (Exception exception) { messageClass = "error"; message = exception.Message; }
+        finally { isBusy = false; }
     }
 
     private async Task SaveShiftsAsync()
     {
+        isBusy = true; messageClass = "success"; message = "處理中…"; await InvokeAsync(StateHasChanged);
         try
         {
             if (current is null) throw new DomainValidationException("請先儲存八週 16R 區間。");
@@ -116,6 +121,7 @@
             messageClass = "success"; message = "非常態班型已儲存。";
         }
         catch (Exception exception) { messageClass = "error"; message = exception.Message; }
+        finally { isBusy = false; }
     }
 
     private sealed class IntervalRow { public DateOnly Start { get; set; } public DateOnly End { get; set; } public string Holidays { get; set; } = ""; }

@@ -14,12 +14,12 @@
     <label><InputCheckbox @bind-Value="newUser.Administrator" /> Administrator</label>
     <label><InputCheckbox @bind-Value="newUser.M" /> M 編輯</label>
     <label><InputCheckbox @bind-Value="newUser.T" /> T 編輯</label>
-    <button type="submit" class="primary">建立帳號</button>
+    <button type="submit" class="primary" disabled="@isBusy">@(isBusy ? "處理中…" : "建立帳號")</button>
 </EditForm>
 <div class="table-scroll"><table><thead><tr><th>帳號</th><th>狀態</th><th>管理者</th><th>M</th><th>T</th><th>一次性密碼</th><th>操作</th></tr></thead><tbody>
 @foreach (var row in users)
 {
-    <tr><td>@row.UserName</td><td><label><input type="checkbox" @bind="row.IsDisabled" /> 停用</label></td><td><input type="checkbox" @bind="row.IsAdministrator" /></td><td><input type="checkbox" @bind="row.M" /></td><td><input type="checkbox" @bind="row.T" /></td><td><input type="password" @bind="row.ResetPassword" autocomplete="new-password" /></td><td><button @onclick="() => SaveAsync(row)">儲存</button> <button @onclick="() => ResetAsync(row)" disabled="@(string.IsNullOrWhiteSpace(row.ResetPassword))">重設密碼</button></td></tr>
+    <tr><td>@row.UserName</td><td><label><input type="checkbox" disabled="@isBusy" @bind="row.IsDisabled" /> 停用</label></td><td><input aria-label="@row.UserName 管理者" type="checkbox" disabled="@isBusy" @bind="row.IsAdministrator" /></td><td><input aria-label="@row.UserName M 編輯" type="checkbox" disabled="@isBusy" @bind="row.M" /></td><td><input aria-label="@row.UserName T 編輯" type="checkbox" disabled="@isBusy" @bind="row.T" /></td><td><input aria-label="@row.UserName 新的一次性密碼" type="password" disabled="@isBusy" @bind="row.ResetPassword" autocomplete="new-password" /></td><td><button disabled="@isBusy" @onclick="() => SaveAsync(row)">儲存權限</button> <button @onclick="() => ResetAsync(row)" disabled="@(isBusy || string.IsNullOrWhiteSpace(row.ResetPassword))">重設密碼</button></td></tr>
 }
 </tbody></table></div>
 
@@ -28,6 +28,7 @@
     private readonly List<UserRow> users = [];
     private string? message;
     private string messageClass = "success";
+    private bool isBusy;
     protected override async Task OnInitializedAsync() => await ReloadAsync();
     private async Task ReloadAsync()
     {
@@ -55,8 +56,9 @@
     }, "一次性密碼已重設。");
     private async Task RunAsync(Func<Task> action, string success)
     {
-        try { await action(); messageClass = "success"; message = success; }
+        isBusy = true; messageClass = "success"; message = "處理中…"; await InvokeAsync(StateHasChanged); try { await action(); message = success; }
         catch (Exception exception) { messageClass = "error"; message = exception.Message; }
+        finally { isBusy = false; }
     }
     private static IReadOnlySet<WorkspaceCode> Workspaces(bool m, bool t)
     {
