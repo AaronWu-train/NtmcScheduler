@@ -449,6 +449,41 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
+    public async Task ScheduleValidation_TAttendanceUsesHalfOfMonthlyShiftGroup()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var actor = Editor(WorkspaceCode.T);
+        var revision = new ConfigurationRevision { Version = 1, CreatedByUserId = actor.UserId };
+        var month = new DateOnly(2026, 9, 1);
+        var monthDates = Enumerable.Range(0, 30).Select(month.AddDays).ToArray();
+        var version = Version(revision, month, "候選");
+        version.Workspace = WorkspaceCode.T;
+        for (var index = 1; index <= 10; index++)
+        {
+            version.Employees.Add(new()
+            {
+                EmployeeCode = $"T{index:000}",
+                Name = $"檢測{index:000}",
+                Affiliation = "號誌",
+                Ability = 4,
+                MonthlyShift = "Night",
+                Assignments = monthDates.Select(date => new ScheduleAssignment
+                {
+                    Date = date,
+                    Kind = index <= 6 ? "Work" : "Rest",
+                    Shift = index <= 6 ? "Night" : null
+                }).ToList()
+            });
+        }
+        database.Context.AddRange(revision, version);
+        await database.Context.SaveChangesAsync();
+
+        var result = await new ScheduleValidationService(database.Context).ValidateAsync(version.Id, actor);
+
+        Assert.IsFalse(result.Issues.Any(x => x.RuleName == "班組出勤不足"));
+    }
+
+    [TestMethod]
     public async Task PreviousUpload_StoresDemandHistoryWithoutCreatingScheduleVersion()
     {
         await using var database = await TestDatabase.CreateAsync();
@@ -644,6 +679,35 @@ public sealed class WebInfrastructureTests
         Assert.AreEqual(1, detail.IntervalStats.Single().RequiredSpecialRest);
         Assert.AreEqual(1, detail.Coverage.Single(x => x.Date == version.Month && x.Station == "LB09" && x.Shift == "Early").External);
         Assert.IsTrue(detail.Coverage.Single(x => x.Date == version.Month && x.Station == "LB01" && x.Shift == "Early").AllowsMultiple);
+    }
+
+    [TestMethod]
+    public async Task TScheduleMonthlyShift_CanBeUpdatedAndIsAudited()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var actor = Editor(WorkspaceCode.T);
+        var revision = new ConfigurationRevision { Version = 1, CreatedByUserId = actor.UserId };
+        var version = Version(revision, new DateOnly(2026, 8, 1), "T 班表");
+        version.Workspace = WorkspaceCode.T;
+        var employee = new ScheduleEmployeeSnapshot
+        {
+            EmployeeCode = "T001",
+            Name = "王小明",
+            Affiliation = "號誌",
+            Ability = 5,
+            MonthlyShift = "Early",
+            Assignments = [new ScheduleAssignment { Date = version.Month, Kind = "Work", Shift = "Early" }]
+        };
+        version.Employees.Add(employee);
+        database.Context.AddRange(revision, version);
+        await database.Context.SaveChangesAsync();
+
+        var service = new ScheduleService(database.Context, new ScheduleValidationService(database.Context));
+        var detail = await service.UpdateMonthlyShiftAsync(version.Id, employee.Id, "Night", version.RevisionToken, actor);
+
+        Assert.AreEqual("Night", detail.Employees.Single().MonthlyShift);
+        Assert.AreEqual("Night", (await database.Context.ScheduleEmployeeSnapshots.SingleAsync(x => x.Id == employee.Id)).MonthlyShift);
+        Assert.AreEqual(1, await database.Context.AuditLogs.CountAsync(x => x.Action == "ScheduleEmployeeMonthlyShiftUpdated"));
     }
 
     [TestMethod]

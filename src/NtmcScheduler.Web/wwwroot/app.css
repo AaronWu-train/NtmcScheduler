@@ -125,7 +125,8 @@ thead th { background: #e9eef5; }
 .schedule-grid thead .sticky-col { z-index: 5; background: #e9eef5; }
 .schedule-grid .sticky-id { left: 0; min-width: 7rem; max-width: 7rem; }
 .schedule-grid .sticky-name { left: 7rem; min-width: 6rem; max-width: 8rem; }
-.schedule-grid .sticky-affiliation { left: 13rem; min-width: 4.5rem; max-width: 5rem; }
+.schedule-grid .sticky-affiliation { left: 13rem; min-width: 5rem; max-width: 6.5rem; }
+.schedule-grid .sticky-monthly-shift { left: 13rem; min-width: 5.5rem; max-width: 6.5rem; text-align: center; }
 .inline-field { min-height: 2.3rem; }
 .number-field { width: 4.5rem; }
 .perpetual-field { width: 7rem; }

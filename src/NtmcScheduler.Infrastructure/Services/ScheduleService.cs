@@ -90,6 +90,41 @@ public sealed class ScheduleService(
         return ToDetail(version, adopted, checkedSchedule.Issues, checkedSchedule.Stats);
     }
 
+    public async Task<ScheduleDetailDto> UpdateMonthlyShiftAsync(
+        Guid versionId,
+        Guid employeeSnapshotId,
+        string monthlyShift,
+        Guid revisionToken,
+        ActorContext actor,
+        CancellationToken cancellationToken = default)
+    {
+        var version = await VersionQuery().SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
+            ?? throw new DomainValidationException("找不到班表版本。");
+        ServiceSupport.RequireEditor(actor, version.Workspace);
+        if (version.IsArchived) throw new DomainValidationException("封存班表不可修改。");
+        if (version.Workspace != WorkspaceCode.T) throw new DomainValidationException("只有 T 班表可設定月班別。");
+        if (version.RevisionToken != revisionToken) throw new ConcurrencyConflictException("班表已被其他人修改，請重新整理。");
+        var shift = SolverScheduleMapper.ParseShift(monthlyShift)
+            ?? throw new DomainValidationException("T 月班別必須為早、午或夜。");
+        var employee = version.Employees.SingleOrDefault(x => x.Id == employeeSnapshotId)
+            ?? throw new DomainValidationException("找不到班表員工。");
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var before = new { employee.MonthlyShift };
+        employee.MonthlyShift = shift.ToString();
+        Touch(version, actor.UserId);
+        await db.SaveChangesAsync(cancellationToken);
+        var checkedSchedule = await validation.ValidateAsync(version.Id, actor, cancellationToken);
+        version.HasErrors = checkedSchedule.Issues.Any(x => x.Severity == ValidationSeverity.Error);
+        version.WarningCount = checkedSchedule.Issues.Count(x => x.Severity == ValidationSeverity.Warning);
+        ServiceSupport.AddAudit(db, actor, "ScheduleEmployeeMonthlyShiftUpdated", version.Workspace, "ScheduleEmployeeSnapshot", employee.Id,
+            before, new { employee.MonthlyShift });
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        var adopted = await db.AdoptedSchedules.AsNoTracking().AnyAsync(x => x.ScheduleVersionId == version.Id, cancellationToken);
+        return ToDetail(version, adopted, checkedSchedule.Issues, checkedSchedule.Stats);
+    }
+
     public async Task AdoptAsync(Guid versionId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
     {
         var version = await db.ScheduleVersions.SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)

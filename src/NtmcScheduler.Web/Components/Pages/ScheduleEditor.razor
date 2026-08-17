@@ -69,6 +69,12 @@ else
                 <th class="sticky-col sticky-affiliation sortable" rowspan="2">
                     <button class="sort-button" @onclick='() => SortBy("affiliation")'>所屬 @SortMark("affiliation")</button>
                 </th>
+                @if (detail.Version.Workspace == WorkspaceCode.T)
+                {
+                    <th class="sticky-col sticky-monthly-shift sortable" rowspan="2">
+                        <button class="sort-button" @onclick='() => SortBy("monthlyShift")'>T月班別 @SortMark("monthlyShift")</button>
+                    </th>
+                }
                 @foreach (var day in Days())
                 {
                     <th rowspan="2" class="day-header @DateClass(day)">
@@ -107,6 +113,14 @@ else
                             <small class="new-hire">新人 @employee.EmploymentStartDate!.Value.ToString("M/d")</small>
                         }
                     </td><td class="sticky-col sticky-affiliation">@employee.Affiliation</td>
+                    @if (detail.Version.Workspace == WorkspaceCode.T)
+                    {
+                        <td class="sticky-col sticky-monthly-shift">
+                            <select class="cell-editor" aria-label="@employee.Name 的 T 月班別" disabled="@(!canEdit || detail.Version.IsArchived || isBusy)" value="@employee.MonthlyShift" @onchange='args => UpdateMonthlyShiftAsync(employee, args.Value?.ToString())'>
+                                <option value="Early">早</option><option value="Afternoon">午</option><option value="Night">夜</option>
+                            </select>
+                        </td>
+                    }
                     @foreach (var day in Days())
                     {
                         var cell = detail.Assignments.FirstOrDefault(x => x.EmployeeSnapshotId == employee.Id && x.Date == day);
@@ -257,6 +271,14 @@ else
 
     private IEnumerable<ScheduleEmployeeInfoDto> SortedEmployees()
     {
+        if (sortColumn == "monthlyShift")
+        {
+            var monthlyShiftOrdered = sortDescending
+                ? detail!.Employees.OrderByDescending(x => MonthlyShiftSortOrder(x.MonthlyShift))
+                : detail!.Employees.OrderBy(x => MonthlyShiftSortOrder(x.MonthlyShift));
+            return monthlyShiftOrdered.ThenBy(x => x.EmployeeCode, StringComparer.OrdinalIgnoreCase);
+        }
+
         Func<ScheduleEmployeeInfoDto, string> key = sortColumn switch { "name" => x => x.Name, "affiliation" => x => x.Affiliation, _ => x => x.EmployeeCode };
         var ordered = sortDescending ? detail!.Employees.OrderByDescending(key, StringComparer.OrdinalIgnoreCase) : detail!.Employees.OrderBy(key, StringComparer.OrdinalIgnoreCase);
         return ordered.ThenBy(x => x.EmployeeCode, StringComparer.OrdinalIgnoreCase);
@@ -273,6 +295,7 @@ else
     }
 
     private string SortMark(string column) => sortColumn == column ? sortDescending ? "▼" : "▲" : "";
+    private static int MonthlyShiftSortOrder(string? monthlyShift) => monthlyShift switch { "Early" => 0, "Afternoon" => 1, "Night" => 2, _ => 3 };
     private bool IsNewHire(ScheduleEmployeeInfoDto employee) => employee.EmploymentStartDate is { } date && date >= detail!.Version.Month && date < detail.Version.Month.AddMonths(1);
 
     private string DateClass(DateOnly date)
@@ -324,6 +347,8 @@ else
         await Service.ArchiveAsync(VersionId, detail!.Version.RevisionToken, await CurrentActor.GetAsync());
         await LoadAsync();
     }, "班表已封存。");
+
+    private Task UpdateMonthlyShiftAsync(ScheduleEmployeeInfoDto employee, string? monthlyShift) => RunAsync(async () => { detail = await Service.UpdateMonthlyShiftAsync(VersionId, employee.Id, monthlyShift ?? "", detail!.Version.RevisionToken, await CurrentActor.GetAsync()); }, "T 月班別已儲存並重新檢查整月班表。");
 
     private void ApplyNonStandard(ChangeEventArgs args)
     {

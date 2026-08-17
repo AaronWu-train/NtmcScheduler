@@ -65,6 +65,7 @@ public interface IScheduleService
     Task<IReadOnlyList<ScheduleVersionDto>> ListVersionsAsync(WorkspaceCode workspace, DateOnly month, ActorContext actor, bool includeArchived = false, CancellationToken cancellationToken = default);
     Task<ScheduleDetailDto> GetAsync(Guid versionId, ActorContext actor, CancellationToken cancellationToken = default);
     Task<ScheduleDetailDto> UpdateAssignmentAsync(Guid versionId, Guid assignmentId, string kind, bool requestedRest, string? station, string? shift, DateTimeOffset? eventStart, DateTimeOffset? eventEnd, string? eventDescription, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<ScheduleDetailDto> UpdateMonthlyShiftAsync(Guid versionId, Guid employeeSnapshotId, string monthlyShift, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task AdoptAsync(Guid versionId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task ArchiveAsync(Guid versionId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task<byte[]> ExportCsvAsync(Guid versionId, ActorContext actor, CancellationToken cancellationToken = default);

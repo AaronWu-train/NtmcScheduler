@@ -20,6 +20,42 @@
 {
     <p class="alert @messageClass" role="status">@message</p>
 }
+@if (workspaceCode == WorkspaceCode.T)
+{
+    <section class="card">
+        <div class="section-heading">
+            <div>
+                <h2>匯入歷史班表</h2>
+                <p>指定月份後，上傳為一份可編輯的一般班表；不會自動採用或覆蓋既有版本。</p>
+            </div>
+            <div class="toolbar">
+                <label>歷史月份<input type="month" value="@historyMonthText" @onchange="args => historyMonthText = args.Value?.ToString() ?? historyMonthText"/></label><a class="button-link" href="/download/templates/t/previous.csv">下載範本</a>
+                @if (canEdit)
+                {
+                    <label class="button-link primary file-upload-button">上傳歷史班表<InputFile OnChange="ImportHistoryAsync" accept=".csv,text/csv" disabled="@isBusy"/></label>
+                }
+            </div>
+        </div>
+    </section>
+}
+@if (workspaceCode == WorkspaceCode.M)
+{
+    <section class="card">
+        <div class="section-heading">
+            <div>
+                <h2>匯入歷史班表</h2>
+                <p>指定月份後，上傳為一份可編輯的一般班表；不會自動採用或覆蓋既有版本。</p>
+            </div>
+            <div class="toolbar">
+                <label>歷史月份<input type="month" value="@historyMonthText" @onchange="args => historyMonthText = args.Value?.ToString() ?? historyMonthText"/></label><a class="button-link" href="/download/templates/m/previous.csv">下載範本</a>
+                @if (canEdit)
+                {
+                    <label class="button-link primary file-upload-button">上傳歷史班表<InputFile OnChange="ImportHistoryAsync" accept=".csv,text/csv" disabled="@isBusy"/></label>
+                }
+            </div>
+        </div>
+    </section>
+}
 <div class="month-list">
     @foreach (var month in months)
     {
@@ -83,21 +119,6 @@
 }
 @if (workspaceCode == WorkspaceCode.M)
 {
-    <section class="card">
-        <div class="section-heading">
-            <div>
-                <h2>匯入歷史班表</h2>
-                <p>指定月份後，上傳為一份可編輯的一般班表；不會自動採用或覆蓋既有版本。</p>
-            </div>
-            <div class="toolbar">
-                <label>歷史月份<input type="month" value="@historyMonthText" @onchange="args => historyMonthText = args.Value?.ToString() ?? historyMonthText"/></label><a class="button-link" href="/download/templates/m/previous.csv">下載範本</a>
-                @if (canEdit)
-                {
-                    <label class="button-link primary file-upload-button">上傳歷史班表<InputFile OnChange="ImportHistoryAsync" accept=".csv,text/csv" disabled="@isBusy"/></label>
-                }
-            </div>
-        </div>
-    </section>
     <section class="card">
         <div class="section-heading">
             <div>
@@ -175,24 +196,6 @@
                 </div>
             }
         }
-    </section>
-}
-@if (workspaceCode == WorkspaceCode.T)
-{
-    <section class="card">
-        <div class="section-heading">
-            <div>
-                <h2>匯入歷史班表</h2>
-                <p>指定月份後，上傳為一份可編輯的一般班表；不會自動採用或覆蓋既有版本。</p>
-            </div>
-            <div class="toolbar">
-                <label>歷史月份<input type="month" value="@historyMonthText" @onchange="args => historyMonthText = args.Value?.ToString() ?? historyMonthText"/></label><a class="button-link" href="/download/templates/t/previous.csv">下載範本</a>
-                @if (canEdit)
-                {
-                    <label class="button-link primary file-upload-button">上傳歷史班表<InputFile OnChange="ImportHistoryAsync" accept=".csv,text/csv" disabled="@isBusy"/></label>
-                }
-            </div>
-        </div>
     </section>
 }
 

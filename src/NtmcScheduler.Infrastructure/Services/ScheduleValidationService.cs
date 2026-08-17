@@ -197,8 +197,9 @@ public sealed class ScheduleValidationService(NtmcDbContext db) : IScheduleValid
             {
                 var working = version.Employees.Where(employee => employee.Assignments.Any(x => x.Date == date && x.Kind == "Work" && x.Shift == shift)).ToArray();
                 var expected = version.Employees.Count(x => x.MonthlyShift == shift);
-                if (working.Length < Math.Max(0, expected - 2))
-                    issues.Add(new(ValidationSeverity.Warning, "班組出勤不足", $"{ShiftLabel(shift)}正常出勤 {working.Length} 人，低於月班組人數 {expected} 減 2。", null, date, null, shift));
+                var minimumAttendance = expected / 2;
+                if (working.Length < minimumAttendance)
+                    issues.Add(new(ValidationSeverity.Warning, "班組出勤不足", $"{ShiftLabel(shift)}正常出勤 {working.Length} 人，低於當日在職組員數 {expected} 人的一半 {minimumAttendance} 人。", null, date, null, shift));
                 var missingSpecialties = version.Employees.Where(x => x.MonthlyShift == shift).Select(x => x.Affiliation).Distinct()
                     .Except(working.Select(x => x.Affiliation)).ToArray();
                 if (missingSpecialties.Length > 0)
