@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using NtmcScheduler.Contracts;
 using NtmcScheduler.Infrastructure.Csv;
 using NtmcScheduler.Infrastructure.Data;
+using NtmcScheduler.Solvers;
 
 namespace NtmcScheduler.Infrastructure.Services;
 
@@ -288,6 +289,7 @@ public sealed class ScheduleService(
 
     private IQueryable<ScheduleVersion> VersionQuery() => db.ScheduleVersions
         .AsSplitQuery()
+        .Include(x => x.SourceRun)
         .Include(x => x.ConfigurationRevision).ThenInclude(x => x.RestIntervals).ThenInclude(x => x.NationalHolidays)
         .Include(x => x.ConfigurationRevision).ThenInclude(x => x.NonStandardShifts)
         .Include(x => x.Employees).ThenInclude(x => x.Assignments)
@@ -310,7 +312,8 @@ public sealed class ScheduleService(
             stats,
             IntervalStats(version),
             Coverage(version),
-            issues);
+            issues,
+            SoftSuggestions(version));
     }
 
     private static IReadOnlyList<ScheduleIntervalStatsDto> IntervalStats(ScheduleVersion version)
@@ -369,6 +372,111 @@ public sealed class ScheduleService(
             return [];
         }
     }
+
+    private static IReadOnlyList<ScheduleSuggestionDto> SoftSuggestions(ScheduleVersion version)
+    {
+        var components = Objectives(version).SelectMany(x => x.Components)
+            .Where(x => x.Value > 0 && DisplaysSuggestion(version.Workspace, x.Name)).ToArray();
+        if (components.Length == 0) return [];
+        var employees = version.Employees.ToDictionary(x => x.EmployeeCode, StringComparer.Ordinal);
+        var input = SourceInput(version);
+        var previousStreaks = PreviousWorkStreaks(input);
+        return components.Select(component => new ScheduleSuggestionDto(component.Name, component.Value,
+            SuggestionLocations(component.Name, version, employees, previousStreaks, input))).ToArray();
+    }
+
+    private static bool DisplaysSuggestion(WorkspaceCode workspace, string name) => workspace switch
+    {
+        WorkspaceCode.T => name is not "MonthBoundaryRestBalance" and not "UnusedLeaveRest" and not "MonthlyRest"
+            and not "SpecialRestBalance" and not "WeekdayRestFairness" and not "HolidayRestFairness",
+        WorkspaceCode.M => name is not "ExternalStaffing" and not "MixedShiftWorkStreak" and not "NightRestEarly"
+            and not "NightRestAfternoon" and not "ShiftChangeWithoutRest" and not "HolidayRestFairness"
+            and not "EarlyAfternoonImbalance" and not "NightShiftTarget",
+        _ => false
+    };
+
+    private static IReadOnlyList<ScheduleSuggestionLocationDto> SuggestionLocations(
+        string name, ScheduleVersion version, IReadOnlyDictionary<string, ScheduleEmployeeSnapshot> employees,
+        IReadOnlyDictionary<string, int> previousStreaks, ScheduleInput? input)
+    {
+        var days = Enumerable.Range(0, DateTime.DaysInMonth(version.Month.Year, version.Month.Month)).Select(version.Month.AddDays).ToArray();
+        var locations = name switch
+        {
+            "NonMonthlyShift" => employees.Values.SelectMany(employee => employee.Assignments
+                .Where(cell => cell.Kind == "Work" && cell.Shift != employee.MonthlyShift)
+                .Select(cell => new ScheduleSuggestionLocationDto($"{employee.EmployeeCode}／{cell.Date:M/d}", employee.EmployeeCode, cell.Date))),
+            "WorkStreak" => employees.Values.SelectMany(employee => WorkStreakEnds(employee, days, previousStreaks.GetValueOrDefault(employee.EmployeeCode), version.Workspace)),
+            "NightToEarlyRest" => input is null ? [] : NightToEarlyLocations(input, employees),
+            "MonthBoundaryRestBalance" => employees.Values.Where(employee => employee.MonthlyShift == "Early")
+                .Select(employee => new ScheduleSuggestionLocationDto($"{employee.EmployeeCode}／{version.Month:M/d} 月初交界", employee.EmployeeCode, version.Month)),
+            "WeekdayRestFairness" or "HolidayRestFairness" => employees.Values
+                .Select(employee => new ScheduleSuggestionLocationDto($"{employee.EmployeeCode}（請比較同月班別休假統計）", employee.EmployeeCode)),
+            "MonthlyRest" or "SpecialRestBalance" or "UnusedLeaveRest" => employees.Values
+                .Select(employee => new ScheduleSuggestionLocationDto($"{employee.EmployeeCode}（請查看右側月統計）", employee.EmployeeCode)),
+            "RequestedRest" => employees.Values.SelectMany(employee => employee.Assignments.Where(cell => cell.RequestedRest && cell.Kind is not "Rest" and not "SpecialRest" and not "LeaveRest")
+                .Select(cell => new ScheduleSuggestionLocationDto($"{employee.EmployeeCode}／{cell.Date:M/d}", employee.EmployeeCode, cell.Date))),
+            _ => days.Select(day => new ScheduleSuggestionLocationDto($"{day:M/d}（請檢視班別人力）", null, day))
+        };
+        return locations.ToArray();
+    }
+
+    private static ScheduleInput? SourceInput(ScheduleVersion version)
+    {
+        if (string.IsNullOrWhiteSpace(version.SourceRun?.InputSnapshotJson)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<ScheduleInput>(version.SourceRun.InputSnapshotJson, ServiceSupport.JsonOptions);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static IReadOnlyDictionary<string, int> PreviousWorkStreaks(ScheduleInput? input) => input?.PreviousMonth.Employees.ToDictionary(employee => employee.EmployeeId, employee => employee.Assignments
+                .OrderByDescending(pair => pair.Key)
+                .TakeWhile(pair => pair.Value.Kind is AssignmentKind.Work or AssignmentKind.WorkEvent)
+                .Count(), StringComparer.Ordinal) ?? new Dictionary<string, int>();
+
+    private static IEnumerable<ScheduleSuggestionLocationDto> NightToEarlyLocations(ScheduleInput input, IReadOnlyDictionary<string, ScheduleEmployeeSnapshot> employees)
+    {
+        foreach (var demandEmployee in input.DemandMonth.Employees.Where(employee => employee.MonthlyShift == Shift.Early))
+        {
+            var history = input.PreviousMonth.Employees.FirstOrDefault(employee => employee.EmployeeId == demandEmployee.EmployeeId)?.Assignments
+                .OrderBy(pair => pair.Key).ToArray() ?? [];
+            var lastNight = history.LastOrDefault(pair => pair.Value.Kind == AssignmentKind.Work && pair.Value.Shift == Shift.Night);
+            if (lastNight.Value is null || !employees.TryGetValue(demandEmployee.EmployeeId, out var employee)) continue;
+            var firstEarly = employee.Assignments.OrderBy(cell => cell.Date).FirstOrDefault(cell => cell.Kind == "Work" && cell.Shift == "Early");
+            if (firstEarly is null) continue;
+            var rests = history.Count(pair => pair.Key > lastNight.Key && IsRest(pair.Value))
+                + employee.Assignments.Count(cell => cell.Date < firstEarly.Date && IsRest(cell));
+            if (rests < 2)
+                yield return new($"{employee.EmployeeCode}／{firstEarly.Date:M/d} 首個早班", employee.EmployeeCode, firstEarly.Date);
+        }
+    }
+
+    private static bool IsRest(ScheduleCell cell) => cell.Kind is AssignmentKind.Rest or AssignmentKind.SpecialRest or AssignmentKind.LeaveRest;
+    private static bool IsRest(ScheduleAssignment cell) => cell.Kind is "Rest" or "SpecialRest" or "LeaveRest";
+
+    private static IEnumerable<ScheduleSuggestionLocationDto> WorkStreakEnds(ScheduleEmployeeSnapshot employee, IReadOnlyList<DateOnly> days, int previousStreak, WorkspaceCode workspace)
+    {
+        var streak = previousStreak;
+        for (var index = 0; index < days.Count - 1; index++)
+        {
+            var cell = employee.Assignments.SingleOrDefault(x => x.Date == days[index]);
+            var next = employee.Assignments.SingleOrDefault(x => x.Date == days[index + 1]);
+            streak = cell?.Kind is "Work" or "WorkEvent" ? streak + 1 : 0;
+            if (streak > 0 && next?.Kind is not "Work" and not "WorkEvent" && WorkStreakPenalty(workspace, streak) > 0)
+            {
+                yield return new($"{employee.EmployeeCode}／{days[index]:M/d}，連續 {streak} 日", employee.EmployeeCode, days[index]);
+                streak = 0;
+            }
+        }
+    }
+
+    private static int WorkStreakPenalty(WorkspaceCode workspace, int length) => workspace == WorkspaceCode.M
+        ? length switch { 1 => 4, 2 or 3 or 4 or 5 => 0, >= 6 => 2 * (length - 4), _ => 0 }
+        : length switch { 1 => 4, 2 => 1, 3 or 4 => 0, 5 => 1, >= 6 => 2 * (length - 4), _ => 0 };
 
     private static object AssignmentSnapshot(ScheduleAssignment assignment) => new
     {

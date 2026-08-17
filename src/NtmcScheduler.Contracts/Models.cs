@@ -219,7 +219,11 @@ public sealed record ScheduleDetailDto(
     IReadOnlyList<ScheduleEmployeeStats> EmployeeStats,
     IReadOnlyList<ScheduleIntervalStatsDto> IntervalStats,
     IReadOnlyList<ScheduleCoverageDto> Coverage,
-    IReadOnlyList<ValidationIssue> Issues);
+    IReadOnlyList<ValidationIssue> Issues,
+    IReadOnlyList<ScheduleSuggestionDto>? Suggestions = null);
+
+public sealed record ScheduleSuggestionDto(string Name, long Value, IReadOnlyList<ScheduleSuggestionLocationDto> Locations);
+public sealed record ScheduleSuggestionLocationDto(string Label, string? EmployeeCode = null, DateOnly? Date = null);
 
 public sealed record ScheduleRunDto(
     Guid Id,

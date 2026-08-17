@@ -142,7 +142,7 @@ else
                     {
                         var cell = detail.Assignments.FirstOrDefault(x => x.EmployeeSnapshotId == employee.Id && x.Date == day);
                         var issues = Issues(employee.EmployeeCode, day);
-                        <td class="day-cell @DateClass(day) @IssueClass(issues)" id="cell-@employee.EmployeeCode-@day.ToString("yyyyMMdd")">
+                        <td class="day-cell @DateClass(day) @IssueClass(issues) @SuggestionClass(employee.EmployeeCode, day)" id="cell-@employee.EmployeeCode-@day.ToString("yyyyMMdd")">
                             @if (cell is not null)
                             {
                                 <button class="schedule-cell @CellClass(cell)" disabled="@(!canEdit || detail.Version.IsArchived || isBusy)" title="@IssueText(issues)" aria-label="@employee.Name @day.ToString("MM-dd") @CellText(cell)" @onclick="() => OpenCell(cell)">
@@ -206,13 +206,31 @@ else
                         <strong>@issue.RuleName</strong>：@issue.Message
                         @if (issue.EmployeeCode is not null && issue.Date is not null)
                         {
-                            <a href="@($"#cell-{issue.EmployeeCode}-{issue.Date.Value:yyyyMMdd}")" @onclick="() => ScrollToCellAsync(issue.EmployeeCode, issue.Date.Value)" @onclick:preventDefault="true">@issue.EmployeeCode／@issue.Date.Value.ToString("M/d")</a>
+                            <button class="location-link" @onclick="() => ScrollToCellAsync(issue.EmployeeCode, issue.Date.Value)">@issue.EmployeeCode／@issue.Date.Value.ToString("M/d")</button>
                         }
                     </li>
                 }
                 @foreach (var suggestion in Suggestions())
                 {
-                    <li class="issue-warning"><strong>建議</strong>：@suggestion</li>
+                    <li class="issue-warning"><strong>建議</strong>：@SuggestionText(suggestion.Name)（違反量 @suggestion.Value）
+                        @if (suggestion.Locations.Count > 0)
+                        {
+                            <details class="suggestion-locations">
+                                <summary>位置（@suggestion.Locations.Count 項）</summary>
+                                @foreach (var location in suggestion.Locations)
+                                {
+                                    @if (location.EmployeeCode is not null && location.Date is not null)
+                                    {
+                                        <button class="location-link" @onclick="() => ScrollToCellAsync(location.EmployeeCode, location.Date.Value)">@location.Label</button><span>、</span>
+                                    }
+                                    else
+                                    {
+                                        <span>@location.Label、</span>
+                                    }
+                                }
+                            </details>
+                        }
+                    </li>
                 }
             </ul>
         </details>
@@ -332,13 +350,24 @@ else
     private IReadOnlyList<ValidationIssue> Issues(string employee, DateOnly day) => detail!.Issues.Where(x => x.EmployeeCode == employee && x.Date == day).ToArray();
     private static string IssueText(IReadOnlyList<ValidationIssue> issues) => string.Join("；", issues.Select(x => x.Message));
     private static string IssueClass(IReadOnlyList<ValidationIssue> issues) => issues.Any(x => x.IsLaborLawViolation) ? "labor-violation" : issues.Any(x => x.Severity == ValidationSeverity.Error) ? "blocking-issue" : issues.Count > 0 ? "advisory-issue" : "";
+    private string SuggestionClass(string employeeCode, DateOnly date) => Suggestions().Any(suggestion => suggestion.Locations.Any(location => location.EmployeeCode == employeeCode && location.Date == date)) ? "suggested-cell" : "";
     private async Task ScrollToCellAsync(string employeeCode, DateOnly date) =>
         await JS.InvokeVoidAsync("scrollToScheduleCell", $"cell-{employeeCode}-{date:yyyyMMdd}");
-    private IReadOnlyList<string> Suggestions() => (detail?.Version.Objectives ?? [])
+    private IReadOnlyList<ScheduleSuggestionDto> Suggestions() => detail?.Suggestions ?? (detail?.Version.Objectives ?? [])
         .SelectMany(objective => objective.Components)
-        .Where(component => component.Value > 0)
-        .Select(component => $"{SuggestionText(component.Name)}（違反量 {component.Value}）")
+        .Where(component => component.Value > 0 && DisplaysSuggestion(component.Name))
+        .Select(component => new ScheduleSuggestionDto(component.Name, component.Value, []))
         .ToArray();
+
+    private bool DisplaysSuggestion(string name) => detail!.Version.Workspace switch
+    {
+        WorkspaceCode.T => name is not "MonthBoundaryRestBalance" and not "UnusedLeaveRest" and not "MonthlyRest"
+            and not "SpecialRestBalance" and not "WeekdayRestFairness" and not "HolidayRestFairness",
+        WorkspaceCode.M => name is not "ExternalStaffing" and not "MixedShiftWorkStreak" and not "NightRestEarly"
+            and not "NightRestAfternoon" and not "ShiftChangeWithoutRest" and not "HolidayRestFairness"
+            and not "EarlyAfternoonImbalance" and not "NightShiftTarget",
+        _ => false
+    };
 
     private static string SuggestionText(string name) => name switch
     {

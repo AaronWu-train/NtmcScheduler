@@ -10,5 +10,11 @@ document.addEventListener("click", event => {
     download.remove();
 });
 
-window.scrollToScheduleCell = id =>
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+window.scrollToScheduleCell = id => {
+    const cell = document.getElementById(id);
+    if (!cell) return;
+    cell.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    cell.classList.remove("located-cell");
+    requestAnimationFrame(() => cell.classList.add("located-cell"));
+    setTimeout(() => cell.classList.remove("located-cell"), 1800);
+};

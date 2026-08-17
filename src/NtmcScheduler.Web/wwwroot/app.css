@@ -32,6 +32,7 @@ button.danger { color: #9e1c1c; border-color: #c45a5a; }
 .nav-more > div a { color: #172033; padding: .45rem; }
 .user-name { white-space: nowrap; }
 .link-button { padding: 0; border: 0; color: #fff; background: transparent; text-decoration: underline; }
+.location-link { border: 0; border-radius: 0; padding: 0; color: #1859a9; background: transparent; text-decoration: underline; }
 .page-shell { max-width: 100%; padding: 1.25rem; }
 .page-title { display: flex; align-items: start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
 .page-title h1 { margin: 0; }
@@ -202,6 +203,13 @@ thead th { background: #e9eef5; }
 .labor-violation { box-shadow: inset 0 0 0 2px #bd1e24; }
 .blocking-issue { box-shadow: inset 0 0 0 2px #c57b12; }
 .advisory-issue { box-shadow: inset 0 -2px 0 #c59b22; }
+.suggested-cell { box-shadow: inset 0 0 0 1px #8bb6df; }
+.labor-violation { box-shadow: inset 0 0 0 2px #bd1e24; }
+.blocking-issue { box-shadow: inset 0 0 0 2px #c57b12; }
+.suggestion-locations { display: inline; margin-left: .45rem; }
+.suggestion-locations summary { display: inline; color: #1859a9; cursor: pointer; text-decoration: underline; }
+.located-cell { animation: located-cell-flash .6s ease-in-out 3; }
+@keyframes located-cell-flash { 50% { background: #ffe18a; box-shadow: inset 0 0 0 3px #a10303; } }
 .labor-icon { display: inline-grid; place-items: center; width: 1rem; height: 1rem; margin-right: .1rem; border-radius: 50%; color: #fff; background: #bd1e24; font-size: .7rem; font-weight: 900; }
 .labor-mark { color: #a11919; font-weight: 700; }
 .new-hire { display: block; color: #8a4b00; font-weight: 600; }
