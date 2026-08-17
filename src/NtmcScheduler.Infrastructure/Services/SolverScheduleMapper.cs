@@ -23,10 +23,7 @@ internal static class SolverScheduleMapper
             OpeningUsage = employee.OpeningRest is null || employee.OpeningSpecialRest is null
                 ? null
                 : new RestUsage(employee.OpeningRest.Value, employee.OpeningSpecialRest.Value),
-            Assignments = employee.Assignments.ToDictionary(x => x.Date, assignment =>
-                demand.Workspace == WorkspaceCode.M && IsOutsideStationGroup(employee.Affiliation, assignment)
-                    ? ToWorkEvent(assignment)
-                    : ToScheduleCell(assignment)),
+            Assignments = employee.Assignments.ToDictionary(x => x.Date, ToScheduleCell),
             ClosingUsage = null,
             NormalWorkCount = null
         }).ToArray());
@@ -115,8 +112,7 @@ internal static class SolverScheduleMapper
                 Station = pair.Value.Station,
                 Shift = ShiftText(pair.Value.Shift),
                 EventStart = pair.Value.EventStart,
-                EventEnd = pair.Value.EventEnd,
-                EventDescription = pair.Value.EventDescription
+                EventEnd = pair.Value.EventEnd
             }));
             version.Employees.Add(snapshot);
         }
@@ -176,8 +172,7 @@ internal static class SolverScheduleMapper
                 Station = pair.Value.Station,
                 Shift = ShiftText(pair.Value.Shift),
                 EventStart = pair.Value.EventStart,
-                EventEnd = pair.Value.EventEnd,
-                EventDescription = pair.Value.EventDescription
+                EventEnd = pair.Value.EventEnd
             }));
             version.Employees.Add(snapshot);
         }
@@ -207,8 +202,7 @@ internal static class SolverScheduleMapper
             Station = pair.Value.Station,
             Shift = ShiftText(pair.Value.Shift),
             EventStart = pair.Value.EventStart,
-            EventEnd = pair.Value.EventEnd,
-            EventDescription = pair.Value.EventDescription
+            EventEnd = pair.Value.EventEnd
         }));
         return result;
     }
@@ -220,8 +214,7 @@ internal static class SolverScheduleMapper
         Station = assignment.Station,
         Shift = ParseShift(assignment.Shift),
         EventStart = assignment.EventStart,
-        EventEnd = assignment.EventEnd,
-        EventDescription = assignment.EventDescription
+        EventEnd = assignment.EventEnd
     };
 
     private static ScheduleCell ToScheduleCell(ScheduleAssignment assignment) => new()
@@ -231,34 +224,8 @@ internal static class SolverScheduleMapper
         Station = assignment.Station,
         Shift = ParseShift(assignment.Shift),
         EventStart = assignment.EventStart,
-        EventEnd = assignment.EventEnd,
-        EventDescription = assignment.EventDescription
+        EventEnd = assignment.EventEnd
     };
-
-    private static bool IsOutsideStationGroup(string affiliation, DemandAssignment assignment) =>
-        assignment.Kind == "Work" && affiliation is { Length: 4 } && assignment.Station is { Length: 4 } station &&
-        int.TryParse(affiliation[2..], out var home) && int.TryParse(station[2..], out var assigned) &&
-        (home - 1) / 3 != (assigned - 1) / 3;
-
-    private static ScheduleCell ToWorkEvent(DemandAssignment assignment)
-    {
-        var shift = ParseShift(assignment.Shift)!.Value;
-        var (start, end, nextDay, text) = shift switch
-        {
-            SolverShift.Early => (new TimeOnly(6, 30), new TimeOnly(14, 30), false, "早"),
-            SolverShift.Afternoon => (new TimeOnly(14, 20), new TimeOnly(22, 20), false, "小"),
-            SolverShift.Night => (new TimeOnly(22, 0), new TimeOnly(7, 0), true, "夜"),
-            _ => throw new ArgumentOutOfRangeException(nameof(assignment))
-        };
-        var date = assignment.Date;
-        return new()
-        {
-            Kind = SolverAssignmentKind.WorkEvent,
-            EventStart = new DateTimeOffset(date.ToDateTime(start), TimeSpan.FromHours(8)),
-            EventEnd = new DateTimeOffset(date.AddDays(nextDay ? 1 : 0).ToDateTime(end), TimeSpan.FromHours(8)),
-            EventDescription = $"{assignment.Station}{text}"
-        };
-    }
 
     public static SolverShift? ParseShift(string? value) => value switch
     {

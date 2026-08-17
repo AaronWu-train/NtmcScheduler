@@ -26,9 +26,12 @@ public static partial class MSolver
 
         foreach (var employee in input.DemandMonth.Employees)
         {
-            var legalStations = StationsInSameGroup(employee.Affiliation);
             foreach (var date in dates)
             {
+                var fixedStation = employee.Assignments.GetValueOrDefault(date) is { Kind: AssignmentKind.Work } assignment
+                    ? assignment.Station
+                    : null;
+                var legalStations = StationsInSameGroup(employee.Affiliation).Append(fixedStation).OfType<string>().Distinct();
                 var dayWork = new List<BoolVar>();
                 foreach (var shift in Shifts)
                 {

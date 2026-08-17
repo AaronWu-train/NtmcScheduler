@@ -262,7 +262,7 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
-    public async Task DemandCrossGroupWork_IsSnapshottedAsNamedWorkEvent()
+    public async Task DemandCrossGroupWork_IsSnapshottedAsFixedSupport()
     {
         await using var database = await TestDatabase.CreateAsync();
         var actor = Editor(WorkspaceCode.M);
@@ -296,11 +296,12 @@ public sealed class WebInfrastructureTests
         var solverInput = System.Text.Json.JsonSerializer.Deserialize<ScheduleInput>(snapshot, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
         var cell = solverInput.DemandMonth.Employees.Single(x => x.EmployeeId == employee.EmployeeCode).Assignments[demand.Month];
 
-        Assert.AreEqual(AssignmentKind.WorkEvent, cell.Kind);
-        Assert.AreEqual("LB11早", cell.EventDescription);
-        Assert.AreEqual(new TimeOnly(6, 30), TimeOnly.FromDateTime(cell.EventStart!.Value.DateTime));
-        Assert.AreEqual(new TimeOnly(14, 30), TimeOnly.FromDateTime(cell.EventEnd!.Value.DateTime));
-        Assert.AreNotEqual(SolveStatus.InvalidInput, MSolver.Solve(solverInput, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(3) }).Status);
+        Assert.AreEqual(AssignmentKind.Work, cell.Kind);
+        Assert.AreEqual("LB11", cell.Station);
+        Assert.AreEqual(Shift.Early, cell.Shift);
+        var result = MSolver.Solve(solverInput, new SolverOptions { TimeLimit = TimeSpan.FromSeconds(3) });
+        Assert.AreNotEqual(SolveStatus.InvalidInput, result.Status);
+        Assert.AreEqual("LB11", result.Candidates[0].Schedule.Employees.Single(x => x.EmployeeId == employee.EmployeeCode).Assignments[demand.Month].Station);
     }
 
     [TestMethod]

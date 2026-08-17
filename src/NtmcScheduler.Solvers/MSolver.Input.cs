@@ -216,8 +216,8 @@ public static partial class MSolver
 
         if (cell.Kind == AssignmentKind.Work)
         {
-            if (cell.Shift is null || cell.Station is null || !Stations.Contains(employee.Affiliation) || !StationsInSameGroup(employee.Affiliation).Contains(cell.Station))
-                errors.Add(new($"{prefix}.Assignments", $"M work {employee.EmployeeId}/{date:yyyy-MM-dd} needs a legal station and shift."));
+            if (cell.Shift is null || cell.Station is null || !Stations.Contains(employee.Affiliation) || !Stations.Contains(cell.Station))
+                errors.Add(new($"{prefix}.Assignments", $"M work {employee.EmployeeId}/{date:yyyy-MM-dd} needs an LB01–LB12 station and shift."));
             if (cell.EventStart is not null || cell.EventEnd is not null) errors.Add(new($"{prefix}.Assignments", $"Normal work {employee.EmployeeId}/{date:yyyy-MM-dd} cannot contain event times."));
             return;
         }
