@@ -369,7 +369,7 @@ public sealed class MSolverTests
             (long)typeof(MSolver).GetMethod("NightShiftPenaltyValue", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
                 .Invoke(null, [employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Work && cell.Shift == Shift.Night)])!);
         var fairness = candidate.Objectives.Single(objective => objective.Name == "ScheduleQualityAndFairness").Components;
-        Assert.AreEqual((EarlyAfternoonImbalance(), 2), (fairness.Single(component => component.Name == "EarlyAfternoonImbalance").Value, fairness.Single(component => component.Name == "EarlyAfternoonImbalance").Weight));
+        Assert.AreEqual((EarlyAfternoonImbalance(), 20), (fairness.Single(component => component.Name == "EarlyAfternoonImbalance").Value, fairness.Single(component => component.Name == "EarlyAfternoonImbalance").Weight));
         Assert.AreEqual((NightShiftTarget(), 50), (fairness.Single(component => component.Name == "NightShiftTarget").Value, fairness.Single(component => component.Name == "NightShiftTarget").Weight));
         SolverAcceptanceAssertions.AssertMHardRules(input, candidate);
         SolverAcceptanceAssertions.AssertMSoftRules(input, candidate);

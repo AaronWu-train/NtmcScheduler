@@ -48,7 +48,7 @@ internal static class SolverAcceptanceAssertions
         AssertObjectiveStructure(candidate.Objectives,
         [
             (1, "RequestedRest", [("RequestedRest", 3), ("UnusedLeaveRest", 1)]),
-            (4, "ScheduleQualityAndFairness", [("ExternalStaffing", 100), ("MonthlyRest", 240), ("SpecialRestBalance", 120), ("WorkStreak", 40), ("MixedShiftWorkStreak", 30), ("NightRestEarly", 400), ("NightRestAfternoon", 300), ("ShiftChangeWithoutRest", 5), ("HolidayRestFairness", 5), ("EarlyAfternoonImbalance", 2), ("NightShiftTarget", 50)])
+            (4, "ScheduleQualityAndFairness", [("ExternalStaffing", 5), ("MonthlyRest", 240), ("SpecialRestBalance", 120), ("WorkStreak", 20), ("MixedShiftWorkStreak", 15), ("NightRestEarly", 400), ("NightRestAfternoon", 300), ("ShiftChangeWithoutRest", 5), ("HolidayRestFairness", 5), ("EarlyAfternoonImbalance", 20), ("NightShiftTarget", 50)])
         ]);
 
         Expect(candidate.Objectives, "RequestedRest", RequestedRestViolations(input, candidate.Schedule));

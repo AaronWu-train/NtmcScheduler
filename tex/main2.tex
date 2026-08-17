@@ -663,23 +663,22 @@ M 模型先定義指定休假的 Priority 1：
 \[
   \begin{aligned}
     J^M_{4+5}={}&
-    100\Phi^{M,ext}
+    5\Phi^{M,ext}
     +240\Phi^{M,month,R}
     +120\Phi^{M,balance,R1}
-    +40\Phi^{M,streak}\\
-    &+30\Phi^{M,mixed}
+    +20\Phi^{M,streak}\\
+    &+15\Phi^{M,mixed}
     +400\Phi^{M,NE}
     +300\Phi^{M,NA}
     +5\Phi^{M,restswitch}\\
     &+5\Phi^{M,holiday}
-    +2\Phi^{M,EA}
+    +20\Phi^{M,EA}
     +50\Phi^{M,N}.
   \end{aligned}
 \]
-文件中常以 10、24、12、4、3、40、30、0.5 表示前八項的相對權重；實作與
-輸出乘以 10，才能用 CP-SAT 整數係數精確表示 0.5。假日公平、早小差距與夜班
-目標則直接使用上式的 5、2、50。非偏好輪轉、非所屬站指派與跨站支援公平的
-量測函數雖保留在原始碼，但權重為 0 時不建立變數、不計分也不輸出。
+上式係數即為程式與輸出顯示的實際 CP-SAT 整數權重。非偏好輪轉、非所屬站
+指派與跨站支援公平的量測函數雖保留在原始碼，但權重為 0 時不建立變數、不計分
+也不輸出。
 完整目標為
 \[
   \operatorname{lexmin}

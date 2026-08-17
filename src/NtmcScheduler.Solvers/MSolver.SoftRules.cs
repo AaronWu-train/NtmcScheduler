@@ -13,7 +13,6 @@ public static partial class MSolver
         IReadOnlyList<DateOnly> modelDates,
         ModelVariables variables)
     {
-        const int objectiveScale = 10; // Scales ordinary violations; fairness weights use their documented output units.
         var requestedRest = CountUnfulfilledRequestedRests(input, targetDates, variables);
         var unusedLeaveRest = MeasureUnusedLeaveRests(model, input, targetDates, variables);
         var externalStaffing = MeasureExternalStaffingAboveAllowance(model, targetDates, variables);
@@ -33,28 +32,28 @@ public static partial class MSolver
             new(1, "RequestedRest", requestedRest * 3 + unusedLeaveRest,
                 [("RequestedRest", 3, requestedRest), ("UnusedLeaveRest", 1, unusedLeaveRest)]),
             new(4, "ScheduleQualityAndFairness",
-                externalStaffing * (10 * objectiveScale)
-                    + monthlyRest * (24 * objectiveScale)
-                    + specialRestBalance * (12 * objectiveScale)
-                    + workStreak * (4 * objectiveScale)
-                    + mixedShiftWorkStreak * (3 * objectiveScale)
-                    + nightRestEarly * (40 * objectiveScale)
-                    + nightRestAfternoon * (30 * objectiveScale)
+                externalStaffing * 5
+                    + monthlyRest * 240
+                    + specialRestBalance * 120
+                    + workStreak * 20
+                    + mixedShiftWorkStreak * 15
+                    + nightRestEarly * 400
+                    + nightRestAfternoon * 300
                     + shiftChangeWithoutRest * 5
                     + holidayFairness * 5
-                    + earlyAfternoonImbalance * 2
+                    + earlyAfternoonImbalance * 20
                     + nightShiftTarget * 50,
                 [
-                    ("ExternalStaffing", 10 * objectiveScale, externalStaffing),
-                    ("MonthlyRest", 24 * objectiveScale, monthlyRest),
-                    ("SpecialRestBalance", 12 * objectiveScale, specialRestBalance),
-                    ("WorkStreak", 4 * objectiveScale, workStreak),
-                    ("MixedShiftWorkStreak", 3 * objectiveScale, mixedShiftWorkStreak),
-                    ("NightRestEarly", 40 * objectiveScale, nightRestEarly),
-                    ("NightRestAfternoon", 30 * objectiveScale, nightRestAfternoon),
+                    ("ExternalStaffing", 5, externalStaffing),
+                    ("MonthlyRest", 240, monthlyRest),
+                    ("SpecialRestBalance", 120, specialRestBalance),
+                    ("WorkStreak", 20, workStreak),
+                    ("MixedShiftWorkStreak", 15, mixedShiftWorkStreak),
+                    ("NightRestEarly", 400, nightRestEarly),
+                    ("NightRestAfternoon", 300, nightRestAfternoon),
                     ("ShiftChangeWithoutRest", 5, shiftChangeWithoutRest),
                     ("HolidayRestFairness", 5, holidayFairness),
-                    ("EarlyAfternoonImbalance", 2, earlyAfternoonImbalance),
+                    ("EarlyAfternoonImbalance", 20, earlyAfternoonImbalance),
                     ("NightShiftTarget", 50, nightShiftTarget)
                 ])
         ];
