@@ -34,8 +34,10 @@ public static partial class ScheduleCsv
         if (monthStart.Day != 1) throw new ScheduleCsvException(nameof(monthStart), "Month must start on day one.");
         var rows = ReadRows(path);
         if (rows.Count == 0) throw new ScheduleCsvException(path, "CSV is empty.");
-        var hasPerpetualSchedule = rows[0].SequenceEqual(Headers);
-        if (!hasPerpetualSchedule && !rows[0].SequenceEqual(LegacyHeaders))
+        var header = IgnoreTrailingEmptyFields(rows[0], Headers.Length);
+        var hasPerpetualSchedule = header.SequenceEqual(Headers);
+        if (!hasPerpetualSchedule) header = IgnoreTrailingEmptyFields(rows[0], LegacyHeaders.Length);
+        if (!hasPerpetualSchedule && !header.SequenceEqual(LegacyHeaders))
             throw new ScheduleCsvException(path, "Monthly schedule headers do not match the required format.");
         var fieldCount = hasPerpetualSchedule ? Headers.Length : LegacyHeaders.Length;
         var nonStandardShiftLookup = NonStandardShiftLookup(nonStandardShifts);
@@ -44,19 +46,23 @@ public static partial class ScheduleCsv
         for (var rowNumber = 1; rowNumber < rows.Count; rowNumber++)
         {
             var row = rows[rowNumber];
-            if (row.Length != fieldCount) throw new ScheduleCsvException($"{path}:{rowNumber + 1}", $"Expected {fieldCount} fields but found {row.Length}.");
             if (row.All(string.IsNullOrWhiteSpace)) continue;
+            row = IgnoreTrailingEmptyFields(row, fieldCount);
+            if (row.Length != fieldCount) throw new ScheduleCsvException($"{path}:{rowNumber + 1}", $"Expected {fieldCount} fields but found {row.Length}.");
             employees.Add(ParseEmployee(row, rowNumber + 1, monthStart, nonStandardShiftLookup, historical, hasPerpetualSchedule));
         }
         return new(monthStart, employees);
     }
 
     public static void WriteMonthly(string path, MonthlySchedule schedule)
+        => File.WriteAllBytes(path, WriteMonthly(schedule));
+
+    public static byte[] WriteMonthly(MonthlySchedule schedule)
     {
         var lines = new List<string> { Join(Headers) };
         foreach (var employee in schedule.Employees)
             lines.Add(Join(MonthlyRow(schedule, employee)));
-        File.WriteAllText(path, string.Join(Environment.NewLine, lines) + Environment.NewLine, new UTF8Encoding(true));
+        return Encoding.UTF8.GetBytes('\uFEFF' + string.Join(Environment.NewLine, lines) + Environment.NewLine);
     }
 
     public static IReadOnlyList<string> MonthlyRow(MonthlySchedule schedule, EmployeeMonthlySchedule employee)
@@ -90,7 +96,7 @@ public static partial class ScheduleCsv
     {
         var rows = ReadRows(path);
         string[] expected = ["區間開始日期", "區間結束日期", "國定假日日期"];
-        if (rows.Count == 0 || !rows[0].SequenceEqual(expected))
+        if (rows.Count == 0 || !IgnoreTrailingEmptyFields(rows[0], expected.Length).SequenceEqual(expected))
             throw new ScheduleCsvException(path, "Rest-interval headers do not match the required format.");
 
         var intervals = new List<RestInterval>();
@@ -98,6 +104,7 @@ public static partial class ScheduleCsv
         {
             var row = rows[rowNumber];
             if (row.All(string.IsNullOrWhiteSpace)) continue;
+            row = IgnoreTrailingEmptyFields(row, expected.Length);
             if (row.Length != 3) throw new ScheduleCsvException($"{path}:{rowNumber + 1}", "Expected three fields.");
             var start = Date(row[0], $"row {rowNumber + 1} start");
             var end = Date(row[1], $"row {rowNumber + 1} end");
@@ -115,7 +122,7 @@ public static partial class ScheduleCsv
     {
         var rows = ReadRows(path);
         string[] expected = ["班型", "時間", "代碼"];
-        if (rows.Count == 0 || !rows[0].SequenceEqual(expected))
+        if (rows.Count == 0 || !IgnoreTrailingEmptyFields(rows[0], expected.Length).SequenceEqual(expected))
             throw new ScheduleCsvException(path, "非常態班型 CSV 表頭不符合規定。");
 
         var shifts = new List<NonStandardShift>();
@@ -124,6 +131,7 @@ public static partial class ScheduleCsv
         {
             var row = rows[rowNumber];
             if (row.All(string.IsNullOrWhiteSpace)) continue;
+            row = IgnoreTrailingEmptyFields(row, expected.Length);
             var field = $"{path}:{rowNumber + 1}";
             if (row.Length != 3) throw new ScheduleCsvException(field, "非常態班型資料應為三欄。");
             var name = string.IsNullOrWhiteSpace(row[0]) ? null : row[0].Trim();
@@ -145,7 +153,7 @@ public static partial class ScheduleCsv
     {
         var rows = ReadRows(path);
         string[] expected = ["萬年班表", .. Enumerable.Range(1, 56).Select(day => day.ToString(CultureInfo.InvariantCulture))];
-        if (rows.Count == 0 || !rows[0].SequenceEqual(expected))
+        if (rows.Count == 0 || !IgnoreTrailingEmptyFields(rows[0], expected.Length).SequenceEqual(expected))
             throw new ScheduleCsvException(path, "M perpetual-schedule headers do not match the required format.");
 
         var patterns = new Dictionary<string, IReadOnlyList<ScheduleCell?>>(StringComparer.Ordinal);
@@ -153,6 +161,7 @@ public static partial class ScheduleCsv
         {
             var row = rows[rowNumber];
             if (row.All(string.IsNullOrWhiteSpace)) continue;
+            row = IgnoreTrailingEmptyFields(row, expected.Length);
             var field = $"{path}:{rowNumber + 1}";
             if (row.Length != expected.Length) throw new ScheduleCsvException(field, $"Expected {expected.Length} fields but found {row.Length}.");
             var id = row[0].Trim();
@@ -352,6 +361,11 @@ public static partial class ScheduleCsv
         }
         return rows;
     }
+
+    private static string[] IgnoreTrailingEmptyFields(string[] fields, int expectedCount) =>
+        fields.Length > expectedCount && fields.Skip(expectedCount).All(string.IsNullOrWhiteSpace)
+            ? fields[..expectedCount]
+            : fields;
 
     private static RestUsage? Usage(string rest, string specialRest, string field)
     {

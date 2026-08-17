@@ -158,7 +158,7 @@ public sealed class EmployeeService(NtmcDbContext db) : IEmployeeService
             : new[] { "ID", "姓名", "所屬", "到職日期", "能力" };
         using var parser = new TextFieldParser(path, Encoding.UTF8, true) { TextFieldType = FieldType.Delimited, HasFieldsEnclosedInQuotes = true, TrimWhiteSpace = false };
         parser.SetDelimiters(",");
-        var header = parser.ReadFields() ?? [];
+        var header = IgnoreTrailingEmptyFields(parser.ReadFields() ?? [], expected.Length);
         var validHeader = header.SequenceEqual(expected) || workspace == WorkspaceCode.T && header.SequenceEqual(["ID", "姓名", "專業分組", "到職日期", "能力"]);
         if (!validHeader) throw new DomainValidationException($"員工 CSV 表頭必須為：{string.Join(',', expected)}");
         var records = new List<EmployeeImportRecord>();
@@ -167,6 +167,7 @@ public sealed class EmployeeService(NtmcDbContext db) : IEmployeeService
         {
             var fields = parser.ReadFields() ?? [];
             if (fields.All(string.IsNullOrWhiteSpace)) continue;
+            fields = IgnoreTrailingEmptyFields(fields, expected.Length);
             if (fields.Length != expected.Length) throw new DomainValidationException($"員工 CSV 第 {parser.LineNumber - 1} 列欄數錯誤。");
             var code = fields[0].Trim();
             var name = fields[1].Trim();
@@ -194,6 +195,11 @@ public sealed class EmployeeService(NtmcDbContext db) : IEmployeeService
         if (records.Count == 0) throw new DomainValidationException("員工 CSV 沒有資料列。");
         return records;
     }
+
+    private static string[] IgnoreTrailingEmptyFields(string[] fields, int expectedCount) =>
+        fields.Length > expectedCount && fields.Skip(expectedCount).All(string.IsNullOrWhiteSpace)
+            ? fields[..expectedCount]
+            : fields;
 
     private static bool Same(EmployeeImportRecord record, Employee employee) => record.Name == employee.Name &&
         record.Affiliation == employee.Affiliation && record.EmploymentStartDate == employee.EmploymentStartDate && record.Ability == employee.Ability;

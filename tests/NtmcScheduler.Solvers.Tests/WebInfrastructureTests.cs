@@ -186,7 +186,7 @@ public sealed class WebInfrastructureTests
         await using var database = await TestDatabase.CreateAsync();
         var service = new EmployeeService(database.Context);
         var actor = Editor(WorkspaceCode.M);
-        var csv = "ID,姓名,所屬車站,到職日期\nM001,王小明,LB01,\nM002,陳小華,LB02,2026-08-02\n"u8.ToArray();
+        var csv = "ID,姓名,所屬車站,到職日期,,\nM001,王小明,LB01,,,\n,,,\nM002,陳小華,LB02,2026-08-02,,\n"u8.ToArray();
 
         var preview = await service.PreviewImportAsync(WorkspaceCode.M, new MemoryStream(csv), actor);
         Assert.IsTrue(preview.IsValid, string.Join(Environment.NewLine, preview.Errors));
