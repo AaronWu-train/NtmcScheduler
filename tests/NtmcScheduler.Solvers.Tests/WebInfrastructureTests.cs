@@ -1083,7 +1083,7 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
-    public void AuditPresentation_ScheduleAssignment_ShowsEmployeeDateAndShiftChange()
+    public void AuditPresentation_ScheduleAssignment_ShowsScheduleEmployeeDateAndShiftChange()
     {
         var before = """{"month":"2026-08-01","scheduleName":"候選 1","employeeCode":"M001","name":"王小明","date":"2026-08-18","kind":"Work","shift":"Early","station":"LB01","requestedRest":false}""";
         var after = """{"month":"2026-08-01","scheduleName":"候選 1","employeeCode":"M001","name":"王小明","date":"2026-08-18","kind":"SpecialRest","shift":null,"station":null,"requestedRest":false}""";
@@ -1101,8 +1101,11 @@ public sealed class WebInfrastructureTests
 
         var dto = AuditPresentation.Format(row);
 
+        StringAssert.Contains(dto.TargetSummary, "2026-08");
+        StringAssert.Contains(dto.TargetSummary, "班表「候選 1」");
         StringAssert.Contains(dto.TargetSummary, "M001");
         StringAssert.Contains(dto.TargetSummary, "8/18");
+        StringAssert.Contains(dto.ReadableSummary, "班表「候選 1」");
         StringAssert.Contains(dto.ReadableSummary, "M001");
         StringAssert.Contains(dto.ReadableSummary, "→");
         Assert.IsTrue(dto.Changes.Any(x => x.Label == "日格" && x.Before == "上班" && x.After == "R1"));

@@ -164,7 +164,7 @@ public static class AuditPresentation
         if (changes.Count == 0)
             return action is "LoginSucceeded" or "LogoutSucceeded" ? actionLabel : $"{actionLabel}：{targetSummary}";
 
-        if (action is "ScheduleAssignmentUpdated" or "DemandAssignmentUpdated")
+        if (action is "ScheduleAssignmentUpdated" or "DemandAssignmentUpdated" or "EmployeeDemandSubmissionAssignmentUpdated")
         {
             var cellBefore = DescribeCell(changes);
             var cellAfter = DescribeCell(changes, after: true);
@@ -217,9 +217,9 @@ public static class AuditPresentation
             ?? FormatDateShort(TryGet(data, "date"));
         var fileName = TryGetString(data, "fileName");
 
-        if (action is "ScheduleAssignmentUpdated" or "DemandAssignmentUpdated" &&
+        if (action is "ScheduleAssignmentUpdated" or "DemandAssignmentUpdated" or "EmployeeDemandSubmissionAssignmentUpdated" &&
             employeeCode is not null && date is not null)
-            return Join(" ", EmployeeLabel(employeeCode, employeeName), date);
+            return Join("／", MonthLabel(month), ScheduleLabel(scheduleName), Join(" ", EmployeeLabel(employeeCode, employeeName), date));
 
         if (employeeCode is not null)
             return Join("／", MonthLabel(month), ScheduleLabel(scheduleName), EmployeeLabel(employeeCode, employeeName));
