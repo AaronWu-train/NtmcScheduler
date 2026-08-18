@@ -40,24 +40,22 @@ namespace NtmcScheduler.Infrastructure.Data.Migrations
                 unique: true);
 
             // Back-fill existing revisions with current hard-coded defaults.
-            // EF Core SQLite stores GUIDs as text in xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx format.
-            // We generate a UUID by formatting a single randomblob(16) correctly.
-            const string newUuid =
-                "lower(substr(hex(randomblob(16)),1,8)||'-'||substr(hex(randomblob(16)),1,4)||'-4'||substr(hex(randomblob(16)),2,3)||'-'||substr('89ab',(abs(random())%4)+1,1)||substr(hex(randomblob(16)),2,3)||'-'||substr(hex(randomblob(16)),1,12))";
+            // Derive valid GUIDs from each revision id by replacing the last hex digit.
+            // This keeps a proper GUID format and produces six stable ids per revision.
             var seedRows = new[]
             {
-                ("M", "Early",     "06:30:00", "14:30:00"),
-                ("M", "Afternoon", "14:20:00", "22:20:00"),
-                ("M", "Night",     "22:00:00", "07:00:00"),
-                ("T", "Early",     "07:00:00", "15:00:00"),
-                ("T", "Afternoon", "15:00:00", "23:00:00"),
-                ("T", "Night",     "23:00:00", "07:00:00"),
+                ("M", "Early",     "06:30:00", "14:30:00", "1"),
+                ("M", "Afternoon", "14:20:00", "22:20:00", "2"),
+                ("M", "Night",     "22:00:00", "07:00:00", "3"),
+                ("T", "Early",     "07:00:00", "15:00:00", "4"),
+                ("T", "Afternoon", "15:00:00", "23:00:00", "5"),
+                ("T", "Night",     "23:00:00", "07:00:00", "6"),
             };
-            foreach (var (ws, shift, start, end) in seedRows)
+            foreach (var (ws, shift, start, end, suffix) in seedRows)
             {
                 migrationBuilder.Sql(
                     $"INSERT INTO StandardShiftTimes (Id, ConfigurationRevisionId, Workspace, Shift, StartTime, EndTime) " +
-                    $"SELECT {newUuid}, Id, '{ws}', '{shift}', '{start}', '{end}' FROM ConfigurationRevisions;");
+                    $"SELECT substr(Id, 1, 35) || '{suffix}', Id, '{ws}', '{shift}', '{start}', '{end}' FROM ConfigurationRevisions;");
             }
         }
 
