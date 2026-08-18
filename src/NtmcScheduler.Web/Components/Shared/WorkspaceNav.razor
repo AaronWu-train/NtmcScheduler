@@ -1,3 +1,5 @@
+@inject CurrentActorService CurrentActor
+
 @if (Workspace is "m" or "t")
 {
     <aside class="workspace-nav" aria-label="@Workspace.ToUpperInvariant() 工作區功能">
@@ -8,8 +10,20 @@
         {
             <NavLink href="/m/perpetual">萬年班表</NavLink>
         }
-        <NavLink href="@($"/{Workspace}/demand")">求解新班表</NavLink>
+        @if (canCreateSchedule)
+        {
+            <NavLink href="@($"/{Workspace}/demand")">求解新班表</NavLink>
+        }
     </aside>
 }
 
-@code { [Parameter] public string Workspace { get; set; } = ""; }
+@code {
+    [Parameter] public string Workspace { get; set; } = "";
+    private bool canCreateSchedule;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        canCreateSchedule = Enum.TryParse<WorkspaceCode>(Workspace, true, out var workspace)
+            && (await CurrentActor.GetAsync()).CanEdit(workspace);
+    }
+}

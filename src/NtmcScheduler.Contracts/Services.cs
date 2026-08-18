@@ -44,6 +44,17 @@ public interface IDemandService
     Task UploadPerpetualScheduleAsync(Guid demandId, string fileName, Stream csv, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task ClearPerpetualScheduleAsync(Guid demandId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task<PerpetualScheduleFileDto> ExportPerpetualScheduleAsync(Guid demandId, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<DemandDraftDto> ImportEmployeeSubmissionsAsync(Guid demandId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
+}
+
+public interface IEmployeeDemandSubmissionService
+{
+    Task<EmployeeDemandSubmissionDto?> GetAsync(WorkspaceCode workspace, DateOnly month, string employeeCode, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<EmployeeDemandSubmissionDto> UpdateLeaveRestAsync(WorkspaceCode workspace, DateOnly month, string employeeCode, int requestedLeaveRestCount, Guid? revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<EmployeeDemandSubmissionDto> UpdateAssignmentAsync(WorkspaceCode workspace, DateOnly month, string employeeCode, DateOnly date, string? kind, bool requestedRest, string? station, string? shift, DateTimeOffset? eventStart, DateTimeOffset? eventEnd, string? eventDescription, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<DemandSubmissionImportDto?> GetImportStatusAsync(Guid demandDraftId, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<SubmissionImportPreviewDto> PreviewImportAsync(Guid demandDraftId, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<DemandDraftDto> ImportToDemandAsync(Guid demandDraftId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
 }
 
 public interface IScheduleRunService

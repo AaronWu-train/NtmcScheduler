@@ -17,6 +17,9 @@ public sealed class NtmcDbContext(DbContextOptions<NtmcDbContext> options)
     public DbSet<DemandDraft> DemandDrafts => Set<DemandDraft>();
     public DbSet<DemandEmployee> DemandEmployees => Set<DemandEmployee>();
     public DbSet<DemandAssignment> DemandAssignments => Set<DemandAssignment>();
+    public DbSet<EmployeeDemandSubmission> EmployeeDemandSubmissions => Set<EmployeeDemandSubmission>();
+    public DbSet<EmployeeDemandSubmissionAssignment> EmployeeDemandSubmissionAssignments => Set<EmployeeDemandSubmissionAssignment>();
+    public DbSet<DemandSubmissionImport> DemandSubmissionImports => Set<DemandSubmissionImport>();
     public DbSet<MPerpetualScheduleTemplate> MPerpetualScheduleTemplates => Set<MPerpetualScheduleTemplate>();
     public DbSet<UploadedPreviousSchedule> UploadedPreviousSchedules => Set<UploadedPreviousSchedule>();
     public DbSet<ScheduleRun> ScheduleRuns => Set<ScheduleRun>();
@@ -118,6 +121,30 @@ public sealed class NtmcDbContext(DbContextOptions<NtmcDbContext> options)
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => new { x.DemandEmployeeId, x.Date }).IsUnique();
             entity.HasOne(x => x.DemandEmployee).WithMany(x => x.Assignments).HasForeignKey(x => x.DemandEmployeeId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<EmployeeDemandSubmission>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Workspace).HasConversion<string>().HasMaxLength(1);
+            entity.Property(x => x.EmployeeCode).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.Name).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Affiliation).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.UpdatedByName).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.RevisionToken).IsConcurrencyToken();
+            entity.HasIndex(x => new { x.Workspace, x.Month, x.EmployeeCode }).IsUnique();
+        });
+        modelBuilder.Entity<EmployeeDemandSubmissionAssignment>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.SubmissionId, x.Date }).IsUnique();
+            entity.HasOne(x => x.Submission).WithMany(x => x.Assignments).HasForeignKey(x => x.SubmissionId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<DemandSubmissionImport>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ImportedByName).HasMaxLength(100).IsRequired();
+            entity.HasIndex(x => x.DemandDraftId).IsUnique();
+            entity.HasOne(x => x.DemandDraft).WithMany().HasForeignKey(x => x.DemandDraftId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<UploadedPreviousSchedule>(entity =>
         {

@@ -12,14 +12,14 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
     public async Task<IReadOnlyList<DateOnly>> ListMonthsAsync(WorkspaceCode workspace, ActorContext actor, CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        ServiceSupport.RequireViewer(actor);
+        ServiceSupport.RequireEditor(actor, workspace);
         return await db.DemandDrafts.AsNoTracking().Where(x => x.Workspace == workspace).OrderByDescending(x => x.Month).Select(x => x.Month).ToArrayAsync(cancellationToken);
     }
 
     public async Task<DemandDraftDto?> GetAsync(WorkspaceCode workspace, DateOnly month, ActorContext actor, CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        ServiceSupport.RequireViewer(actor);
+        ServiceSupport.RequireEditor(actor, workspace);
         month = MonthStart(month);
         var demand = await Query(db).AsNoTracking().SingleOrDefaultAsync(x => x.Workspace == workspace && x.Month == month, cancellationToken);
         return demand is null ? null : ServiceSupport.ToDto(demand);
@@ -140,9 +140,9 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
     public async Task<ImportPreviewDto> PreviewDemandImportAsync(Guid demandId, Stream csv, ActorContext actor, CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        ServiceSupport.RequireViewer(actor);
         var demand = await Query(db).AsNoTracking().SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
             ?? throw new DomainValidationException("找不到本月需求。");
+        ServiceSupport.RequireEditor(actor, demand.Workspace);
         try
         {
             var schedule = await ParseMonthlyAsync(csv, demand, false, cancellationToken);
@@ -184,7 +184,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         ServiceSupport.RequireEditor(actor, demand.Workspace);
         if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
         if (date < demand.Month || date >= demand.Month.AddMonths(1)) throw new DomainValidationException("日格日期不在目前月份內。");
-        ValidateDemandCell(demand.Workspace, date, kind, requestedRest, station, shift, eventStart, eventEnd, eventDescription);
+        DemandCellValidator.Validate(demand.Workspace, date, kind, requestedRest, station, shift, eventStart, eventEnd, eventDescription);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var assignment = employee.Assignments.SingleOrDefault(x => x.Date == date);
         var before = assignment is null ? null : new { demand.Month, employee.EmployeeCode, employee.Name, assignment.Date, assignment.Kind, assignment.RequestedRest, assignment.Station, assignment.Shift, assignment.EventStart, assignment.EventEnd, assignment.EventDescription };
@@ -337,9 +337,9 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
     public async Task<PreviousSchedulePreviewDto> GetPreviousSchedulePreviewAsync(Guid demandId, ActorContext actor, CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        ServiceSupport.RequireViewer(actor);
         var demand = await Query(db).AsNoTracking().SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
             ?? throw new DomainValidationException("找不到本月需求。");
+        ServiceSupport.RequireEditor(actor, demand.Workspace);
         var schedule = await GetPreviousScheduleAsync(db, demand, cancellationToken);
         return new(demand.Workspace, schedule.MonthStart, schedule.Employees.Select(employee =>
             new PreviousScheduleEmployeeDto(employee.EmployeeId, employee.Name, employee.Affiliation, ScheduleCsv.MonthlyRow(schedule, employee))).ToArray());
@@ -348,9 +348,9 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
     public async Task<PreviousScheduleFileDto> ExportPreviousScheduleAsync(Guid demandId, ActorContext actor, CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        ServiceSupport.RequireViewer(actor);
         var demand = await Query(db).AsNoTracking().SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
             ?? throw new DomainValidationException("找不到本月需求。");
+        ServiceSupport.RequireEditor(actor, demand.Workspace);
         var schedule = await GetPreviousScheduleAsync(db, demand, cancellationToken);
         var fileName = demand.PreviousSource == PreviousScheduleSource.Upload
             ? demand.UploadedPreviousSchedule?.FileName ?? $"previous-{schedule.MonthStart:yyyy-MM}.csv"
@@ -381,9 +381,9 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
     public async Task<PerpetualScheduleFileDto> ExportPerpetualScheduleAsync(Guid demandId, ActorContext actor, CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        ServiceSupport.RequireViewer(actor);
         var demand = await db.DemandDrafts.AsNoTracking().SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
             ?? throw new DomainValidationException("找不到本月需求。");
+        ServiceSupport.RequireEditor(actor, demand.Workspace);
         if (demand.Workspace != WorkspaceCode.M || string.IsNullOrWhiteSpace(demand.PerpetualScheduleJson))
             throw new DomainValidationException("找不到 M 八週萬年班表。");
         var schedule = JsonSerializer.Deserialize<MPerpetualSchedule>(demand.PerpetualScheduleJson, ServiceSupport.JsonOptions)
@@ -406,6 +406,66 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         Touch(demand, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "DemandPerpetualScheduleCleared", WorkspaceCode.M, "DemandDraft", demand.Id, before, null);
         await SaveDemandChangesAsync(db, cancellationToken);
+    }
+
+    public async Task<DemandDraftDto> ImportEmployeeSubmissionsAsync(Guid demandId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        var demand = await db.DemandDrafts
+            .Include(x => x.Employees)
+            .SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
+            ?? throw new DomainValidationException("找不到本月需求。");
+        ServiceSupport.RequireEditor(actor, demand.Workspace);
+        if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
+        if (await db.DemandSubmissionImports.AnyAsync(x => x.DemandDraftId == demandId, cancellationToken))
+            throw new DomainValidationException("此月份 Demand 已匯入過員工填報，不可再次匯入。");
+        var submissions = await db.EmployeeDemandSubmissions.AsNoTracking()
+            .Include(x => x.Assignments)
+            .Where(x => x.Workspace == demand.Workspace && x.Month == demand.Month)
+            .ToListAsync(cancellationToken);
+        if (submissions.Count == 0) throw new DomainValidationException("目前沒有任何員工填報可匯入。");
+
+        var demandByCode = demand.Employees.ToDictionary(x => x.EmployeeCode, StringComparer.Ordinal);
+        var importedEmployees = 0;
+        var importedAssignments = 0;
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        foreach (var submission in submissions)
+        {
+            if (!demandByCode.TryGetValue(submission.EmployeeCode, out var demandEmployee)) continue;
+            demandEmployee.RequestedLeaveRestCount = submission.RequestedLeaveRestCount;
+            await db.DemandAssignments.Where(x => x.DemandEmployeeId == demandEmployee.Id).ExecuteDeleteAsync(cancellationToken);
+            foreach (var source in submission.Assignments)
+            {
+                db.DemandAssignments.Add(new DemandAssignment
+                {
+                    DemandEmployeeId = demandEmployee.Id,
+                    Date = source.Date,
+                    Kind = source.Kind,
+                    RequestedRest = source.RequestedRest,
+                    Station = source.Station,
+                    Shift = source.Shift,
+                    EventStart = source.EventStart,
+                    EventEnd = source.EventEnd,
+                    EventDescription = source.EventDescription
+                });
+                importedAssignments++;
+            }
+            importedEmployees++;
+        }
+
+        db.DemandSubmissionImports.Add(new DemandSubmissionImport
+        {
+            DemandDraftId = demand.Id,
+            ImportedAtUtc = DateTimeOffset.UtcNow,
+            ImportedByUserId = actor.UserId,
+            ImportedByName = actor.UserName
+        });
+        Touch(demand, actor.UserId);
+        ServiceSupport.AddAudit(db, actor, "DemandSubmissionImported", demand.Workspace, "DemandDraft", demand.Id, null,
+            new { demand.Month, ImportedEmployees = importedEmployees, ImportedAssignments = importedAssignments });
+        await SaveDemandChangesAsync(db, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return await DemandDtoAsync(demand.Id, cancellationToken);
     }
 
     private static IQueryable<DemandDraft> Query(NtmcDbContext db) => db.DemandDrafts.AsSplitQuery()
@@ -504,27 +564,6 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
 
     private static DateOnly MonthStart(DateOnly month) => new(month.Year, month.Month, 1);
 
-    private static void ValidateDemandCell(WorkspaceCode workspace, DateOnly date, string? kind, bool requestedRest, string? station, string? shift, DateTimeOffset? eventStart, DateTimeOffset? eventEnd, string? description)
-    {
-        if (kind is not (null or "" or "Unresolved" or "Work" or "Rest" or "SpecialRest" or "LeaveRest" or "WorkEvent"))
-            throw new DomainValidationException("不支援的需求日格狀態。");
-        if (requestedRest && kind is not (null or "" or "Unresolved" or "Rest" or "SpecialRest" or "LeaveRest"))
-            throw new DomainValidationException("R* 標記只能套用在未決定或休假日格。");
-        if (kind == "Work")
-        {
-            if (SolverScheduleMapper.ParseShift(shift) is null) throw new DomainValidationException("正常班必須指定班別。");
-            if (workspace == WorkspaceCode.M && !IsMStation(station)) throw new DomainValidationException("M 正常班車站必須為 LB01–LB12。");
-            if (workspace == WorkspaceCode.T && !string.IsNullOrWhiteSpace(station)) throw new DomainValidationException("T 正常班不可指定車站。");
-        }
-        if (kind == "WorkEvent" && (eventStart is null || eventEnd is null || eventEnd <= eventStart || eventEnd - eventStart > TimeSpan.FromHours(24) || eventStart.Value.Offset != TimeSpan.FromHours(8) || eventEnd.Value.Offset != TimeSpan.FromHours(8)))
-            throw new DomainValidationException("X 必須使用台北時間，結束晚於開始且長度不超過 24 小時。");
-        if (kind == "WorkEvent" && DateOnly.FromDateTime(eventStart!.Value.DateTime) != date)
-            throw new DomainValidationException("X 必須歸在台北時間的開始日期。");
-        if (description?.Length > 500) throw new DomainValidationException("X 說明不可超過 500 字元。");
-    }
-    private static bool IsMStation(string? station) => station is not null && station.Length == 4 &&
-        station.StartsWith("LB", StringComparison.Ordinal) && int.TryParse(station[2..], out var number) && number is >= 1 and <= 12;
-
     private static async Task SaveDemandChangesAsync(NtmcDbContext db, CancellationToken cancellationToken)
     {
         try
@@ -536,6 +575,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
             throw new ConcurrencyConflictException("本月需求資料已失效，請重新整理後再儲存。");
         }
     }
+
     private static void Touch(DemandDraft demand, Guid actorId)
     {
         demand.UpdatedByUserId = actorId;

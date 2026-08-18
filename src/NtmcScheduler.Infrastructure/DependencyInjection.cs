@@ -19,6 +19,7 @@ public static class DependencyInjection
         services.AddScoped<ICommonConfigurationService, CommonConfigurationService>();
         services.AddScoped<IEmployeeService, EmployeeService>();
         services.AddScoped<IDemandService, DemandService>();
+        services.AddScoped<IEmployeeDemandSubmissionService, EmployeeDemandSubmissionService>();
         services.AddScoped<IScheduleRunService, ScheduleRunService>();
         services.AddScoped<IScheduleValidationService, ScheduleValidationService>();
         services.AddScoped<IScheduleService, ScheduleService>();

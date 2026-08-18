@@ -75,7 +75,7 @@ public sealed class ScheduleRunService(NtmcDbContext db, ScheduleRunQueue queue,
 
     public async Task<IReadOnlyList<ScheduleRunDto>> ListAsync(WorkspaceCode workspace, DateOnly month, ActorContext actor, CancellationToken cancellationToken = default)
     {
-        ServiceSupport.RequireViewer(actor);
+        ServiceSupport.RequireEditor(actor, workspace);
         month = new(month.Year, month.Month, 1);
         var runs = await db.ScheduleRuns.AsNoTracking().Where(x => x.Workspace == workspace && x.Month == month)
             .ToListAsync(cancellationToken);

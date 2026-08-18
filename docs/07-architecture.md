@@ -47,6 +47,8 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 | `Employee` | 目前員工主檔：員工編號、姓名、單位（M/T）、M 所屬站、T 專業與 ability、revision token；刪除前內容保存在 AuditLog，既有月份使用獨立快照 |
 | `ConfigurationRevision` | 不可變的 56 日區間、國定假日與非常態班型版本；`CurrentConfiguration` 指向目前版 |
 | `DemandDraft`／`DemandEmployee`／`DemandAssignment` | 每單位每月一份草稿、月份人員快照、T 月班別、期初額度、R\* 與 X |
+| `EmployeeDemandSubmission`／`EmployeeDemandSubmissionAssignment` | 每工作區／月份／員工一份目前填報；任何登入者可代填，AuditLog 保留每次覆蓋 |
+| `DemandSubmissionImport` | 記錄 Demand 從填報一次性匯入的時間與操作者；匯入後填報仍可保存但標示晚於截止 |
 | `UploadedPreviousSchedule` | 解析後的上月班表 typed JSON，不保存原始上傳檔 |
 | `ScheduleRun` | 排班請求、狀態、完整 typed input JSON（人員、事件、歷史、設定、seed、程式版本）與 SHA-256 hash |
 | `ScheduleVersion` | 每次求解候選或匯入結果；各版本皆可人工修改與封存 |

@@ -66,6 +66,16 @@ button.danger { color: #9e1c1c; border-color: #c45a5a; }
 .wizard-steps button { white-space: nowrap; border-radius: 999px; }
 .wizard-steps button.active { background: #1859a9; border-color: #1859a9; color: #fff; }
 .month-selector { width: 8.5rem; }
+.submission-tabs { display: flex; align-items: center; gap: .35rem; margin: 0 0 1rem; padding: .35rem; border: 1px solid #d6dde6; border-radius: .6rem; background: #fff; width: fit-content; }
+.submission-tabs a { padding: .45rem .75rem; border-radius: .4rem; text-decoration: none; background: #e9eef5; color: #172033; }
+.submission-tabs a.active { background: #1859a9; color: #fff; }
+.submission-calendar-wrap { margin-top: .75rem; }
+.submission-calendar { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.submission-calendar th { padding: .45rem .25rem; text-align: center; background: #e9eef5; font-weight: 700; }
+.submission-calendar td { vertical-align: top; padding: .35rem .3rem .45rem; min-height: 4.5rem; border: 1px solid #d6dde6; background: #fff; }
+.submission-calendar td.calendar-empty { background: #f3f5f8; }
+.submission-calendar .calendar-day-label { margin-bottom: .25rem; font-size: .85rem; font-weight: 700; color: #334155; }
+.submission-calendar .cell-editor { width: 100%; min-width: 0; height: auto; min-height: 1.9rem; padding: .15rem .2rem; font-size: .78rem; }
 .workspace-nav { display: flex; align-items: center; gap: .35rem; margin: 0 0 1rem; padding: .35rem; border: 1px solid #d6dde6; border-radius: .6rem; background: #fff; }
 .workspace-nav strong { padding-inline: .55rem; }
 .workspace-nav a { padding: .45rem .75rem; border-radius: .4rem; text-decoration: none; background: #e9eef5; color: #172033; }

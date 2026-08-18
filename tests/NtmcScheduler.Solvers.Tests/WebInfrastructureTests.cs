@@ -108,6 +108,81 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
+    public async Task ScheduleCreation_ReadsRequireMatchingWorkspaceEditor()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var demands = DemandService(database);
+        var runs = new ScheduleRunService(database.Context, new ScheduleRunQueue());
+        var month = new DateOnly(2026, 8, 1);
+        var viewer = new ActorContext(Guid.NewGuid(), "viewer", false, new HashSet<WorkspaceCode>(), "viewer-test");
+
+        foreach (var ownWorkspace in Enum.GetValues<WorkspaceCode>())
+        {
+            var actor = Editor(ownWorkspace);
+            var otherWorkspace = ownWorkspace == WorkspaceCode.M ? WorkspaceCode.T : WorkspaceCode.M;
+
+            Assert.IsEmpty(await demands.ListMonthsAsync(ownWorkspace, actor));
+            await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => demands.ListMonthsAsync(otherWorkspace, actor));
+            await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => demands.GetAsync(otherWorkspace, month, actor));
+            await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => runs.ListAsync(otherWorkspace, month, actor));
+        }
+
+        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => demands.ListMonthsAsync(WorkspaceCode.M, viewer));
+    }
+
+    [TestMethod]
+    public async Task EmployeeDemandSubmission_ViewerCanFillEditorImportsOnce()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var employees = new EmployeeService(database.Context);
+        var demands = DemandService(database);
+        var submissions = SubmissionService(database);
+        var editor = Editor(WorkspaceCode.M);
+        var viewer = new ActorContext(Guid.NewGuid(), "viewer", false, new HashSet<WorkspaceCode>(), "viewer-test");
+        var month = new DateOnly(2026, 9, 1);
+        var intervalStart = new DateOnly(2026, 8, 3);
+        await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+            [new RestIntervalDto(intervalStart, intervalStart.AddDays(55), [])], [], null, editor);
+        await employees.SaveAsync(new SaveEmployeeCommand(null, WorkspaceCode.M, "M001", "王小明", "LB01", null, null, null), editor);
+        var demand = await demands.CreateAsync(WorkspaceCode.M, month, editor);
+
+        await submissions.UpdateLeaveRestAsync(WorkspaceCode.M, month, "M001", 2, null, viewer);
+        var saved = await submissions.UpdateAssignmentAsync(WorkspaceCode.M, month, "M001", month.AddDays(4), "Work", false, "LB01", "Early", null, null, null, (await submissions.GetAsync(WorkspaceCode.M, month, "M001", viewer))!.RevisionToken, viewer);
+        Assert.AreEqual(2, saved.RequestedLeaveRestCount);
+        Assert.HasCount(1, saved.Assignments);
+
+        var preview = await submissions.PreviewImportAsync(demand.Id, editor);
+        Assert.IsTrue(preview.IsValid);
+        Assert.AreEqual(1, preview.MatchedEmployeeCount);
+
+        demand = (await demands.GetAsync(WorkspaceCode.M, month, editor))!;
+        demand = await submissions.ImportToDemandAsync(demand.Id, demand.RevisionToken, editor);
+        var importedEmployee = demand.Employees.Single(x => x.EmployeeCode == "M001");
+        Assert.AreEqual(2, importedEmployee.RequestedLeaveRestCount);
+        Assert.HasCount(1, importedEmployee.Assignments);
+
+        await submissions.UpdateLeaveRestAsync(WorkspaceCode.M, month, "M001", 3, saved.RevisionToken, viewer);
+        var late = await submissions.GetAsync(WorkspaceCode.M, month, "M001", viewer);
+        Assert.IsTrue(late!.IsLate);
+
+        var reloaded = (await demands.GetAsync(WorkspaceCode.M, month, editor))!;
+        Assert.AreEqual(2, reloaded.Employees.Single(x => x.EmployeeCode == "M001").RequestedLeaveRestCount);
+
+        await Assert.ThrowsExactlyAsync<DomainValidationException>(() => submissions.ImportToDemandAsync(demand.Id, reloaded.RevisionToken, editor));
+        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => submissions.ImportToDemandAsync(demand.Id, reloaded.RevisionToken, viewer));
+        Assert.AreEqual(1, await database.Context.AuditLogs.CountAsync(x => x.Action == "DemandSubmissionImported"));
+        Assert.IsTrue(await database.Context.AuditLogs.AnyAsync(x => x.Action == "EmployeeDemandSubmissionUpdated"));
+    }
+
+    [TestMethod]
+    public void AuditPresentation_LabelsSubmissionActions()
+    {
+        var labels = AuditPresentation.ActionOptions().ToDictionary(x => x.Action, x => x.Label);
+        Assert.AreEqual("修改員工填報", labels["EmployeeDemandSubmissionUpdated"]);
+        Assert.AreEqual("匯入員工填報", labels["DemandSubmissionImported"]);
+    }
+
+    [TestMethod]
     public async Task EmployeeDelete_PreservesAuditAndAllowsSameCodeToReturn()
     {
         await using var database = await TestDatabase.CreateAsync();
@@ -1054,6 +1129,9 @@ public sealed class WebInfrastructureTests
 
     private static DemandService DemandService(TestDatabase database) =>
         new(database);
+
+    private static EmployeeDemandSubmissionService SubmissionService(TestDatabase database) =>
+        new(database, DemandService(database));
 
     private static ScheduleVersion Version(ConfigurationRevision revision, DateOnly month, string name) => new()
     {

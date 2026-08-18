@@ -132,6 +132,45 @@ public sealed record MPerpetualScheduleDto(string FileName, DateTimeOffset Updat
 public sealed record ImportPreviewDto(bool IsValid, IReadOnlyList<string> Errors, IReadOnlyList<string> Differences);
 public sealed record EmployeeImportPreviewDto(bool IsValid, IReadOnlyList<string> Errors, IReadOnlyList<string> Differences, Guid RevisionToken);
 
+public sealed record EmployeeDemandSubmissionAssignmentDto(
+    Guid Id,
+    DateOnly Date,
+    string? Kind,
+    bool RequestedRest,
+    string? Station,
+    string? Shift,
+    DateTimeOffset? EventStart,
+    DateTimeOffset? EventEnd,
+    string? EventDescription);
+
+public sealed record EmployeeDemandSubmissionDto(
+    Guid Id,
+    WorkspaceCode Workspace,
+    DateOnly Month,
+    string EmployeeCode,
+    string Name,
+    string Affiliation,
+    DateOnly? EmploymentStartDate,
+    int RequestedLeaveRestCount,
+    Guid RevisionToken,
+    DateTimeOffset UpdatedAtUtc,
+    string UpdatedByName,
+    bool IsLate,
+    IReadOnlyList<EmployeeDemandSubmissionAssignmentDto> Assignments);
+
+public sealed record DemandSubmissionImportDto(
+    Guid DemandDraftId,
+    DateTimeOffset ImportedAtUtc,
+    string ImportedByName);
+
+public sealed record SubmissionImportPreviewDto(
+    bool IsValid,
+    IReadOnlyList<string> Errors,
+    IReadOnlyList<string> Differences,
+    int SubmissionCount,
+    int MatchedEmployeeCount,
+    int LateSubmissionCount);
+
 public sealed record ScheduleVersionDto(
     Guid Id,
     WorkspaceCode Workspace,

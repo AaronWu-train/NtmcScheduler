@@ -144,6 +144,48 @@ public sealed class DemandAssignment
     public DemandEmployee DemandEmployee { get; set; } = null!;
 }
 
+public sealed class EmployeeDemandSubmission
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public WorkspaceCode Workspace { get; set; }
+    public DateOnly Month { get; set; }
+    public string EmployeeCode { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Affiliation { get; set; } = "";
+    public DateOnly? EmploymentStartDate { get; set; }
+    public int RequestedLeaveRestCount { get; set; }
+    public Guid UpdatedByUserId { get; set; }
+    public string UpdatedByName { get; set; } = "";
+    public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public Guid RevisionToken { get; set; } = Guid.NewGuid();
+    public List<EmployeeDemandSubmissionAssignment> Assignments { get; set; } = [];
+}
+
+public sealed class EmployeeDemandSubmissionAssignment
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid SubmissionId { get; set; }
+    public DateOnly Date { get; set; }
+    public string? Kind { get; set; }
+    public bool RequestedRest { get; set; }
+    public string? Station { get; set; }
+    public string? Shift { get; set; }
+    public DateTimeOffset? EventStart { get; set; }
+    public DateTimeOffset? EventEnd { get; set; }
+    public string? EventDescription { get; set; }
+    public EmployeeDemandSubmission Submission { get; set; } = null!;
+}
+
+public sealed class DemandSubmissionImport
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid DemandDraftId { get; set; }
+    public DateTimeOffset ImportedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public Guid ImportedByUserId { get; set; }
+    public string ImportedByName { get; set; } = "";
+    public DemandDraft DemandDraft { get; set; } = null!;
+}
+
 public sealed class UploadedPreviousSchedule
 {
     public Guid Id { get; set; } = Guid.NewGuid();

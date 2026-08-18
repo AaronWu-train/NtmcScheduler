@@ -1,0 +1,359 @@
+@page "/{Workspace}/submissions"
+@rendermode InteractiveServer
+@attribute [Authorize]
+@inject IEmployeeService EmployeeService
+@inject IEmployeeDemandSubmissionService SubmissionService
+@inject ICommonConfigurationService ConfigurationService
+@inject CurrentActorService CurrentActor
+
+<PageTitle>@workspaceCode 需求填寫</PageTitle>
+<SubmissionWorkspaceTabs/>
+<div class="page-title">
+    <div>
+        <h1>@workspaceCode 需求填寫</h1>
+        <p>選擇員工後填寫 R*、R休 上限、固定班別或 X。目前登入帳號：<strong>@actorName</strong></p>
+    </div>
+    <PageHelp Title="填報說明">
+        <p>任何已登入者都可代填任一員工；系統會記錄操作者與被填員工。選取已有填報的員工時會載入並可覆蓋。填報與正式 Demand 分離，需由排班人員在 Demand 寬表一次性匯入。</p>
+    </PageHelp>
+</div>
+@if (message is not null)
+{
+    <p class="alert @messageClass" role="status">@message</p>
+}
+<div class="toolbar">
+    <label>
+        月份
+        <input class="month-selector" type="month" value="@monthText" disabled="@isBusy" @onchange="ChangeMonth"/>
+    </label>
+    <label>
+        員工
+        <select disabled="@isBusy" value="@selectedEmployeeCode" @onchange="SelectEmployeeAsync">
+            <option value="" disabled>請選擇員工</option>
+            @foreach (var employee in employees)
+            {
+                <option value="@employee.EmployeeCode">@employee.EmployeeCode @employee.Name（@employee.Affiliation）</option>
+            }
+        </select>
+    </label>
+</div>
+
+@if (selectedEmployee is not null)
+{
+    <section class="card">
+        <div class="section-heading">
+            <div>
+                <h2>@selectedEmployee.EmployeeCode @selectedEmployee.Name</h2>
+                <p>填寫對象：@selectedEmployee.Name（@selectedEmployee.Affiliation）</p>
+                @if (submission is not null)
+                {
+                    <p>最後更新：@Taipei(submission.UpdatedAtUtc)　操作者：@submission.UpdatedByName</p>
+                    @if (submission.IsLate)
+                    {
+                        <p class="error-text">此填報晚於 Demand 匯入截止，不會再套用至正式 Demand。</p>
+                    }
+                }
+            </div>
+        </div>
+        <div class="toolbar">
+            <label>
+                當月指定 R休 上限
+                <input class="inline-field number-field" type="number" min="0" disabled="@isBusy" value="@leaveRest" @onchange="ChangeLeaveRestAsync"/>
+            </label>
+        </div>
+        <div class="submission-calendar-wrap">
+            <table class="submission-calendar">
+                <thead>
+                <tr>
+                    @foreach (var label in WeekdayLabels)
+                    {
+                        <th>@label</th>
+                    }
+                </tr>
+                </thead>
+                <tbody>
+                @foreach (var week in CalendarWeeks())
+                {
+                    <tr>
+                        @foreach (var date in week)
+                        {
+                            @if (date is not DateOnly day)
+                            {
+                                <td class="calendar-empty" aria-hidden="true"></td>
+                            }
+                            else
+                            {
+                                var cell = submission?.Assignments.FirstOrDefault(x => x.Date == day);
+                                <td class="calendar-day @DayClass(day)">
+                                    <div class="calendar-day-label">@day.Day</div>
+                                    <select class="cell-editor @CellClass(cell)" disabled="@(isBusy || selectedEmployee.EmploymentStartDate is { } start && day < start)" value="@CellEditorValue(cell)" @onchange="args => ChangeCellAsync(day, cell, args.Value?.ToString())">
+                                        <option value=""></option><option value="RStar">R*</option>
+                                        @if (workspaceCode == WorkspaceCode.M)
+                                        {
+                                            @foreach (var station in MStations)
+                                            {
+                                                <option value="m:@station:Early">@ShortStation(station)早</option>
+                                                <option value="m:@station:Afternoon">@ShortStation(station)小</option>
+                                                <option value="m:@station:Night">@ShortStation(station)夜</option>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <option value="Early">早</option>
+                                            <option value="Afternoon">午</option>
+                                            <option value="Night">夜</option>
+                                        }
+                                        @if (cell is not null && CellEditorValue(cell) == "Existing")
+                                        {
+                                            <option value="Existing" disabled>已填</option>
+                                        }
+                                        <optgroup label="非常態班型">
+                                            <option value="Other">自行輸入 X…</option>
+                                            @foreach (var shift in configuration?.NonStandardShifts ?? [])
+                                            {
+                                                <option value="ns:@shift.Code">@(shift.Name ?? shift.Code)</option>
+                                            }
+                                        </optgroup>
+                                    </select>
+                                </td>
+                            }
+                        }
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}
+
+@if (editingDate is not null)
+{
+    <div class="modal-backdrop"></div>
+    <section class="card modal">
+            <h2>編輯 X（@editingDate.Value.ToString("yyyy-MM-dd")）</h2>
+            <label>開始<InputText type="datetime-local" @bind-Value="cellEditStart"/></label>
+            <label>結束<InputText type="datetime-local" @bind-Value="cellEditEnd"/></label>
+            <label>說明<InputText @bind-Value="cellEditDescription"/></label>
+            <div class="step-actions">
+                <button disabled="@isBusy" @onclick="CloseEditor">取消</button>
+                <button class="primary" disabled="@isBusy" @onclick="SaveOtherCellAsync">@(isBusy ? "處理中…" : "儲存 X")</button>
+        </div>
+    </section>
+}
+
+@code {
+    [Parameter] public string Workspace { get; set; } = "";
+    private WorkspaceCode workspaceCode;
+    private string monthText = DateTime.Today.ToString("yyyy-MM");
+    private string selectedEmployeeCode = "";
+    private string actorName = "";
+    private EmployeeDto? selectedEmployee;
+    private EmployeeDemandSubmissionDto? submission;
+    private IReadOnlyList<EmployeeDto> employees = [];
+    private ConfigurationRevisionDto? configuration;
+    private int leaveRest;
+    private string? message;
+    private string messageClass = "success";
+    private bool isBusy;
+    private DateOnly? editingDate;
+    private string cellEditStart = "";
+    private string cellEditEnd = "";
+    private string cellEditDescription = "";
+    private readonly SemaphoreSlim uiOperationLock = new(1, 1);
+
+    private static readonly string[] WeekdayLabels = ["日", "一", "二", "三", "四", "五", "六"];
+    private static readonly string[] MStations = ["LB01", "LB02", "LB03", "LB04", "LB05", "LB06", "LB07", "LB08", "LB09", "LB10", "LB11", "LB12"];
+
+    private IReadOnlyList<IReadOnlyList<DateOnly?>> CalendarWeeks()
+    {
+        var month = Month();
+        var daysInMonth = DateTime.DaysInMonth(month.Year, month.Month);
+        var cells = new List<DateOnly?>();
+        for (var i = 0; i < (int)month.DayOfWeek; i++)
+        {
+            cells.Add(null);
+        }
+        for (var day = 1; day <= daysInMonth; day++)
+        {
+            cells.Add(month.AddDays(day - 1));
+        }
+        while (cells.Count % 7 != 0)
+        {
+            cells.Add(null);
+        }
+        return cells.Chunk(7).Select(week => (IReadOnlyList<DateOnly?>)week.ToList()).ToList();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!Enum.TryParse<WorkspaceCode>(Workspace, true, out workspaceCode)) throw new DomainValidationException("工作區只支援 M 或 T。");
+        var actor = await CurrentActor.GetAsync();
+        actorName = actor.UserName;
+        employees = await EmployeeService.ListAsync(workspaceCode, actor);
+        configuration = await ConfigurationService.GetCurrentAsync(actor);
+        await LoadSubmissionAsync();
+    }
+
+    private DateOnly Month() => DateOnly.ParseExact(monthText + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture);
+    private async Task ChangeMonth(ChangeEventArgs args)
+    {
+        monthText = args.Value?.ToString() ?? monthText;
+        await LoadSubmissionAsync();
+    }
+
+    private async Task SelectEmployeeAsync(ChangeEventArgs args)
+    {
+        selectedEmployeeCode = args.Value?.ToString() ?? "";
+        selectedEmployee = employees.FirstOrDefault(x => x.EmployeeCode == selectedEmployeeCode);
+        await LoadSubmissionAsync();
+    }
+
+    private async Task LoadSubmissionAsync()
+    {
+        if (selectedEmployee is null)
+        {
+            submission = null;
+            leaveRest = 0;
+            return;
+        }
+        var actor = await CurrentActor.GetAsync();
+        submission = await SubmissionService.GetAsync(workspaceCode, Month(), selectedEmployee.EmployeeCode, actor);
+        leaveRest = submission?.RequestedLeaveRestCount ?? 0;
+    }
+
+    private async Task ChangeLeaveRestAsync(ChangeEventArgs args)
+    {
+        if (selectedEmployee is null) return;
+        if (!int.TryParse(args.Value?.ToString(), NumberStyles.None, CultureInfo.InvariantCulture, out var count) || count < 0)
+        {
+            messageClass = "error";
+            message = "R休上限必須是非負整數。";
+            return;
+        }
+        await RunUiAsync(async () =>
+        {
+            submission = await SubmissionService.UpdateLeaveRestAsync(workspaceCode, Month(), selectedEmployee!.EmployeeCode, count, submission?.RevisionToken, await CurrentActor.GetAsync());
+            leaveRest = submission.RequestedLeaveRestCount;
+        }, "R休上限已儲存。");
+    }
+
+    private async Task ChangeCellAsync(DateOnly date, EmployeeDemandSubmissionAssignmentDto? cell, string? value)
+    {
+        if (selectedEmployee is null || submission is null && value != "RStar" && string.IsNullOrWhiteSpace(value)) return;
+        if (value == "Existing") return;
+        if (value == "Other")
+        {
+            editingDate = date;
+            cellEditStart = LocalInput(cell?.EventStart) ?? date.ToDateTime(new TimeOnly(8, 30)).ToString("yyyy-MM-ddTHH:mm");
+            cellEditEnd = LocalInput(cell?.EventEnd) ?? date.ToDateTime(new TimeOnly(17, 30)).ToString("yyyy-MM-ddTHH:mm");
+            cellEditDescription = cell?.EventDescription ?? "";
+            return;
+        }
+
+        await RunUiAsync(async () =>
+        {
+            var isMWork = value?.StartsWith("m:", StringComparison.Ordinal) == true;
+            var kind = value is "Early" or "Afternoon" or "Night" || isMWork ? "Work" : value?.StartsWith("ns:", StringComparison.Ordinal) == true ? "WorkEvent" : null;
+            var requested = value == "RStar";
+            var parts = isMWork ? value!.Split(':') : null;
+            var shift = kind == "Work" ? parts?[2] ?? value : null;
+            DateTimeOffset? start = null;
+            DateTimeOffset? end = null;
+            string? description = null;
+            if (value?.StartsWith("ns:", StringComparison.Ordinal) == true)
+            {
+                var nonStandard = configuration!.NonStandardShifts.Single(x => x.Code == value[3..]);
+                start = Offset(date.ToDateTime(nonStandard.StartTime));
+                end = Offset((nonStandard.EndTime <= nonStandard.StartTime ? date.AddDays(1) : date).ToDateTime(nonStandard.EndTime));
+                description = nonStandard.Name ?? nonStandard.Code;
+            }
+            if (submission is null)
+            {
+                submission = await SubmissionService.UpdateLeaveRestAsync(workspaceCode, Month(), selectedEmployee!.EmployeeCode, leaveRest, null, await CurrentActor.GetAsync());
+            }
+            submission = await SubmissionService.UpdateAssignmentAsync(workspaceCode, Month(), selectedEmployee!.EmployeeCode, date, kind, requested,
+                kind == "Work" && workspaceCode == WorkspaceCode.M ? parts?[1] : null, shift,
+                start, end, description, submission.RevisionToken, await CurrentActor.GetAsync());
+        }, "日格已儲存。");
+    }
+
+    private async Task SaveOtherCellAsync()
+    {
+        if (selectedEmployee is null || editingDate is null || submission is null) return;
+        if (!DateTime.TryParse(cellEditStart, CultureInfo.InvariantCulture, DateTimeStyles.None, out var startLocal) ||
+            !DateTime.TryParse(cellEditEnd, CultureInfo.InvariantCulture, DateTimeStyles.None, out var endLocal))
+        {
+            messageClass = "error";
+            message = "請輸入有效的 X 時間。";
+            return;
+        }
+        await RunUiAsync(async () =>
+        {
+            submission = await SubmissionService.UpdateAssignmentAsync(workspaceCode, Month(), selectedEmployee!.EmployeeCode, editingDate.Value, "WorkEvent", false, null, null,
+                Offset(startLocal), Offset(endLocal), cellEditDescription, submission!.RevisionToken, await CurrentActor.GetAsync());
+            CloseEditor();
+        }, "日格已儲存。");
+    }
+
+    private void CloseEditor() => editingDate = null;
+    private static string ShortStation(string station) => station[2..];
+    private static DateTimeOffset? Offset(DateTime value) => new(DateTime.SpecifyKind(value, DateTimeKind.Unspecified), TimeSpan.FromHours(8));
+    private static string? LocalInput(DateTimeOffset? value) => value?.ToOffset(TimeSpan.FromHours(8)).ToString("yyyy-MM-ddTHH:mm");
+
+    private string CellEditorValue(EmployeeDemandSubmissionAssignmentDto? cell)
+    {
+        if (cell is null) return "";
+        if (cell.Kind is null && cell.RequestedRest) return "RStar";
+        if (cell.Kind == "Work" && cell.Shift is "Early" or "Afternoon" or "Night") return workspaceCode == WorkspaceCode.M ? $"m:{cell.Station}:{cell.Shift}" : cell.Shift;
+        if (cell.Kind != "WorkEvent") return "Existing";
+        var start = cell.EventStart?.ToOffset(TimeSpan.FromHours(8)).DateTime;
+        var end = cell.EventEnd?.ToOffset(TimeSpan.FromHours(8)).DateTime;
+        var match = configuration?.NonStandardShifts.FirstOrDefault(x => start is not null && end is not null &&
+                                                                           TimeOnly.FromDateTime(start.Value) == x.StartTime && TimeOnly.FromDateTime(end.Value) == x.EndTime);
+        return match is null ? "Other" : $"ns:{match.Code}";
+    }
+
+    private static string CellClass(EmployeeDemandSubmissionAssignmentDto? cell) => cell?.Kind switch
+    {
+        "Rest" or "SpecialRest" or "LeaveRest" => "rest",
+        "Work" when cell.Shift == "Early" => "early",
+        "Work" when cell.Shift == "Afternoon" => "afternoon",
+        "Work" when cell.Shift == "Night" => "night",
+        "WorkEvent" => "event",
+        _ => cell?.RequestedRest == true ? "requested" : ""
+    };
+
+    private string DayClass(DateOnly date)
+    {
+        var holiday = configuration?.RestIntervals.SelectMany(x => x.NationalHolidays).Contains(date) == true;
+        var boundary = configuration?.RestIntervals.Any(x => x.Start == date) == true;
+        return (date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday || holiday ? "holiday-column " : "") + (boundary ? "interval-boundary" : "");
+    }
+
+    private static string Taipei(DateTimeOffset value) => value.ToOffset(TimeSpan.FromHours(8)).ToString("yyyy-MM-dd HH:mm");
+
+    private async Task RunUiAsync(Func<Task> action, string success)
+    {
+        await uiOperationLock.WaitAsync();
+        try
+        {
+            isBusy = true;
+            messageClass = "success";
+            message = "處理中…";
+            await InvokeAsync(StateHasChanged);
+            await action();
+            message = success;
+        }
+        catch (Exception exception)
+        {
+            messageClass = "error";
+            message = exception.Message;
+        }
+        finally
+        {
+            isBusy = false;
+            uiOperationLock.Release();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}
