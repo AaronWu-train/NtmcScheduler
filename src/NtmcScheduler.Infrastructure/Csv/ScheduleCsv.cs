@@ -278,7 +278,7 @@ public static partial class ScheduleCsv
     {
         null => "",
         AssignmentKind.Rest => "R",
-        AssignmentKind.Work when cell.Station is not null => cell.Station + MShiftText(cell.Shift),
+        AssignmentKind.Work when cell.Station is not null => MWorkCellText(cell.Station, cell.Shift),
         _ => throw new ScheduleCsvException(nameof(MPerpetualSchedule), "M perpetual schedule contains an unsupported cell.")
     };
 
@@ -334,7 +334,7 @@ public static partial class ScheduleCsv
             AssignmentKind.SpecialRest => "R1",
             AssignmentKind.LeaveRest => "R休",
             AssignmentKind.WorkEvent => $"X[{cell.EventStart:HH\\:mm}-{cell.EventEnd:HH\\:mm}]",
-            AssignmentKind.Work when cell.Station is not null => cell.Station + MShiftText(cell.Shift),
+            AssignmentKind.Work when cell.Station is not null => MWorkCellText(cell.Station, cell.Shift),
             AssignmentKind.Work => ShiftText(cell.Shift),
             _ => ""
         };
@@ -420,6 +420,13 @@ public static partial class ScheduleCsv
     };
 
     private static string MShiftText(Shift? shift) => shift == Shift.Afternoon ? "小" : ShiftText(shift);
+
+    private static string MWorkCellText(string station, Shift? shift) =>
+        station.Length == 4 && station.StartsWith("LB", StringComparison.Ordinal) &&
+        int.TryParse(station.AsSpan(2), NumberStyles.None, CultureInfo.InvariantCulture, out var number) &&
+        number is >= 1 and <= 12
+            ? number.ToString(CultureInfo.InvariantCulture) + MShiftText(shift)
+            : station + MShiftText(shift);
 
     private static string Join(IEnumerable<string> values) => string.Join(',', values.Select(Escape));
     private static string Escape(string value)

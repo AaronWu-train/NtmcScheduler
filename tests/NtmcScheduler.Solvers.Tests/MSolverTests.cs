@@ -136,17 +136,15 @@ public sealed class MSolverTests
             var outputPath = Path.Combine(root, "output.csv");
             ScheduleCsv.WriteMonthly(inputPath, new(month, [employee]));
             File.WriteAllText(inputPath, File.ReadAllText(inputPath)
-                .Replace("LB01小", "1小")
-                .Replace("LB03小", "3午")
-                .Replace("LB04小", "LB04午")
-                .Replace("LB12早", "12早"));
+                .Replace("3小", "3午")
+                .Replace("4小", "LB04午"));
 
             var parsed = ScheduleCsv.ReadMonthly(inputPath, month);
             Assert.AreEqual("LB01", parsed.Employees[0].Assignments[month].Station);
             Assert.IsTrue(parsed.Employees[0].Assignments.Where(pair => pair.Key <= month.AddDays(3)).All(pair => pair.Value.Shift == Shift.Afternoon));
             Assert.AreEqual("LB12", parsed.Employees[0].Assignments[month.AddDays(4)].Station);
             ScheduleCsv.WriteMonthly(outputPath, parsed);
-            StringAssert.Contains(File.ReadAllText(outputPath), "LB01小,LB02小,LB03小,LB04小,LB12早");
+            StringAssert.Contains(File.ReadAllText(outputPath), "1小,2小,3小,4小,12早");
         }
         finally
         {
