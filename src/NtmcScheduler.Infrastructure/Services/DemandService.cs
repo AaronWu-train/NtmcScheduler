@@ -229,6 +229,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         db.DemandEmployees.RemoveRange(demand.Employees);
         demand.Employees = schedule.Employees.Select(SolverScheduleMapper.ToDemandEmployee).ToList();
         SetDemandRelationships(demand);
+        InheritBlankPerpetualScheduleIds(demand, await TryGetPreviousScheduleAsync(db, demand, cancellationToken));
         db.DemandEmployees.AddRange(demand.Employees);
         Touch(demand, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "DemandCsvImported", demand.Workspace, "DemandDraft", demand.Id, before,
@@ -427,18 +428,27 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
 
     private static async Task<MonthlySchedule> GetPreviousScheduleAsync(NtmcDbContext db, DemandDraft demand, CancellationToken cancellationToken)
     {
-        if (demand.PreviousSource == PreviousScheduleSource.Upload)
-            return demand.UploadedPreviousSchedule is null
-                ? throw new DomainValidationException("請先上傳上月班表。")
-                : JsonSerializer.Deserialize<MonthlySchedule>(demand.UploadedPreviousSchedule.ParsedScheduleJson, ServiceSupport.JsonOptions)
-                    ?? throw new DomainValidationException("上月班表快照無法讀取。");
+        var previous = await TryGetPreviousScheduleAsync(db, demand, cancellationToken);
+        if (previous is not null) return previous;
+        throw new DomainValidationException(demand.PreviousSource == PreviousScheduleSource.Upload
+            ? "請先上傳上月班表。"
+            : demand.PreviousAdoptedScheduleVersionId is null
+                ? "找不到選取的上月班表。"
+                : "選取的上月班表不存在或已封存。");
+    }
 
-        if (demand.PreviousAdoptedScheduleVersionId is not { } versionId)
-            throw new DomainValidationException("找不到選取的上月班表。");
+    private static async Task<MonthlySchedule?> TryGetPreviousScheduleAsync(NtmcDbContext db, DemandDraft demand, CancellationToken cancellationToken)
+    {
+        if (demand.PreviousSource == PreviousScheduleSource.Upload)
+        {
+            if (demand.UploadedPreviousSchedule is null) return null;
+            return JsonSerializer.Deserialize<MonthlySchedule>(demand.UploadedPreviousSchedule.ParsedScheduleJson, ServiceSupport.JsonOptions)
+                ?? throw new DomainValidationException("上月班表快照無法讀取。");
+        }
+        if (demand.PreviousAdoptedScheduleVersionId is not { } versionId) return null;
         var version = await db.ScheduleVersions.AsNoTracking().Include(x => x.Employees).ThenInclude(x => x.Assignments)
-            .SingleOrDefaultAsync(x => x.Id == versionId && !x.IsArchived, cancellationToken)
-            ?? throw new DomainValidationException("選取的上月班表不存在或已封存。");
-        return SolverScheduleMapper.ToMonthlySchedule(version);
+            .SingleOrDefaultAsync(x => x.Id == versionId && !x.IsArchived, cancellationToken);
+        return version is null ? null : SolverScheduleMapper.ToMonthlySchedule(version);
     }
 
     private static void ValidateWorkspace(MonthlySchedule schedule, WorkspaceCode workspace)
@@ -464,6 +474,18 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
                 employee.OpeningSpecialRest = null;
                 employee.PerpetualScheduleId = null;
             }
+        }
+    }
+
+    private static void InheritBlankPerpetualScheduleIds(DemandDraft demand, MonthlySchedule? previous)
+    {
+        if (demand.Workspace != WorkspaceCode.M || previous is null) return;
+        var previousByCode = previous.Employees.ToDictionary(x => x.EmployeeId, StringComparer.Ordinal);
+        foreach (var employee in demand.Employees)
+        {
+            if (employee.PerpetualScheduleId is not null) continue;
+            if (previousByCode.TryGetValue(employee.EmployeeCode, out var prior))
+                employee.PerpetualScheduleId = prior.PerpetualScheduleId;
         }
     }
 

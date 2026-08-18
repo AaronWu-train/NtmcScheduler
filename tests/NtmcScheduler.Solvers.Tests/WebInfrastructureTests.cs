@@ -262,6 +262,64 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
+    public async Task DemandCsvImport_BlankPerpetualScheduleInheritsFromPrevious()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var actor = Editor(WorkspaceCode.M);
+        var input = MSolverTests.ValidInput();
+        var previousEmployee = input.DemandMonth.Employees[0];
+        await new EmployeeService(database.Context).SaveAsync(new(null, WorkspaceCode.M, previousEmployee.EmployeeId,
+            previousEmployee.Name, previousEmployee.Affiliation, null, null, null), actor);
+        var configuration = await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+            input.RestIntervals.Select(x => new RestIntervalDto(x.Start, x.End, x.NationalHolidays.ToArray())).ToArray(), [], null, actor);
+        var revision = await database.Context.ConfigurationRevisions.SingleAsync(x => x.Id == configuration.Id);
+        var adoptedVersion = Version(revision, input.PreviousMonth.MonthStart, "上月採用班表");
+        adoptedVersion.Employees.Add(new()
+        {
+            EmployeeCode = previousEmployee.EmployeeId,
+            Name = previousEmployee.Name,
+            Affiliation = previousEmployee.Affiliation,
+            PerpetualScheduleId = "P-ADOPTED"
+        });
+        database.Context.AdoptedSchedules.Add(new()
+        {
+            Workspace = WorkspaceCode.M,
+            Month = input.PreviousMonth.MonthStart,
+            ScheduleVersion = adoptedVersion,
+            AdoptedByUserId = actor.UserId
+        });
+        await database.Context.SaveChangesAsync();
+
+        var service = DemandService(database);
+        var demand = await service.CreateAsync(WorkspaceCode.M, input.DemandMonth.MonthStart, actor);
+        Assert.AreEqual("P-ADOPTED", demand.Employees.Single().PerpetualScheduleId);
+
+        var path = Path.GetTempFileName();
+        try
+        {
+            var blank = input.DemandMonth with
+            {
+                Employees = [previousEmployee with { PerpetualScheduleId = null }]
+            };
+            ScheduleCsv.WriteMonthly(path, blank);
+            await service.ImportDemandAsync(demand.Id, new MemoryStream(await File.ReadAllBytesAsync(path)), demand.RevisionToken, actor);
+            demand = (await service.GetAsync(WorkspaceCode.M, demand.Month, actor))!;
+            Assert.AreEqual("P-ADOPTED", demand.Employees.Single().PerpetualScheduleId);
+
+            var overrideCsv = input.DemandMonth with
+            {
+                Employees = [previousEmployee with { PerpetualScheduleId = "P-CSV" }]
+            };
+            ScheduleCsv.WriteMonthly(path, overrideCsv);
+            await service.ImportDemandAsync(demand.Id, new MemoryStream(await File.ReadAllBytesAsync(path)), demand.RevisionToken, actor);
+        }
+        finally { File.Delete(path); }
+
+        demand = (await service.GetAsync(WorkspaceCode.M, demand.Month, actor))!;
+        Assert.AreEqual("P-CSV", demand.Employees.Single().PerpetualScheduleId);
+    }
+
+    [TestMethod]
     public async Task DemandCrossGroupWork_IsSnapshottedAsFixedSupport()
     {
         await using var database = await TestDatabase.CreateAsync();
