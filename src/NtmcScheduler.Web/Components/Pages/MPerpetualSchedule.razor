@@ -68,9 +68,9 @@
                                     <option value=""></option><option value="R">R</option>
                                     @foreach (var station in Stations)
                                     {
-                                        <option value="@(station)早">@ShortStation(station)早</option>
-                                        <option value="@(station)小">@ShortStation(station)小</option>
-                                        <option value="@(station)夜">@ShortStation(station)夜</option>
+                                        <option value="@ShortStation(station)早">@ShortStation(station)早</option>
+                                        <option value="@ShortStation(station)小">@ShortStation(station)小</option>
+                                        <option value="@ShortStation(station)夜">@ShortStation(station)夜</option>
                                     }
                                 </select>
                             </td>
@@ -173,7 +173,7 @@
     }
 
     private static int CountShift(PatternEdit pattern, string suffix) => pattern.Days.Count(x => x.EndsWith(suffix, StringComparison.Ordinal));
-    private static string ShortStation(string station) => station[2..];
+    private static string ShortStation(string station) => int.Parse(station[2..], CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
     private static string Taipei(DateTimeOffset value) => value.ToOffset(TimeSpan.FromHours(8)).ToString("yyyy-MM-dd HH:mm");
 
     private sealed class PatternEdit(string id, List<string> days)
