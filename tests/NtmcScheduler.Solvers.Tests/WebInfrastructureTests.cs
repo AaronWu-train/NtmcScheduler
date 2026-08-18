@@ -653,7 +653,7 @@ public sealed class WebInfrastructureTests
             version.Employees.Add(new()
             {
                 EmployeeCode = $"T{index:000}",
-                Name = $"檢測{index:000}",
+                Name = $"檢修{index:000}",
                 Affiliation = "號誌",
                 Ability = 4,
                 MonthlyShift = "Night",

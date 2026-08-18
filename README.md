@@ -2,7 +2,7 @@
 
 新北捷運人員排班系統。依人員資料、指定休假（R*）、公務事件（X）與歷史班表，以 OR-Tools CP-SAT 產生最多三份月班表候選。
 
-目前 repository 已包含站務（M）、檢測（T）的 Solver、共用 CSV adapter、Blazor Interactive Server、EF Core／Identity、背景求解佇列與多版本班表管理。
+目前 repository 已包含站務（M）、檢修（T）的 Solver、共用 CSV adapter、Blazor Interactive Server、EF Core／Identity、背景求解佇列與多版本班表管理。
 
 ## 環境需求
 
@@ -33,7 +33,7 @@ CLI 不使用 Web 或資料庫，讀取上月班表、本月需求、八週區�
 cd examples/m-2026-09
 dotnet run --project ../../src/NtmcScheduler.Cli
 
-# 或檢測 T
+# 或檢修 T
 cd examples/t-2026-09
 dotnet run --project ../../src/NtmcScheduler.Cli
 ```

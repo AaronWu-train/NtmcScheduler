@@ -4,7 +4,7 @@
     <NavLink href="/" Match="NavLinkMatch.All">Dashboard</NavLink>
     <a href="/m/submissions" class="@(IsSubmissionPage ? "active" : null)">需求填寫</a>
     <NavLink href="/m/employees" Match="NavLinkMatch.Prefix">站務 M</NavLink>
-    <NavLink href="/t/employees" Match="NavLinkMatch.Prefix">檢測 T</NavLink>
+    <NavLink href="/t/employees" Match="NavLinkMatch.Prefix">檢修 T</NavLink>
     <NavLink href="/configuration">共同設定</NavLink>
     <AuthorizeView Roles="Administrator">
         <details class="nav-more"><summary>管理功能</summary><div><NavLink href="/admin/users">帳號管理</NavLink><NavLink href="/admin/audit">Log 紀錄</NavLink></div></details>
