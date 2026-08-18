@@ -35,7 +35,7 @@
 | [docs/07-architecture.md](docs/07-architecture.md) | 專案結構、相依規則、資料實體、背景工作、固定設定 |
 | [docs/08-frontend.md](docs/08-frontend.md) | 前端功能需求、互動寬表班表管理器 |
 | [docs/09-acceptance.md](docs/09-acceptance.md) | 最低驗收案例 |
-| [docs/10-decisions.md](docs/10-decisions.md) | 決策紀錄（規格釐清的問答結果與裁定） |
+| [docs/10-decisions.md](docs/10-decisions.md) | 決策紀錄（由舊到新；後列取代先列衝突項） |
 | [docs/11-implementation-plan.md](docs/11-implementation-plan.md) | 實作架構、CP-SAT 演算法、頁面／服務／里程碑 |
 | [docs/新北捷運人員排班系統_完整開發規格書_v6.pdf](docs/新北捷運人員排班系統_完整開發規格書_v6.pdf) | 原始規格書 v6（交叉比對用） |
 
@@ -46,7 +46,7 @@
 3. `NtmcScheduler.Contracts` **不得參考 OR-Tools 或 EF Core**。凡介面參數含
    `CpModel`、`BoolVar`、`IntVar`、`LinearExpr` 者，該介面必須位於 `NtmcScheduler.Solvers`。
 4. Blazor 元件不得直接建立 OR-Tools 模型；驗證與求解一律由後端服務執行。
-5. 修改任何規則行為前，先更新對應的 `docs/` 文件，並在 `docs/10-decisions.md` 追加一筆決策紀錄。
+5. 修改任何規則行為前，先更新對應的 `docs/` 文件，並在 `docs/10-decisions.md` **文末**追加一筆決策紀錄。
 6. Solver 硬限制不可關閉；軟限制依 `tex/main2.tex` 的固定群組做字典序最佳化，群組與權重直接寫在 M/T solver 原始碼（決策 D-21）；M 使用 J1 與直接加權合併的 `J4+J5`，T 使用 J1–J5。
 7. 所有時間以台北時間（UTC+8）處理；夜班歸屬其**開始日期**。
 8. `R休` 只可排在目標月的 `R*`，每人輸入數量為上限；未使用數量以權重 1 納入 J1，既有指定休假違反量權重改為 3。它與 R1 同樣屬實際休假但不計入 R/R1 月統計或 56 日額度，也不重置連續七日的一般 R 規則。M 的休假、跨站支援與早／午／夜班數公平性一律在所屬三站群組內比較。

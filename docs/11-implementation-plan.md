@@ -36,15 +36,16 @@ src/
 
 ## Web 頁面與服務
 
-- 共同頁：登入／修改密碼、工作區入口、共同設定版本、管理者帳號權限、只讀稽核紀錄。
-- M/T 頁：員工主檔、Demand 草稿與求解狀態、月份／版本列表、互動寬表班表編輯器。
+- 共同頁：登入／修改密碼、Dashboard、需求填寫、共同設定版本、管理者帳號權限、只讀稽核紀錄。
+- M 頁：員工主檔、建立班表、班表列表、萬年班表、互動寬表班表編輯器。
+- T 頁：員工主檔、建立班表、班表列表、互動寬表班表編輯器。
 - 每頁使用共用 `PageHelp` 顯示說明；編輯器固定人員欄、日期表頭、右側統計與底部 coverage 品質列。
 - 所有寫入 service command 接收 `ActorContext` 與資源 revision token；服務層再次驗證工作區權限，資料與 AuditLog 在同一 transaction。
 - `ScheduleRunWorker` 單一讀取者執行 M/T solver，從 immutable typed input JSON 重現；重啟恢復未完成工作且不重複處理終態 run。
 
 ## 資料庫與 migration
 
-- Identity、WorkspacePermission、Employee、不可變 ConfigurationRevision、DemandDraft／快照、ScheduleRun、ScheduleVersion／assignments、AdoptedSchedule 與 append-only AuditLog。
+- Identity、WorkspacePermission、Employee、不可變 ConfigurationRevision、DemandDraft／快照、EmployeeDemandSubmission、ScheduleRun、ScheduleVersion／assignments、AdoptedSchedule、全域 MPerpetualScheduleTemplate 與 append-only AuditLog（含 SessionId）。
 - 所有 domain 主鍵與 revision token 使用應用程式產生 GUID；`AdoptedSchedule(Workspace, Month)` 主鍵保證每月唯一 `★`。
 - repository-local `dotnet-ef` 產生單一 provider-neutral migration；開發用 SQLite，正式用 SQL Server。`NTMC_MIGRATION_PROVIDER=SqlServer` 可產生 SQL Server script。
 

@@ -1,6 +1,6 @@
 # 07. 系統架構與技術決策
 
-> 本文件描述第一版產品的實作架構；現有程式路徑以 `11-implementation-plan.md` 為準。
+> 本文件描述第一版產品的實作架構；檔案與頁面清單以 `11-implementation-plan.md` 為準。
 
 ## 1. 總體形態
 
@@ -39,8 +39,7 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 
 ## 4. 主要資料實體
 
-至少需要下列實體。詳細欄位與資料庫拆表可在程式設計階段決定，
-但**不得遺失**本組文件要求的歷史、版本與快照資訊。
+至少需要下列實體，且不得遺失本組文件要求的歷史、版本與快照資訊。
 
 | 實體 | 承載資訊 |
 |---|---|
@@ -49,12 +48,13 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 | `DemandDraft`／`DemandEmployee`／`DemandAssignment` | 每單位每月一份草稿、月份人員快照、T 月班別、期初額度、R\* 與 X |
 | `EmployeeDemandSubmission`／`EmployeeDemandSubmissionAssignment` | 每工作區／月份／員工一份目前填報；任何登入者可代填，AuditLog 保留每次覆蓋 |
 | `DemandSubmissionImport` | 記錄 Demand 從填報一次性匯入的時間與操作者；匯入後填報仍可保存但標示晚於截止 |
-| `UploadedPreviousSchedule` | 解析後的上月班表 typed JSON，不保存原始上傳檔 |
+| `UploadedPreviousSchedule` | 解析後的上月班表 typed JSON，不保存原始上傳檔；僅屬該 Demand，不建立 `ScheduleVersion` |
+| `MPerpetualScheduleTemplate` | M 全工作區一份全域 56 日萬年班表；Demand 可另存暫用模板快照 |
 | `ScheduleRun` | 排班請求、狀態、完整 typed input JSON（人員、事件、歷史、設定、seed、程式版本）與 SHA-256 hash |
 | `ScheduleVersion` | 每次求解候選或匯入結果；各版本皆可人工修改與封存 |
 | `ScheduleAssignment` | 班表版本的人 × 日期狀態（含跨站站碼與 X 起訖） |
 | `AdoptedSchedule` | 每單位每月最多一份 `★` 採用版本 |
-| `AuditLog` | UTC、操作者快照、動作、前後值、IP、User-Agent 與 CorrelationId |
+| `AuditLog` | UTC、操作者快照、動作、前後值、SessionId、IP、User-Agent 與 CorrelationId |
 
 ## 5. 資料庫
 

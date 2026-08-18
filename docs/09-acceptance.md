@@ -1,5 +1,11 @@
 # 系統驗收
 
+## 建置
+
+- `dotnet build NtmcScheduler.slnx -c Release` 成功。
+- `dotnet test NtmcScheduler.slnx -c Release` 成功。
+- 不修改、不編譯 `tex/` 或 PDF。
+
 ## Web 身分與授權
 
 - 不存在註冊、忘記密碼與電子郵件重設路徑；管理者 CLI 建立首位管理者，管理頁建立其餘帳號與一次性密碼。
@@ -15,11 +21,11 @@
 - 每單位月份僅一份 Demand 草稿；重開仍保留，所有寫入以 revision token 拒絕陳舊更新。Demand 可刪除並以同月份重建；既有求解輸入快照、求解紀錄與班表保持可讀且不受影響。
 - 任何已登入者可在 M/T 填報頁代填任一員工的 R*、R休 上限、固定班與 X；選取已有填報的員工可讀取並覆蓋，AuditLog 含操作者與被填員工。Editor 在 Demand 寬表一次性匯入當下填報快照至對應員工列；每月份 Demand 只能匯入一次，匯入後填報仍可保存但不再修改 Demand。
 - 建立 Demand 自動使用上月 `★`；不存在時求解前必須成功上傳 previous schedule。兩種來源都依員工 ID，將上月月底 R/R1 與萬年班表帶入本月月初 R/R1 與人員資料。求解建立 immutable JSON input snapshot、hash、seed、程式版本與人員月快照。
-- 需求編輯器只顯示求解輸入；班表編輯器顯示實際月份日期、56 日區間與月統計，M 底部顯示車站與外派人數。內部匯入 CSV 固定保留 1–31 日及完整 46 欄；班表下載 CSV 移除「能力」欄。
 - 背景佇列一次只執行一個 solver；重啟將 Queued／Running 安全回復為 Queued，終態正確區分 Optimal、TimeLimit、Infeasible、InvalidInput、Failed。
 
 ## 班表版本與編輯器
 
+- 需求編輯器只顯示求解輸入；班表編輯器顯示實際月份日期、56 日區間與月統計，M 底部顯示車站與外派人數。內部匯入 CSV 固定保留 1–31 日及完整 46 欄；班表下載 CSV 移除「能力」欄。
 - 同單位同月可有多份班表，以 `AdoptedSchedule` 主鍵保證最多一份採用班表；所有 hard error 阻擋採用，但只有不足十一小時與連續七日沒有一般 R 使用紅色。
 - 建立班表的「上月班表」上傳只保存為該 Demand 的解析快照，不建立上月 `ScheduleVersion`、不進入採用流程；規則或人力問題只標記警告，不阻擋求解。沒有上上月歷史時，跨月驗證不對資料不足的月初視窗產生假違規。M 班表列表的歷史匯入仍建立 `Imported` 版本。
 - `★` 不可直接封存；改選後可封存。封存不刪除 assignments、快照與 audit。
@@ -30,15 +36,9 @@
 ## 稽核、Log 與部署
 
 - 登入、權限、設定、人員新增／修改／刪除、需求、匯入、求解、逐格修改、採用、班表封存與下載均寫入 AuditLog；成功資料異動與 AuditLog 同 transaction。
-- AuditLog 有 UTC、actor snapshot、before/after、IP、User-Agent、CorrelationId，且不含密碼、Cookie、token、連線字串或 CSV 原文；應用程式沒有更新／刪除 AuditLog 的路徑。
+- AuditLog 有 UTC、actor snapshot、before/after、SessionId、IP、User-Agent、CorrelationId，且不含密碼、Cookie、token、連線字串或 CSV 原文；應用程式沒有更新／刪除 AuditLog 的路徑。
 - 所有路由頁面右上有鍵盤可操作 `?`；上傳前顯示 UTF-8/BOM、5 MB、固定表頭、日期時間、合法值及僅接受 CSV。
 - SQLite 與 SQL Server 都能產生 migration SQL；開發用 SQLite 啟動後採 WAL journal，背景保存班表與 UI 讀取不得互相造成長時間鎖定；Linux 測試環境需另完成 migration、備份／還原、持久化且加密的 Data Protection key ring、反向代理可信清單與一年 Log 保留驗收。
-
-## 建置
-
-- `dotnet build NtmcScheduler.slnx -c Release` 成功。
-- `dotnet test NtmcScheduler.slnx -c Release` 成功。
-- 不修改、不編譯 `tex/` 或 PDF。
 
 ## CSV
 
@@ -64,7 +64,7 @@
 - M/T 每人 R休不超過輸入上限且只使用 R*；未使用數量以權重 1 納入 J1，指定休假違反量權重為 3。R休不計入 R/R1 月與區間額度、不重置七日 R 規則，但會中斷實際工作連段。
 - M 的站群、班位人數、零需求班位禁排、外派站點與跨月夜–休–早／午符合文件；LB09 早／午可外派且前 4 人次免罰，原三站共用 70 人次免罰。`LB01`、`LB06`、`LB07`、`LB12` 的早、午班可多人且無上限；其餘站早、午班各至多 1 人。夜班一律至多 1 人，有需求時恰好 1 人。MS03 沿用 CS04 工作區段邊界，區段內出現超過一種正常班型時計 +1。
 - M 萬年班表第 1 日對應 56 日 16R 區間首日；模板非空白格只以 `AddHint` 引導 hard-only 初始搜尋，空白格不 hint，固定格與 R* 優先，衝突 hint 不會使可行模型變成無解。初始可行解改寫為 incumbent hint 後才進行 J1 與直接加權合併的 `J4+J5`。
-- M 的假日休假公平只比較同站群整月人員；M/T 每群皆以實際假日休假總數除以組內人數取得精確平均，每人在平均正負 1.5 天內不罰，超出後按離免罰區間的整數天數線性計罰。M 平日休假公平不建模；T 平日公平仍為同月班別最大差。早小班每人差距超過 4 才計罰；夜班以每人 3–4 天為零罰分目標，並檢查 0–8 天的罰分依序為 10、5、1、0、0、4、8、12、16。M 三項權重為假日休假 5、早小差距 2、夜班目標 50。
+- M 的假日休假公平只比較同站群整月人員；M/T 每群皆以實際假日休假總數除以組內人數取得精確平均，每人在平均正負 1.5 天內不罰，超出後按離免罰區間的整數天數線性計罰。M 平日休假公平不建模；T 平日公平仍為同月班別最大差。早小班每人差距超過 4 才計罰；夜班以每人 3–4 天為零罰分目標，並檢查 0–8 天的罰分依序為 10、5、1、0、0、4、8、12、16。M 三項權重為假日休假 5、早小差距 20、夜班目標 50。
 - M 先最佳化 J1，再最佳化直接加權合併的 `J4+J5`；非偏好輪轉、非所屬站指派與跨站支援公平暫停建模及輸出，其餘項目與權重符合 `docs/05-soft-rules.md`。
 - T 的本月班別與延伸日輪轉作為月班別不一致（`NonMonthlyShift`）×9 的基準；固定跨班是有效輸入，跨班人員計入實際工作班別的出勤、專業與能力。每班能力 4–5 人員至少 2 位時，高能力人員不足（`Ability`）為 0、只有 1 位時為 1、完全沒有時為 10。
 - 每個具名違反量、權重與 Priority 字典序符合 `docs/05-soft-rules.md`。
