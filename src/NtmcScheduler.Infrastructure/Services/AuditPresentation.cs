@@ -41,7 +41,7 @@ public static class AuditPresentation
         ["PreviousScheduleUploaded"] = "上傳上月班表",
         ["PreviousScheduleSelected"] = "選擇上月班表",
         ["UploadedPreviousScheduleSelected"] = "選擇已上傳上月班表",
-        ["DemandPreviousInheritedFieldsRestored"] = "還原上月 R/R1 與萬年班表",
+        ["DemandPreviousInheritedFieldsRestored"] = "統計上月 R/R1 與萬年班表",
         ["PerpetualScheduleUploaded"] = "上傳萬年班表",
         ["DemandPerpetualScheduleCleared"] = "清除需求萬年班表",
         ["MPerpetualScheduleUploaded"] = "上傳 M 萬年班表",

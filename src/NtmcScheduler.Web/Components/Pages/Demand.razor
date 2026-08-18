@@ -165,7 +165,7 @@
                     {
                         @if (CanRestorePreviousInheritedFields)
                         {
-                            <button disabled="@isBusy" @onclick="RestorePreviousInheritedFieldsAsync">@(workspaceCode == WorkspaceCode.M ? "還原上月 R/R1 與萬年班表" : "還原上月 R/R1")</button>
+                            <button disabled="@isBusy" @onclick="RestorePreviousInheritedFieldsAsync">@(workspaceCode == WorkspaceCode.M ? "統計上月 R/R1 與萬年班表" : "還原上月 R/R1")</button>
                         }
                         <label class="button-link file-upload-button primary">匯入需求 CSV<InputFile OnChange="PreviewDemandAsync" accept=".csv,text/csv" disabled="@isBusy"/></label>
                         <button disabled="@isBusy" @onclick="PreviewSubmissionImportAsync">匯入員工填報</button>
@@ -806,7 +806,7 @@
     {
         demand = await DemandService.RestorePreviousInheritedFieldsAsync(demand!.Id, demand.RevisionToken, await CurrentActor.GetAsync());
         InitializeEmployeeEdits();
-    }, workspaceCode == WorkspaceCode.M ? "已還原上月 R/R1 與萬年班表。" : "已還原上月 R/R1。");
+    }, workspaceCode == WorkspaceCode.M ? "已統計上月 R/R1 與萬年班表。" : "已統計上月 R/R1。");
 
     private void ClearLocalDemandEdits() => employeeEdits.Clear();
 
