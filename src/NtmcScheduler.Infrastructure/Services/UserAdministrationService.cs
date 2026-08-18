@@ -52,7 +52,7 @@ public sealed class UserAdministrationService(
         if (!result.Succeeded) throw new DomainValidationException(string.Join("；", result.Errors.Select(x => x.Description)));
         user.MustChangePassword = true;
         await userManager.UpdateSecurityStampAsync(user);
-        ServiceSupport.AddAudit(db, actor, "PasswordReset", null, "User", user.Id, null, new { MustChangePassword = true });
+        ServiceSupport.AddAudit(db, actor, "PasswordReset", null, "User", user.Id, null, new { user.UserName, MustChangePassword = true });
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
@@ -66,7 +66,7 @@ public sealed class UserAdministrationService(
         var user = await db.Users.Include(x => x.WorkspacePermissions).SingleOrDefaultAsync(x => x.Id == userId, cancellationToken)
             ?? throw new DomainValidationException("找不到使用者。");
         if (Revision(user) != revisionToken) throw new ConcurrencyConflictException("帳號已被其他人修改，請重新整理。");
-        var before = new { user.IsDisabled, IsAdministrator = await userManager.IsInRoleAsync(user, "Administrator"), Workspaces = user.WorkspacePermissions.Select(x => x.Workspace).ToArray() };
+        var before = new { user.UserName, user.IsDisabled, IsAdministrator = await userManager.IsInRoleAsync(user, "Administrator"), Workspaces = user.WorkspacePermissions.Select(x => x.Workspace).ToArray() };
         user.IsDisabled = isDisabled;
         await EnsureAdministratorRoleAsync();
         var currentlyAdministrator = await userManager.IsInRoleAsync(user, "Administrator");
@@ -76,7 +76,7 @@ public sealed class UserAdministrationService(
         foreach (var workspace in workspaces) db.WorkspacePermissions.Add(new() { UserId = user.Id, Workspace = workspace });
         await userManager.UpdateSecurityStampAsync(user);
         ServiceSupport.AddAudit(db, actor, "UserPermissionsChanged", null, "User", user.Id, before,
-            new { user.IsDisabled, isAdministrator, Workspaces = workspaces });
+            new { user.UserName, user.IsDisabled, isAdministrator, Workspaces = workspaces });
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }

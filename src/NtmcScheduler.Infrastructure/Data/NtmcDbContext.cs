@@ -183,6 +183,8 @@ public sealed class NtmcDbContext(DbContextOptions<NtmcDbContext> options)
             entity.Property(x => x.CorrelationId).HasMaxLength(100).IsRequired();
             entity.HasIndex(x => x.AtUtcTicks);
             entity.HasIndex(x => new { x.Workspace, x.Action });
+            entity.HasIndex(x => x.SessionId);
+            entity.HasIndex(x => x.ActorUserId);
         });
     }
 }

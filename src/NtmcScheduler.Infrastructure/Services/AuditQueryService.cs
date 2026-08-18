@@ -6,7 +6,16 @@ namespace NtmcScheduler.Infrastructure.Services;
 
 public sealed class AuditQueryService(NtmcDbContext db) : IAuditQueryService
 {
-    public async Task<IReadOnlyList<AuditLogDto>> QueryAsync(DateOnly? from, DateOnly? to, WorkspaceCode? workspace, string? action, ActorContext actor, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<AuditLogDto>> QueryAsync(
+        DateOnly? from,
+        DateOnly? to,
+        WorkspaceCode? workspace,
+        string? action,
+        string? actorName,
+        Guid? sessionId,
+        string? ipAddress,
+        ActorContext actor,
+        CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireAdministrator(actor);
         var query = db.AuditLogs.AsNoTracking().AsQueryable();
@@ -22,8 +31,41 @@ public sealed class AuditQueryService(NtmcDbContext db) : IAuditQueryService
         }
         if (workspace is not null) query = query.Where(x => x.Workspace == workspace);
         if (!string.IsNullOrWhiteSpace(action)) query = query.Where(x => x.Action == action);
-        return await query.OrderByDescending(x => x.AtUtcTicks).Take(1000)
-            .Select(x => new AuditLogDto(x.Id, x.AtUtc, x.ActorName, x.Action, x.Workspace, x.ResourceType, x.ResourceId, x.Succeeded, x.CorrelationId))
+        if (!string.IsNullOrWhiteSpace(actorName)) query = query.Where(x => x.ActorName.Contains(actorName));
+        if (sessionId is not null) query = query.Where(x => x.SessionId == sessionId);
+        if (!string.IsNullOrWhiteSpace(ipAddress)) query = query.Where(x => x.IpAddress == ipAddress);
+        var rows = await query.OrderByDescending(x => x.AtUtcTicks).Take(1000).ToListAsync(cancellationToken);
+        var assignmentContexts = await LoadAssignmentContextsAsync(rows, cancellationToken);
+        return rows.Select(row => AuditPresentation.Format(row, assignmentContexts)).ToArray();
+    }
+
+    private async Task<IReadOnlyDictionary<Guid, AuditAssignmentContext>> LoadAssignmentContextsAsync(
+        IReadOnlyList<AuditLog> rows,
+        CancellationToken cancellationToken)
+    {
+        var ids = rows.Where(x => x.ResourceType == "ScheduleAssignment")
+            .Select(x => Guid.TryParse(x.ResourceId, out var id) ? id : (Guid?)null)
+            .Where(x => x is not null)
+            .Select(x => x!.Value)
+            .Distinct()
+            .ToArray();
+        if (ids.Length == 0) return new Dictionary<Guid, AuditAssignmentContext>();
+
+        var assignments = await db.ScheduleAssignments.AsNoTracking()
+            .Where(x => ids.Contains(x.Id))
+            .Select(x => new
+            {
+                x.Id,
+                x.Employee.EmployeeCode,
+                EmployeeName = x.Employee.Name,
+                x.Date,
+                x.Employee.ScheduleVersion.Month,
+                ScheduleName = x.Employee.ScheduleVersion.Name
+            })
             .ToListAsync(cancellationToken);
+
+        return assignments.ToDictionary(
+            x => x.Id,
+            x => new AuditAssignmentContext(x.EmployeeCode, x.EmployeeName, x.Date, x.Month, x.ScheduleName));
     }
 }

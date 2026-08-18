@@ -21,10 +21,11 @@ public sealed class CurrentActorService(
         var context = httpContextAccessor.HttpContext;
         return new(
             userId,
-            principal.Identity.Name ?? "unknown",
+            principal.Identity!.Name ?? "unknown",
             principal.IsInRole("Administrator"),
             workspaces.ToHashSet(),
             context?.TraceIdentifier ?? Guid.NewGuid().ToString("N"),
+            ActorContextFactory.ParseSessionId(principal),
             context?.Connection.RemoteIpAddress?.ToString(),
             context?.Request.Headers.UserAgent.ToString(),
             principal.FindFirstValue("must_change_password") == "true");

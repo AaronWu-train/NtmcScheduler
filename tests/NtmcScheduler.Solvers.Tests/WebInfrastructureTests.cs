@@ -707,10 +707,11 @@ public sealed class WebInfrastructureTests
 
         var actor = new ActorContext(Guid.NewGuid(), "admin", true, new HashSet<WorkspaceCode>(), "audit-test");
         var result = await new AuditQueryService(database.Context).QueryAsync(
-            new DateOnly(2026, 8, 13), new DateOnly(2026, 8, 13), null, null, actor);
+            new DateOnly(2026, 8, 13), new DateOnly(2026, 8, 13), null, null, null, null, null, actor);
 
         Assert.HasCount(1, result);
         Assert.AreEqual("Included", result[0].Action);
+        Assert.AreEqual("Included", result[0].Technical.Action);
     }
 
     [TestMethod]
@@ -950,11 +951,106 @@ public sealed class WebInfrastructureTests
         await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => DemandService(database).GetAsync(WorkspaceCode.M, month, anonymous));
         await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => new ScheduleRunService(database.Context, new ScheduleRunQueue()).ListAsync(WorkspaceCode.M, month, anonymous));
         await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => new ScheduleValidationService(database.Context).ValidateAsync(Guid.NewGuid(), anonymous));
-        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => new AuditQueryService(database.Context).QueryAsync(null, null, null, null, anonymous));
+        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => new AuditQueryService(database.Context).QueryAsync(null, null, null, null, null, null, null, anonymous));
     }
 
-    private static ActorContext Editor(WorkspaceCode workspace) =>
-        new(Guid.NewGuid(), "editor", false, new HashSet<WorkspaceCode> { workspace }, Guid.NewGuid().ToString("N"));
+    [TestMethod]
+    public void AuditPresentation_LabelsKnownActions()
+    {
+        foreach (var option in AuditPresentation.ActionOptions())
+            Assert.IsFalse(string.IsNullOrWhiteSpace(option.Label));
+    }
+
+    [TestMethod]
+    public void AuditPresentation_ScheduleAssignment_ShowsEmployeeDateAndShiftChange()
+    {
+        var before = """{"month":"2026-08-01","scheduleName":"候選 1","employeeCode":"M001","name":"王小明","date":"2026-08-18","kind":"Work","shift":"Early","station":"LB01","requestedRest":false}""";
+        var after = """{"month":"2026-08-01","scheduleName":"候選 1","employeeCode":"M001","name":"王小明","date":"2026-08-18","kind":"SpecialRest","shift":null,"station":null,"requestedRest":false}""";
+        var row = new AuditLog
+        {
+            ActorName = "admin",
+            Action = "ScheduleAssignmentUpdated",
+            Workspace = WorkspaceCode.M,
+            ResourceType = "ScheduleAssignment",
+            ResourceId = Guid.NewGuid().ToString(),
+            BeforeJson = before,
+            AfterJson = after,
+            CorrelationId = "test"
+        };
+
+        var dto = AuditPresentation.Format(row);
+
+        StringAssert.Contains(dto.TargetSummary, "M001");
+        StringAssert.Contains(dto.TargetSummary, "8/18");
+        StringAssert.Contains(dto.ReadableSummary, "M001");
+        StringAssert.Contains(dto.ReadableSummary, "→");
+        Assert.IsTrue(dto.Changes.Any(x => x.Label == "日格" && x.Before == "上班" && x.After == "R1"));
+    }
+
+    [TestMethod]
+    public async Task AuditQuery_FiltersBySessionId()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var sessionId = Guid.NewGuid();
+        database.Context.AuditLogs.AddRange(
+            new AuditLog
+            {
+                AtUtc = DateTimeOffset.UtcNow,
+                AtUtcTicks = DateTimeOffset.UtcNow.UtcTicks,
+                ActorName = "admin",
+                Action = "LoginSucceeded",
+                ResourceType = "Authentication",
+                ResourceId = "auth",
+                SessionId = sessionId,
+                CorrelationId = "test-1"
+            },
+            new AuditLog
+            {
+                AtUtc = DateTimeOffset.UtcNow,
+                AtUtcTicks = DateTimeOffset.UtcNow.UtcTicks,
+                ActorName = "admin",
+                Action = "ScheduleAssignmentUpdated",
+                ResourceType = "ScheduleAssignment",
+                ResourceId = Guid.NewGuid().ToString(),
+                SessionId = sessionId,
+                CorrelationId = "test-2"
+            },
+            new AuditLog
+            {
+                AtUtc = DateTimeOffset.UtcNow,
+                AtUtcTicks = DateTimeOffset.UtcNow.UtcTicks,
+                ActorName = "other",
+                Action = "LoginSucceeded",
+                ResourceType = "Authentication",
+                ResourceId = "auth",
+                SessionId = Guid.NewGuid(),
+                CorrelationId = "test-3"
+            });
+        await database.Context.SaveChangesAsync();
+
+        var actor = new ActorContext(Guid.NewGuid(), "admin", true, new HashSet<WorkspaceCode>(), "audit-test");
+        var result = await new AuditQueryService(database.Context).QueryAsync(null, null, null, null, null, sessionId, null, actor);
+
+        Assert.HasCount(2, result);
+        Assert.IsTrue(result.All(x => x.SessionId == sessionId));
+    }
+
+    [TestMethod]
+    public async Task ServiceSupport_AddAudit_PersistsSessionIdFromActor()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var sessionId = Guid.NewGuid();
+        var actor = Editor(WorkspaceCode.M, sessionId);
+        var service = new EmployeeService(database.Context);
+        await service.SaveAsync(new SaveEmployeeCommand(null, WorkspaceCode.M, "M001", "王小明", "LB01", null, null, null), actor);
+
+        var audit = await database.Context.AuditLogs.SingleAsync();
+        Assert.AreEqual(sessionId, audit.SessionId);
+        Assert.AreEqual(actor.UserId, audit.ActorUserId);
+    }
+
+    private static ActorContext Editor(WorkspaceCode workspace, Guid? sessionId = null) =>
+        new(Guid.NewGuid(), "editor", false, new HashSet<WorkspaceCode> { workspace }, Guid.NewGuid().ToString("N"), sessionId);
 
     private static DemandService DemandService(TestDatabase database) =>
         new(database);

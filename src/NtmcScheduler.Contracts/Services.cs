@@ -91,5 +91,14 @@ public interface IScheduleValidationService
 
 public interface IAuditQueryService
 {
-    Task<IReadOnlyList<AuditLogDto>> QueryAsync(DateOnly? from, DateOnly? to, WorkspaceCode? workspace, string? action, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<AuditLogDto>> QueryAsync(
+        DateOnly? from,
+        DateOnly? to,
+        WorkspaceCode? workspace,
+        string? action,
+        string? actorName,
+        Guid? sessionId,
+        string? ipAddress,
+        ActorContext actor,
+        CancellationToken cancellationToken = default);
 }

@@ -122,7 +122,7 @@ public sealed class ScheduleRunWorker(
         run.CompletedAtUtc = DateTimeOffset.UtcNow;
         var actor = Actor(run);
         ServiceSupport.AddAudit(db, actor, "ScheduleRunCompleted", run.Workspace, "ScheduleRun", run.Id, null,
-            new { run.Status, CandidateCount = candidateCount, run.Error });
+            new { run.Month, run.Status, CandidateCount = candidateCount, run.Error });
         await SaveChangesWithSqliteRetryAsync(db, cancellationToken);
     }
 
@@ -184,7 +184,7 @@ public sealed class ScheduleRunWorker(
         run.Error = "背景求解失敗，請提供關聯 ID 給系統管理者。";
         run.CompletedAtUtc = DateTimeOffset.UtcNow;
         ServiceSupport.AddAudit(db, Actor(run), "ScheduleRunFailed", run.Workspace, "ScheduleRun", run.Id, null,
-            new { ExceptionType = exception.GetType().Name });
+            new { run.Month, ExceptionType = exception.GetType().Name });
         await SaveChangesWithSqliteRetryAsync(db, cancellationToken);
         await NotifyAsync(run, cancellationToken);
     }
@@ -212,6 +212,7 @@ public sealed class ScheduleRunWorker(
         false,
         new HashSet<WorkspaceCode> { run.Workspace },
         run.CorrelationId,
+        run.SessionId,
         run.IpAddress,
         run.UserAgent);
 }

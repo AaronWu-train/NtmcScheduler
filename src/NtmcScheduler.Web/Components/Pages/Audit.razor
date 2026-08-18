@@ -3,44 +3,117 @@
 @attribute [Authorize(Roles = "Administrator")]
 @inject IAuditQueryService Service
 @inject CurrentActorService CurrentActor
+@using NtmcScheduler.Infrastructure.Services
 
 <PageTitle>Log 紀錄</PageTitle>
 <div class="page-title">
     <div>
         <h1>Log 紀錄</h1>
-        <p>查詢重要的身分與資料異動。</p>
+        <p>查詢重要的身分與資料異動，並串回登入工作階段與來源 IP。</p>
     </div>
     <PageHelp Title="Log 紀錄說明">
-        <p>紀錄不可由應用程式修改或刪除。畫面最多顯示最新 1000 筆；時間以台北時間呈現，關聯 ID 可對照系統 Log。</p>
+        <p>紀錄不可由應用程式修改或刪除。畫面最多顯示最新 1000 筆；時間以台北時間呈現。摘要欄可直接閱讀誰改了什麼；按 SessionId 可串回同一次登入軌跡。請重新登入後的新紀錄才會有 SessionId。</p>
     </PageHelp>
 </div>
-<div class="card filters">
-    <label>起日<input type="date" @bind="from"/></label><label>迄日<input type="date" @bind="to"/></label>
+<div class="card filters audit-filters">
+    <label>起日<input type="date" @bind="from"/></label>
+    <label>迄日<input type="date" @bind="to"/></label>
     <label>
         工作區
         <select @bind="workspace">
             <option value="">全部</option><option>M</option><option>T</option>
         </select>
-    </label><label>動作<input @bind="action"/></label><button disabled="@isBusy" @onclick="LoadAsync">@(isBusy ? "查詢中…" : "查詢紀錄")</button>
+    </label>
+    <label>
+        動作
+        <select @bind="action">
+            <option value="">全部</option>
+            @foreach (var option in actionOptions)
+            {
+                <option value="@option.Action">@option.Label</option>
+            }
+        </select>
+    </label>
+    <label>帳號<input @bind="actorName"/></label>
+    <label>SessionId<input @bind="sessionIdText" placeholder="完整 GUID"/></label>
+    <label>IP<input @bind="ipAddress"/></label>
+    <button disabled="@isBusy" @onclick="LoadAsync">@(isBusy ? "查詢中…" : "查詢紀錄")</button>
 </div>
 @if (!string.IsNullOrWhiteSpace(message))
 {
     <p class="message @messageClass">@message</p>
 }
-<div class="table-scroll">
+<div class="table-scroll audit-table">
     <table>
         <thead>
         <tr>
-            <th>時間</th><th>操作者</th><th>工作區</th><th>動作</th><th>資源</th><th>結果</th><th>關聯 ID</th>
+            <th>時間</th>
+            <th>帳號／來源</th>
+            <th>摘要</th>
+            <th>結果</th>
+            <th>詳細</th>
         </tr>
         </thead>
         <tbody>
         @foreach (var row in logs)
         {
             <tr>
-                <td>@row.AtUtc.ToOffset(TimeSpan.FromHours(8)).ToString("yyyy-MM-dd HH:mm:ss")</td><td>@row.ActorName</td><td>@row.Workspace</td><td>@row.Action</td><td>@row.ResourceType / @row.ResourceId</td><td>@(row.Succeeded ? "成功" : "失敗")</td>
-                <td>
-                    <code>@row.CorrelationId</code>
+                <td class="audit-time">@Taipei(row.AtUtc)</td>
+                <td class="audit-actor">
+                    <div>@row.ActorName</div>
+                    <div class="audit-source-line">@FormatIp(row.IpAddress)</div>
+                    @if (row.SessionId is Guid session)
+                    {
+                        <button type="button" class="link-button audit-session" @onclick="() => FilterSession(session)">Session @session.ToString("N")[..8]…</button>
+                    }
+                    else if (row.Action.StartsWith("Login", StringComparison.Ordinal) || row.Action == "LogoutSucceeded")
+                    {
+                        <span class="muted audit-source-line">無 Session</span>
+                    }
+                    else if (row.Workspace is WorkspaceCode ws)
+                    {
+                        <span class="muted audit-source-line">工作區 @ws</span>
+                    }
+                </td>
+                <td class="audit-summary">
+                    <strong>@row.ReadableSummary</strong>
+                    @if (row.Changes.Count > 1)
+                    {
+                        <ul class="audit-change-list">
+                            @foreach (var change in row.Changes)
+                            {
+                                <li>@change.Label：@change.Before → @change.After</li>
+                            }
+                        </ul>
+                    }
+                </td>
+                <td class="audit-result @(row.Succeeded ? "ok-text" : "error-text")">@(row.Succeeded ? "成功" : "失敗")</td>
+                <td class="audit-detail-cell">
+                    <details class="audit-details">
+                        <summary>技術資訊</summary>
+                        <div class="audit-details-panel">
+                            <dl class="audit-meta">
+                                <dt>工作區</dt><dd>@(row.Workspace?.ToString() ?? "—")</dd>
+                                <dt>動作</dt><dd>@row.ActionLabel</dd>
+                                <dt>操作對象</dt><dd>@row.TargetSummary</dd>
+                                <dt>帳號 ID</dt><dd><code>@(row.Technical.ActorUserId?.ToString() ?? "—")</code></dd>
+                                <dt>SessionId</dt><dd><code>@(row.Technical.SessionId?.ToString("N") ?? "—")</code></dd>
+                                <dt>關聯 ID</dt><dd><code>@row.Technical.CorrelationId</code></dd>
+                                <dt>User-Agent</dt><dd class="audit-scroll-value">@(row.Technical.UserAgent ?? "—")</dd>
+                                <dt>Resource</dt><dd><code>@row.Technical.ResourceType / @row.Technical.ResourceId</code></dd>
+                            </dl>
+                            @if (!string.IsNullOrWhiteSpace(row.Technical.BeforeJson))
+                            {
+                                <div class="audit-json-label">Before JSON</div>
+                                <pre class="audit-json">@row.Technical.BeforeJson</pre>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(row.Technical.AfterJson))
+                            {
+                                <div class="audit-json-label">After JSON</div>
+                                <pre class="audit-json">@row.Technical.AfterJson</pre>
+                            }
+                        </div>
+                    </details>
                 </td>
             </tr>
         }
@@ -53,10 +126,15 @@
     private DateOnly? to;
     private string workspace = "";
     private string action = "";
+    private string actorName = "";
+    private string sessionIdText = "";
+    private string ipAddress = "";
     private IReadOnlyList<AuditLogDto> logs = [];
+    private IReadOnlyList<(string Action, string Label)> actionOptions = AuditPresentation.ActionOptions();
     private bool isBusy;
     private string message = "";
     private string messageClass = "success";
+
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
     private async Task LoadAsync()
@@ -65,7 +143,16 @@
         message = "";
         try
         {
-            logs = await Service.QueryAsync(from, to, Enum.TryParse<WorkspaceCode>(workspace, out var parsed) ? parsed : null, string.IsNullOrWhiteSpace(action) ? null : action, await CurrentActor.GetAsync());
+            Guid? sessionId = Guid.TryParse(sessionIdText, out var parsed) ? parsed : null;
+            logs = await Service.QueryAsync(
+                from,
+                to,
+                Enum.TryParse<WorkspaceCode>(workspace, out var parsedWorkspace) ? parsedWorkspace : null,
+                string.IsNullOrWhiteSpace(action) ? null : action,
+                string.IsNullOrWhiteSpace(actorName) ? null : actorName.Trim(),
+                sessionId,
+                string.IsNullOrWhiteSpace(ipAddress) ? null : ipAddress.Trim(),
+                await CurrentActor.GetAsync());
         }
         catch (Exception exception)
         {
@@ -78,4 +165,19 @@
         }
     }
 
+    private async Task FilterSession(Guid sessionId)
+    {
+        sessionIdText = sessionId.ToString("N");
+        await LoadAsync();
+    }
+
+    private static string Taipei(DateTimeOffset value) =>
+        value.ToOffset(TimeSpan.FromHours(8)).ToString("yyyy-MM-dd HH:mm:ss");
+
+    private static string FormatIp(string? ip) => ip switch
+    {
+        null or "" => "—",
+        "::1" or "127.0.0.1" => "本機",
+        _ => ip
+    };
 }

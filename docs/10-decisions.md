@@ -1,5 +1,14 @@
 # 決策紀錄
 
+## 2026-08-18：AuditLog 登入工作階段與人工可讀呈現
+
+- 每次登入成功產生新的 `SessionId`，寫入身分 Cookie 的 `audit_session_id` Claim；後續異動、下載與登出均帶同一 SessionId，便於追查疑似冒用帳號的修改軌跡。
+- 登入失敗仍記錄輸入帳號、IP、User-Agent 與 request correlation ID，但不建立 SessionId。
+- AuditLog 新增可篩選的 `SessionId` 欄；`ActorUserId` 與帳號快照一律取自已驗證 principal，禁止由前端或 service 呼叫端任意傳入。
+- 異動寫入時快照員工代碼／姓名、日期、月份、班表名稱等上下文至 before／after JSON；UI 由集中呈現器產生繁中動作、操作對象摘要與欄位前後差異，不另存重複 Summary 欄。
+- 舊 AuditLog 不做相容或回填；重建資料庫即可。
+- 若他人已取得本人密碼或裝置，應用程式 Log 只能提供帳號、SessionId、IP 與時間等跡證，無法單獨證明鍵盤前真實人物；MFA 或公司 SSO／AD 不在第一版自行發明。
+
 ## 2026-08-18：Web 匯入 demand CSV 時萬年班表留白承接上月
 
 - 既有規則：本月留白承接上月同員工代號，有值覆蓋。

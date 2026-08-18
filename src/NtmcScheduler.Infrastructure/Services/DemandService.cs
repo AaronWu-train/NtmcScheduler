@@ -122,7 +122,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         if (demand.Workspace == WorkspaceCode.M && !string.IsNullOrWhiteSpace(monthlyShift))
             throw new DomainValidationException("M 不可設定 T 月班別。");
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        var before = new { employee.EmploymentStartDate, employee.MonthlyShift, employee.OpeningRest, employee.OpeningSpecialRest, employee.RequestedLeaveRestCount, employee.PerpetualScheduleId };
+        var before = new { demand.Month, employee.EmployeeCode, employee.Name, employee.EmploymentStartDate, employee.MonthlyShift, employee.OpeningRest, employee.OpeningSpecialRest, employee.RequestedLeaveRestCount, employee.PerpetualScheduleId };
         employee.EmploymentStartDate = employmentStartDate;
         employee.MonthlyShift = string.IsNullOrWhiteSpace(monthlyShift) ? null : SolverScheduleMapper.ParseShift(monthlyShift).ToString();
         employee.OpeningRest = openingRest;
@@ -131,7 +131,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         employee.PerpetualScheduleId = string.IsNullOrWhiteSpace(perpetualScheduleId) ? null : perpetualScheduleId.Trim();
         Touch(demand, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "DemandEmployeeUpdated", demand.Workspace, "DemandEmployee", employee.Id, before,
-            new { employee.EmploymentStartDate, employee.MonthlyShift, employee.OpeningRest, employee.OpeningSpecialRest, employee.RequestedLeaveRestCount, employee.PerpetualScheduleId });
+            new { demand.Month, employee.EmployeeCode, employee.Name, employee.EmploymentStartDate, employee.MonthlyShift, employee.OpeningRest, employee.OpeningSpecialRest, employee.RequestedLeaveRestCount, employee.PerpetualScheduleId });
         await SaveDemandChangesAsync(db, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return await DemandDtoAsync(demand.Id, cancellationToken);
@@ -187,7 +187,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         ValidateDemandCell(demand.Workspace, date, kind, requestedRest, station, shift, eventStart, eventEnd, eventDescription);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var assignment = employee.Assignments.SingleOrDefault(x => x.Date == date);
-        var before = assignment is null ? null : new { assignment.Kind, assignment.RequestedRest, assignment.Station, assignment.Shift, assignment.EventStart, assignment.EventEnd, assignment.EventDescription };
+        var before = assignment is null ? null : new { demand.Month, employee.EmployeeCode, employee.Name, assignment.Date, assignment.Kind, assignment.RequestedRest, assignment.Station, assignment.Shift, assignment.EventStart, assignment.EventEnd, assignment.EventDescription };
         if (string.IsNullOrWhiteSpace(kind) && !requestedRest)
         {
             if (assignment is not null) db.DemandAssignments.Remove(assignment);
@@ -209,7 +209,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         }
         Touch(demand, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "DemandAssignmentUpdated", demand.Workspace, "DemandEmployee", employee.Id, before,
-            new { date, kind, requestedRest, station, shift, eventStart, eventEnd, eventDescription });
+            new { demand.Month, employee.EmployeeCode, employee.Name, date, kind, requestedRest, station, shift, eventStart, eventEnd, eventDescription });
         await SaveDemandChangesAsync(db, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return await DemandDtoAsync(demand.Id, cancellationToken);
@@ -225,7 +225,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         var schedule = await ParseMonthlyAsync(csv, demand, false, cancellationToken);
         ValidateWorkspace(schedule, demand.Workspace);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        var before = new { Employees = demand.Employees.Count, Assignments = demand.Employees.Sum(x => x.Assignments.Count) };
+        var before = new { demand.Month, Employees = demand.Employees.Count, Assignments = demand.Employees.Sum(x => x.Assignments.Count) };
         db.DemandEmployees.RemoveRange(demand.Employees);
         demand.Employees = schedule.Employees.Select(SolverScheduleMapper.ToDemandEmployee).ToList();
         SetDemandRelationships(demand);
@@ -233,7 +233,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         db.DemandEmployees.AddRange(demand.Employees);
         Touch(demand, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "DemandCsvImported", demand.Workspace, "DemandDraft", demand.Id, before,
-            new { Employees = demand.Employees.Count, Assignments = demand.Employees.Sum(x => x.Assignments.Count) });
+            new { demand.Month, Employees = demand.Employees.Count, Assignments = demand.Employees.Sum(x => x.Assignments.Count) });
         await SaveDemandChangesAsync(db, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
@@ -266,7 +266,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         }
         Touch(demand, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "PreviousScheduleUploaded", demand.Workspace, "DemandDraft", demand.Id, null,
-            new { upload.Id, upload.Month, upload.FileName, EmployeeCount = schedule.Employees.Count });
+            new { DemandMonth = demand.Month, upload.Id, upload.Month, upload.FileName, EmployeeCount = schedule.Employees.Count });
         if (previousUpload is not null) db.UploadedPreviousSchedules.Remove(previousUpload);
         await SaveDemandChangesAsync(db, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -329,7 +329,8 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         demand.PreviousSource = PreviousScheduleSource.Upload;
         demand.PreviousAdoptedScheduleVersionId = null;
         Touch(demand, actor.UserId);
-        ServiceSupport.AddAudit(db, actor, "UploadedPreviousScheduleSelected", demand.Workspace, "DemandDraft", demand.Id, before, new { demand.UploadedPreviousSchedule.FileName });
+        ServiceSupport.AddAudit(db, actor, "UploadedPreviousScheduleSelected", demand.Workspace, "DemandDraft", demand.Id, before,
+            new { demand.Month, demand.UploadedPreviousSchedule!.FileName });
         await SaveDemandChangesAsync(db, cancellationToken);
     }
 
@@ -372,7 +373,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         demand.PerpetualScheduleUploadedAtUtc = DateTimeOffset.UtcNow;
         Touch(demand, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "PerpetualScheduleUploaded", demand.Workspace, "DemandDraft", demand.Id, null,
-            new { PatternCount = schedule.Patterns.Count });
+            new { demand.Month, FileName = demand.PerpetualScheduleFileName, PatternCount = schedule.Patterns.Count });
         await SaveDemandChangesAsync(db, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
@@ -398,7 +399,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         ServiceSupport.RequireEditor(actor, demand.Workspace);
         if (demand.Workspace != WorkspaceCode.M) throw new DomainValidationException("只有 M 使用萬年班表。");
         if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
-        var before = new { demand.PerpetualScheduleFileName, demand.PerpetualScheduleUploadedAtUtc };
+        var before = new { demand.Month, demand.PerpetualScheduleFileName, demand.PerpetualScheduleUploadedAtUtc };
         demand.PerpetualScheduleJson = null;
         demand.PerpetualScheduleFileName = null;
         demand.PerpetualScheduleUploadedAtUtc = null;

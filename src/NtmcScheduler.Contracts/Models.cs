@@ -30,12 +30,18 @@ public enum ValidationSeverity
     Error
 }
 
+public static class AuditClaimTypes
+{
+    public const string SessionId = "audit_session_id";
+}
+
 public sealed record ActorContext(
     Guid UserId,
     string UserName,
     bool IsAdministrator,
     IReadOnlySet<WorkspaceCode> EditableWorkspaces,
     string CorrelationId,
+    Guid? SessionId = null,
     string? IpAddress = null,
     string? UserAgent = null,
     bool MustChangePassword = false)
@@ -244,16 +250,37 @@ public sealed record ObjectiveComponentDto(string Name, long Value, int Weight);
 
 public sealed record ScheduleRunOptions(int TimeLimitSeconds, int WorkerCount, int SeedCount);
 
+public sealed record AuditFieldChangeDto(string Label, string? Before, string? After);
+
+public sealed record AuditTechnicalDetailsDto(
+    Guid? ActorUserId,
+    Guid? SessionId,
+    string Action,
+    string ResourceType,
+    string ResourceId,
+    string? BeforeJson,
+    string? AfterJson,
+    string? IpAddress,
+    string? UserAgent,
+    string CorrelationId);
+
 public sealed record AuditLogDto(
     Guid Id,
     DateTimeOffset AtUtc,
     string ActorName,
+    Guid? ActorUserId,
+    Guid? SessionId,
+    string? IpAddress,
+    string? UserAgent,
     string Action,
+    string ActionLabel,
     WorkspaceCode? Workspace,
-    string ResourceType,
-    string ResourceId,
+    string TargetSummary,
+    string ReadableSummary,
     bool Succeeded,
-    string CorrelationId);
+    string CorrelationId,
+    IReadOnlyList<AuditFieldChangeDto> Changes,
+    AuditTechnicalDetailsDto Technical);
 
 public sealed record UserAccountDto(Guid Id, string UserName, bool IsDisabled, bool MustChangePassword, bool IsAdministrator, IReadOnlySet<WorkspaceCode> EditableWorkspaces, Guid RevisionToken);
 public sealed record CreateUserCommand(string UserName, string TemporaryPassword, bool IsAdministrator, IReadOnlySet<WorkspaceCode> EditableWorkspaces);

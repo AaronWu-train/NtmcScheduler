@@ -66,11 +66,12 @@ public sealed class ScheduleService(
         ServiceSupport.RequireEditor(actor, version.Workspace);
         if (version.IsArchived) throw new DomainValidationException("封存班表不可修改。");
         if (version.RevisionToken != revisionToken) throw new ConcurrencyConflictException("班表已被其他人修改，請重新整理。");
-        var assignment = version.Employees.SelectMany(x => x.Assignments).SingleOrDefault(x => x.Id == assignmentId)
+        var employee = version.Employees.SingleOrDefault(x => x.Assignments.Any(a => a.Id == assignmentId))
             ?? throw new DomainValidationException("找不到日格。");
+        var assignment = employee.Assignments.Single(x => x.Id == assignmentId);
         ValidateCell(version.Workspace, assignment.Date, kind, requestedRest, station, shift, eventStart, eventEnd, eventDescription);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        var before = AssignmentSnapshot(assignment);
+        var before = AssignmentSnapshot(version, employee, assignment);
         assignment.Kind = kind;
         assignment.RequestedRest = requestedRest;
         assignment.Station = kind == "Work" && version.Workspace == WorkspaceCode.M ? station : null;
@@ -84,7 +85,7 @@ public sealed class ScheduleService(
         version.HasErrors = checkedSchedule.Issues.Any(x => x.Severity == ValidationSeverity.Error);
         version.WarningCount = checkedSchedule.Issues.Count(x => x.Severity == ValidationSeverity.Warning);
         ServiceSupport.AddAudit(db, actor, "ScheduleAssignmentUpdated", version.Workspace, "ScheduleAssignment", assignment.Id,
-            before, AssignmentSnapshot(assignment));
+            before, AssignmentSnapshot(version, employee, assignment));
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         var adopted = await db.AdoptedSchedules.AsNoTracking().AnyAsync(x => x.ScheduleVersionId == version.Id, cancellationToken);
@@ -111,7 +112,7 @@ public sealed class ScheduleService(
             ?? throw new DomainValidationException("找不到班表員工。");
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        var before = new { employee.MonthlyShift };
+        var before = new { version.Month, ScheduleName = version.Name, employee.EmployeeCode, employee.Name, employee.MonthlyShift };
         employee.MonthlyShift = shift.ToString();
         Touch(version, actor.UserId);
         await db.SaveChangesAsync(cancellationToken);
@@ -119,7 +120,7 @@ public sealed class ScheduleService(
         version.HasErrors = checkedSchedule.Issues.Any(x => x.Severity == ValidationSeverity.Error);
         version.WarningCount = checkedSchedule.Issues.Count(x => x.Severity == ValidationSeverity.Warning);
         ServiceSupport.AddAudit(db, actor, "ScheduleEmployeeMonthlyShiftUpdated", version.Workspace, "ScheduleEmployeeSnapshot", employee.Id,
-            before, new { employee.MonthlyShift });
+            before, new { version.Month, ScheduleName = version.Name, employee.EmployeeCode, employee.Name, employee.MonthlyShift });
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         var adopted = await db.AdoptedSchedules.AsNoTracking().AnyAsync(x => x.ScheduleVersionId == version.Id, cancellationToken);
@@ -148,7 +149,9 @@ public sealed class ScheduleService(
             adopted.AdoptedByUserId = actor.UserId;
             adopted.AdoptedAtUtc = DateTimeOffset.UtcNow;
         }
-        ServiceSupport.AddAudit(db, actor, "ScheduleAdopted", version.Workspace, "ScheduleVersion", version.Id, new { ScheduleVersionId = before }, new { ScheduleVersionId = version.Id });
+        ServiceSupport.AddAudit(db, actor, "ScheduleAdopted", version.Workspace, "ScheduleVersion", version.Id,
+            new { ScheduleVersionId = before, version.Month, ScheduleName = version.Name },
+            new { ScheduleVersionId = version.Id, version.Month, ScheduleName = version.Name });
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
@@ -182,7 +185,7 @@ public sealed class ScheduleService(
         db.AdoptedSchedules.Remove(adopted);
         Touch(version, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "ScheduleUnadopted", version.Workspace, "ScheduleVersion", version.Id,
-            new { ScheduleVersionId = version.Id }, null);
+            new { ScheduleVersionId = version.Id, version.Month, ScheduleName = version.Name }, null);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
@@ -202,7 +205,7 @@ public sealed class ScheduleService(
         version.Name = trimmedName;
         Touch(version, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "ScheduleRenamed", version.Workspace, "ScheduleVersion", version.Id,
-            new { Name = before }, new { Name = version.Name });
+            new { version.Month, Name = before }, new { version.Month, Name = version.Name });
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
@@ -217,7 +220,8 @@ public sealed class ScheduleService(
         {
             ScheduleCsv.WriteMonthly(path, SolverScheduleMapper.ToMonthlySchedule(version));
             var bytes = await File.ReadAllBytesAsync(path, cancellationToken);
-            ServiceSupport.AddAudit(db, actor, "ScheduleCsvDownloaded", version.Workspace, "ScheduleVersion", version.Id, null, new { Bytes = bytes.Length });
+            ServiceSupport.AddAudit(db, actor, "ScheduleCsvDownloaded", version.Workspace, "ScheduleVersion", version.Id, null,
+                new { version.Month, ScheduleName = version.Name, Bytes = bytes.Length });
             await db.SaveChangesAsync(cancellationToken);
             return bytes;
         }
@@ -243,7 +247,8 @@ public sealed class ScheduleService(
         {
             await File.WriteAllTextAsync(path, string.Join(Environment.NewLine, lines) + Environment.NewLine, new UTF8Encoding(true), cancellationToken);
             var bytes = await File.ReadAllBytesAsync(path, cancellationToken);
-            ServiceSupport.AddAudit(db, actor, "ExternalScheduleCsvDownloaded", version.Workspace, "ScheduleVersion", version.Id, null, new { Bytes = bytes.Length });
+            ServiceSupport.AddAudit(db, actor, "ExternalScheduleCsvDownloaded", version.Workspace, "ScheduleVersion", version.Id, null,
+                new { version.Month, ScheduleName = version.Name, Bytes = bytes.Length });
             await db.SaveChangesAsync(cancellationToken);
             return bytes;
         }
@@ -478,8 +483,13 @@ public sealed class ScheduleService(
         ? length switch { 1 => 4, 2 or 3 or 4 or 5 => 0, >= 6 => 2 * (length - 4), _ => 0 }
         : length switch { 1 => 4, 2 => 1, 3 or 4 => 0, 5 => 1, >= 6 => 2 * (length - 4), _ => 0 };
 
-    private static object AssignmentSnapshot(ScheduleAssignment assignment) => new
+    private static object AssignmentSnapshot(ScheduleVersion version, ScheduleEmployeeSnapshot employee, ScheduleAssignment assignment) => new
     {
+        version.Month,
+        ScheduleName = version.Name,
+        employee.EmployeeCode,
+        employee.Name,
+        assignment.Date,
         assignment.Kind,
         assignment.RequestedRest,
         assignment.Station,

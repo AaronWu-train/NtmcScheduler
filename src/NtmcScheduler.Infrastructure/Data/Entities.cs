@@ -165,6 +165,7 @@ public sealed class ScheduleRun
     public Guid RequestedByUserId { get; set; }
     public string RequestedByName { get; set; } = "";
     public string CorrelationId { get; set; } = "";
+    public Guid? SessionId { get; set; }
     public string? IpAddress { get; set; }
     public string? UserAgent { get; set; }
     public int RandomSeed { get; set; }
@@ -271,6 +272,7 @@ public sealed class AuditLog
     public long AtUtcTicks { get; set; } = DateTimeOffset.UtcNow.UtcTicks;
     public Guid? ActorUserId { get; set; }
     public string ActorName { get; set; } = "";
+    public Guid? SessionId { get; set; }
     public string Action { get; set; } = "";
     public WorkspaceCode? Workspace { get; set; }
     public string ResourceType { get; set; } = "";

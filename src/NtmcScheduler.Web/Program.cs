@@ -14,6 +14,7 @@ using NtmcScheduler.Infrastructure;
 using NtmcScheduler.Contracts;
 using NtmcScheduler.Infrastructure.Data;
 using NtmcScheduler.Infrastructure.Csv;
+using NtmcScheduler.Infrastructure.Services;
 using NtmcScheduler.Web.Components;
 using NtmcScheduler.Web.Services;
 
@@ -176,9 +177,16 @@ app.Use(async (context, next) =>
 app.UseAuthorization();
 app.UseAntiforgery();
 
-app.MapPost("/Account/Logout", async (HttpContext context, SignInManager<ApplicationUser> signInManager, IAntiforgery antiforgery) =>
+app.MapPost("/Account/Logout", async (HttpContext context, SignInManager<ApplicationUser> signInManager, NtmcDbContext db, IAntiforgery antiforgery) =>
 {
     await antiforgery.ValidateRequestAsync(context);
+    if (context.User.Identity?.IsAuthenticated == true &&
+        Guid.TryParse(context.User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+    {
+        var actor = await CreateHttpActorAsync(context.User, context, db, context.RequestAborted);
+        AuditWriter.Add(db, actor, "LogoutSucceeded", null, "Authentication", userId, null, null);
+        await db.SaveChangesAsync();
+    }
     await signInManager.SignOutAsync();
     return Results.LocalRedirect("~/Account/Login");
 }).RequireAuthorization();
@@ -315,19 +323,8 @@ static async Task InitializeAdministratorAsync(IServiceProvider services, string
     var role = await users.AddToRoleAsync(user, "Administrator");
     if (!role.Succeeded) throw new InvalidOperationException(string.Join("; ", role.Errors.Select(x => x.Description)));
     var db = scope.ServiceProvider.GetRequiredService<NtmcDbContext>();
-    var now = DateTimeOffset.UtcNow;
-    db.AuditLogs.Add(new AuditLog
-    {
-        AtUtc = now,
-        AtUtcTicks = now.UtcTicks,
-        ActorUserId = user.Id,
-        ActorName = user.UserName,
-        Action = "InitialAdministratorCreated",
-        ResourceType = "User",
-        ResourceId = user.Id.ToString(),
-        Succeeded = true,
-        CorrelationId = "init-admin"
-    });
+    var actor = new ActorContext(user.Id, user.UserName!, true, new HashSet<WorkspaceCode>(), "init-admin");
+    AuditWriter.Add(db, actor, "InitialAdministratorCreated", null, "User", user.Id, null, null);
     await db.SaveChangesAsync();
     Console.WriteLine($"Administrator '{user.UserName}' created. The password must be changed at first login.");
 }
@@ -351,7 +348,7 @@ static async Task<ActorContext> CreateHttpActorAsync(ClaimsPrincipal principal, 
         throw new UnauthorizedAccessException();
     var workspaces = await db.WorkspacePermissions.AsNoTracking().Where(x => x.UserId == userId).Select(x => x.Workspace).ToListAsync(cancellationToken);
     return new(userId, principal.Identity?.Name ?? "unknown", principal.IsInRole("Administrator"), workspaces.ToHashSet(),
-        context.TraceIdentifier, context.Connection.RemoteIpAddress?.ToString(), context.Request.Headers.UserAgent.ToString(),
+        context.TraceIdentifier, ActorContextFactory.ParseSessionId(principal), context.Connection.RemoteIpAddress?.ToString(), context.Request.Headers.UserAgent.ToString(),
         principal.FindFirstValue("must_change_password") == "true");
 }
 
