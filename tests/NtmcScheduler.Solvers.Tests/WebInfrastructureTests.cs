@@ -145,7 +145,7 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
-    public async Task EmployeeDemandSubmission_ViewerCanFillEditorImportsOnce()
+    public async Task EmployeeDemandSubmission_ViewerCanFillEditorCanReimport()
     {
         await using var database = await TestDatabase.CreateAsync();
         var employees = new EmployeeService(database.Context);
@@ -182,9 +182,10 @@ public sealed class WebInfrastructureTests
         var reloaded = (await demands.GetAsync(WorkspaceCode.M, month, editor))!;
         Assert.AreEqual(2, reloaded.Employees.Single(x => x.EmployeeCode == "M001").RequestedLeaveRestCount);
 
-        await Assert.ThrowsExactlyAsync<DomainValidationException>(() => submissions.ImportToDemandAsync(demand.Id, reloaded.RevisionToken, editor));
-        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => submissions.ImportToDemandAsync(demand.Id, reloaded.RevisionToken, viewer));
-        Assert.AreEqual(1, await database.Context.AuditLogs.CountAsync(x => x.Action == "DemandSubmissionImported"));
+        reloaded = await submissions.ImportToDemandAsync(reloaded.Id, reloaded.RevisionToken, editor);
+        Assert.AreEqual(3, reloaded.Employees.Single(x => x.EmployeeCode == "M001").RequestedLeaveRestCount);
+        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => submissions.ImportToDemandAsync(reloaded.Id, reloaded.RevisionToken, viewer));
+        Assert.AreEqual(2, await database.Context.AuditLogs.CountAsync(x => x.Action == "DemandSubmissionImported"));
         Assert.IsTrue(await database.Context.AuditLogs.AnyAsync(x => x.Action == "EmployeeDemandSubmissionUpdated"));
     }
 

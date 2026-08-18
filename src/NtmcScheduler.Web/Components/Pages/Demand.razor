@@ -168,14 +168,7 @@
                             <button disabled="@isBusy" @onclick="RestorePreviousInheritedFieldsAsync">@(workspaceCode == WorkspaceCode.M ? "還原上月 R/R1 與萬年班表" : "還原上月 R/R1")</button>
                         }
                         <label class="button-link file-upload-button primary">匯入需求 CSV<InputFile OnChange="PreviewDemandAsync" accept=".csv,text/csv" disabled="@isBusy"/></label>
-                        @if (submissionImport is null)
-                        {
-                            <button disabled="@isBusy" @onclick="PreviewSubmissionImportAsync">匯入員工填報</button>
-                        }
-                        else
-                        {
-                            <span>已於 @Taipei(submissionImport.ImportedAtUtc) 由 @submissionImport.ImportedByName 匯入填報</span>
-                        }
+                        <button disabled="@isBusy" @onclick="PreviewSubmissionImportAsync">匯入員工填報</button>
                     }
                 </div>
             </div>
@@ -503,7 +496,6 @@
     private byte[]? pendingDemand;
     private ImportPreviewDto? preview;
     private SubmissionImportPreviewDto? submissionPreview;
-    private DemandSubmissionImportDto? submissionImport;
     private bool isBusy;
     private int solveTimeLimitSeconds = 300;
     private int solveWorkerCount = 8;
@@ -586,7 +578,6 @@
             : null;
         InitializeEmployeeEdits();
         await LoadRunsAsync();
-        submissionImport = demand is null ? null : await SubmissionService.GetImportStatusAsync(demand.Id, actor);
         submissionPreview = null;
     }
 
@@ -798,7 +789,6 @@
     private async Task ConfirmSubmissionImportAsync() => await RunUiAsync(async () =>
     {
         demand = await SubmissionService.ImportToDemandAsync(demand!.Id, demand.RevisionToken, await CurrentActor.GetAsync());
-        submissionImport = await SubmissionService.GetImportStatusAsync(demand.Id, await CurrentActor.GetAsync());
         submissionPreview = null;
         InitializeEmployeeEdits();
     }, "員工填報已匯入 Demand。");

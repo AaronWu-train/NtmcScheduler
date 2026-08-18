@@ -154,8 +154,6 @@ public sealed class EmployeeDemandSubmissionService(IDbContextFactory<NtmcDbCont
         var (demand, submissions, existingImport) = await LoadImportContextAsync(db, demandDraftId, actor, cancellationToken);
         var errors = new List<string>();
         var differences = new List<string>();
-        if (existingImport is not null)
-            errors.Add($"此月份 Demand 已於 {FormatTaipei(existingImport.ImportedAtUtc)} 由 {existingImport.ImportedByName} 匯入填報，不可再次匯入。");
         if (submissions.Count == 0)
             errors.Add("目前沒有任何員工填報可匯入。");
 

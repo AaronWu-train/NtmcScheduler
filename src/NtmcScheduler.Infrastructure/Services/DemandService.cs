@@ -445,8 +445,6 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
             ?? throw new DomainValidationException("找不到本月需求。");
         ServiceSupport.RequireEditor(actor, demand.Workspace);
         if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
-        if (await db.DemandSubmissionImports.AnyAsync(x => x.DemandDraftId == demandId, cancellationToken))
-            throw new DomainValidationException("此月份 Demand 已匯入過員工填報，不可再次匯入。");
         var submissions = await db.EmployeeDemandSubmissions.AsNoTracking()
             .Include(x => x.Assignments)
             .Where(x => x.Workspace == demand.Workspace && x.Month == demand.Month)
@@ -481,13 +479,24 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
             importedEmployees++;
         }
 
-        db.DemandSubmissionImports.Add(new DemandSubmissionImport
+        var existingImport = await db.DemandSubmissionImports.SingleOrDefaultAsync(x => x.DemandDraftId == demandId, cancellationToken);
+        var importedAt = DateTimeOffset.UtcNow;
+        if (existingImport is null)
         {
-            DemandDraftId = demand.Id,
-            ImportedAtUtc = DateTimeOffset.UtcNow,
-            ImportedByUserId = actor.UserId,
-            ImportedByName = actor.UserName
-        });
+            db.DemandSubmissionImports.Add(new DemandSubmissionImport
+            {
+                DemandDraftId = demand.Id,
+                ImportedAtUtc = importedAt,
+                ImportedByUserId = actor.UserId,
+                ImportedByName = actor.UserName
+            });
+        }
+        else
+        {
+            existingImport.ImportedAtUtc = importedAt;
+            existingImport.ImportedByUserId = actor.UserId;
+            existingImport.ImportedByName = actor.UserName;
+        }
         Touch(demand, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "DemandSubmissionImported", demand.Workspace, "DemandDraft", demand.Id, null,
             new { demand.Month, ImportedEmployees = importedEmployees, ImportedAssignments = importedAssignments });
