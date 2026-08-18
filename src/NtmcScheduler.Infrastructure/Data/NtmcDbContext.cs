@@ -14,6 +14,7 @@ public sealed class NtmcDbContext(DbContextOptions<NtmcDbContext> options)
     public DbSet<RestIntervalEntity> RestIntervals => Set<RestIntervalEntity>();
     public DbSet<NationalHoliday> NationalHolidays => Set<NationalHoliday>();
     public DbSet<NonStandardShiftEntity> NonStandardShifts => Set<NonStandardShiftEntity>();
+    public DbSet<StandardShiftTimeEntity> StandardShiftTimes => Set<StandardShiftTimeEntity>();
     public DbSet<DemandDraft> DemandDrafts => Set<DemandDraft>();
     public DbSet<DemandEmployee> DemandEmployees => Set<DemandEmployee>();
     public DbSet<DemandAssignment> DemandAssignments => Set<DemandAssignment>();
@@ -88,6 +89,14 @@ public sealed class NtmcDbContext(DbContextOptions<NtmcDbContext> options)
             entity.Property(x => x.Code).HasMaxLength(32).IsRequired();
             entity.HasIndex(x => new { x.ConfigurationRevisionId, x.Code }).IsUnique();
             entity.HasOne(x => x.ConfigurationRevision).WithMany(x => x.NonStandardShifts).HasForeignKey(x => x.ConfigurationRevisionId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<StandardShiftTimeEntity>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Workspace).HasMaxLength(1).IsRequired();
+            entity.Property(x => x.Shift).HasMaxLength(16).IsRequired();
+            entity.HasIndex(x => new { x.ConfigurationRevisionId, x.Workspace, x.Shift }).IsUnique();
+            entity.HasOne(x => x.ConfigurationRevision).WithMany(x => x.StandardShiftTimes).HasForeignKey(x => x.ConfigurationRevisionId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<DemandDraft>(entity =>

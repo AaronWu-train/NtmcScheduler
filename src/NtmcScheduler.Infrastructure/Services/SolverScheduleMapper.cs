@@ -58,6 +58,20 @@ internal static class SolverScheduleMapper
     public static NonStandardShiftTable ToNonStandardShifts(ConfigurationRevision revision) => new(
         revision.NonStandardShifts.Select(x => new NonStandardShift(x.Name, x.StartTime, x.EndTime, x.Code)).ToArray());
 
+    public static StandardShiftTimes ToStandardShiftTimes(ConfigurationRevision revision) => new(
+        ToWorkspaceShiftTimes(revision, "M", WorkspaceShiftTimes.DefaultM),
+        ToWorkspaceShiftTimes(revision, "T", WorkspaceShiftTimes.DefaultT));
+
+    private static WorkspaceShiftTimes ToWorkspaceShiftTimes(ConfigurationRevision revision, string workspace, WorkspaceShiftTimes defaults)
+    {
+        ShiftTimePair Pair(string shift, ShiftTimePair fallback)
+        {
+            var e = revision.StandardShiftTimes.FirstOrDefault(x => x.Workspace == workspace && x.Shift == shift);
+            return e is null ? fallback : new ShiftTimePair(e.StartTime, e.EndTime);
+        }
+        return new WorkspaceShiftTimes(Pair("Early", defaults.Early), Pair("Afternoon", defaults.Afternoon), Pair("Night", defaults.Night));
+    }
+
     public static ScheduleVersion ToVersion(
         MonthlySchedule schedule,
         WorkspaceCode workspace,

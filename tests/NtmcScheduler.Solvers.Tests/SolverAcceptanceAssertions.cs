@@ -165,8 +165,9 @@ internal static class SolverAcceptanceAssertions
 
     private static void AssertMinimumWorkGap(ScheduleInput input, EmployeeMonthlySchedule candidate, bool t)
     {
+        var times = t ? (input.StandardShiftTimes?.T ?? WorkspaceShiftTimes.DefaultT) : (input.StandardShiftTimes?.M ?? WorkspaceShiftTimes.DefaultM);
         var history = input.PreviousMonth.Employees.FirstOrDefault(employee => employee.EmployeeId == candidate.EmployeeId)?.Assignments ?? new Dictionary<DateOnly, ScheduleCell>();
-        var work = history.Concat(candidate.Assignments).Select(pair => WorkInterval(pair.Key, pair.Value, t)).Where(value => value is not null).Select(value => value!.Value).OrderBy(value => value.Start).ToArray();
+        var work = history.Concat(candidate.Assignments).Select(pair => WorkInterval(pair.Key, pair.Value, times)).Where(value => value is not null).Select(value => value!.Value).OrderBy(value => value.Start).ToArray();
         for (var index = 1; index < work.Length; index++)
             Assert.IsGreaterThanOrEqualTo(TimeSpan.FromHours(11), work[index].Start - work[index - 1].End, $"Insufficient work gap for {candidate.EmployeeId} before {work[index].Start}.");
     }
@@ -459,22 +460,11 @@ internal static class SolverAcceptanceAssertions
         ? input.PreviousMonth.Employees.FirstOrDefault(employee => employee.EmployeeId == employeeId)?.Assignments.GetValueOrDefault(date)
         : schedule.Employees.Single(employee => employee.EmployeeId == employeeId).Assignments.GetValueOrDefault(date);
 
-    private static (DateTimeOffset Start, DateTimeOffset End)? WorkInterval(DateOnly date, ScheduleCell cell, bool t)
+    private static (DateTimeOffset Start, DateTimeOffset End)? WorkInterval(DateOnly date, ScheduleCell cell, WorkspaceShiftTimes times)
     {
         if (cell.Kind == AssignmentKind.WorkEvent) return (cell.EventStart!.Value, cell.EventEnd!.Value);
-        if (cell.Kind != AssignmentKind.Work) return null;
-        var (start, end, overnight) = (t, cell.Shift) switch
-        {
-            (true, Shift.Early) => (new TimeOnly(7, 0), new TimeOnly(15, 0), false),
-            (true, Shift.Afternoon) => (new TimeOnly(15, 0), new TimeOnly(23, 0), false),
-            (true, Shift.Night) => (new TimeOnly(23, 0), new TimeOnly(7, 0), true),
-            (false, Shift.Early) => (new TimeOnly(6, 30), new TimeOnly(14, 30), false),
-            (false, Shift.Afternoon) => (new TimeOnly(14, 20), new TimeOnly(22, 20), false),
-            (false, Shift.Night) => (new TimeOnly(22, 0), new TimeOnly(7, 0), true),
-            _ => throw new AssertFailedException("Normal work needs a shift.")
-        };
-        var offset = TimeSpan.FromHours(8);
-        return (new DateTimeOffset(date.ToDateTime(start), offset), new DateTimeOffset(date.AddDays(overnight ? 1 : 0).ToDateTime(end), offset));
+        if (cell.Kind != AssignmentKind.Work || cell.Shift is null) return null;
+        return times.Resolve(date, cell.Shift.Value);
     }
 
     private static void AssertCell(ScheduleCell expected, ScheduleCell actual, string message)

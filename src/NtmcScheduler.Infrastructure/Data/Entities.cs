@@ -40,6 +40,7 @@ public sealed class ConfigurationRevision
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public List<RestIntervalEntity> RestIntervals { get; set; } = [];
     public List<NonStandardShiftEntity> NonStandardShifts { get; set; } = [];
+    public List<StandardShiftTimeEntity> StandardShiftTimes { get; set; } = [];
 }
 
 public sealed class CurrentConfiguration
@@ -74,6 +75,17 @@ public sealed class NonStandardShiftEntity
     public Guid ConfigurationRevisionId { get; set; }
     public string? Name { get; set; }
     public string Code { get; set; } = "";
+    public TimeOnly StartTime { get; set; }
+    public TimeOnly EndTime { get; set; }
+    public ConfigurationRevision ConfigurationRevision { get; set; } = null!;
+}
+
+public sealed class StandardShiftTimeEntity
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid ConfigurationRevisionId { get; set; }
+    public string Workspace { get; set; } = "";   // "M" or "T"
+    public string Shift { get; set; } = "";        // "Early", "Afternoon", "Night"
     public TimeOnly StartTime { get; set; }
     public TimeOnly EndTime { get; set; }
     public ConfigurationRevision ConfigurationRevision { get; set; } = null!;

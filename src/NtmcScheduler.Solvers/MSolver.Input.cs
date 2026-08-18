@@ -282,15 +282,16 @@ public static partial class MSolver
 
     private static void ValidateFixedWorkIntervals(ScheduleInput input, List<InputError> errors)
     {
+        var times = input.StandardShiftTimes?.M;
         foreach (var employee in input.DemandMonth.Employees)
         {
             var intervals = ResolvedHistoryFor(input, employee.EmployeeId)
-                .Select(item => ResolvedWorkInterval(item.Date, item.Cell))
+                .Select(item => ResolvedWorkInterval(item.Date, item.Cell, times))
                 .Where(item => item is not null)
                 .Select(item => (item!.Value.Start, item.Value.End, Source: $"history {item.Value.Date:yyyy-MM-dd}"))
                 .Concat(employee.Assignments
                     .Where(pair => pair.Value.Kind is AssignmentKind.Work or AssignmentKind.WorkEvent)
-                    .Select(pair => ResolvedWorkInterval(pair.Key, pair.Value))
+                    .Select(pair => ResolvedWorkInterval(pair.Key, pair.Value, times))
                     .Where(item => item is not null)
                     .Select(item => (item!.Value.Start, item.Value.End, Source: $"fixed {item.Value.Date:yyyy-MM-dd}")))
                 .OrderBy(item => item.Start)
@@ -376,25 +377,14 @@ public static partial class MSolver
         return Stations.Skip(firstStationIndex).Take(3).ToArray();
     }
 
-    private static (DateTimeOffset Start, DateTimeOffset End) NormalShiftInterval(DateOnly date, Shift shift)
-    {
-        var (start, end, nextDay) = shift switch
-        {
-            Shift.Early => (new TimeOnly(6, 30), new TimeOnly(14, 30), false),
-            Shift.Afternoon => (new TimeOnly(14, 20), new TimeOnly(22, 20), false),
-            Shift.Night => (new TimeOnly(22, 0), new TimeOnly(7, 0), true),
-            _ => throw new ArgumentOutOfRangeException(nameof(shift))
-        };
-        return (
-            new DateTimeOffset(date.ToDateTime(start), TaipeiOffset),
-            new DateTimeOffset(date.AddDays(nextDay ? 1 : 0).ToDateTime(end), TaipeiOffset));
-    }
+    private static (DateTimeOffset Start, DateTimeOffset End) NormalShiftInterval(DateOnly date, Shift shift, WorkspaceShiftTimes? times = null) =>
+        (times ?? WorkspaceShiftTimes.DefaultM).Resolve(date, shift);
 
-    private static (DateOnly Date, DateTimeOffset Start, DateTimeOffset End)? ResolvedWorkInterval(DateOnly date, ScheduleCell cell)
+    private static (DateOnly Date, DateTimeOffset Start, DateTimeOffset End)? ResolvedWorkInterval(DateOnly date, ScheduleCell cell, WorkspaceShiftTimes? times = null)
     {
         if (cell.Kind == AssignmentKind.Work && cell.Shift is not null)
         {
-            var interval = NormalShiftInterval(date, cell.Shift.Value);
+            var interval = NormalShiftInterval(date, cell.Shift.Value, times);
             return (date, interval.Start, interval.End);
         }
         if (cell.Kind == AssignmentKind.WorkEvent && cell.EventStart is not null && cell.EventEnd is not null)

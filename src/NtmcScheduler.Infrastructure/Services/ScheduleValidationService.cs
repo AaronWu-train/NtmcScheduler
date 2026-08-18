@@ -24,14 +24,16 @@ public sealed class ScheduleValidationService(NtmcDbContext db) : IScheduleValid
         var version = await db.ScheduleVersions
             .AsSplitQuery()
             .Include(x => x.ConfigurationRevision).ThenInclude(x => x.RestIntervals).ThenInclude(x => x.NationalHolidays)
+            .Include(x => x.ConfigurationRevision).ThenInclude(x => x.StandardShiftTimes)
             .Include(x => x.Employees).ThenInclude(x => x.Assignments)
             .Include(x => x.ExternalAssignments)
             .SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
             ?? throw new DomainValidationException("找不到班表版本。");
         var previous = await PreviousAssignmentsAsync(version, cancellationToken);
+        var shiftTimes = SolverScheduleMapper.ToStandardShiftTimes(version.ConfigurationRevision);
         var issues = new List<ValidationIssue>();
         ValidateResolvedDailyAssignments(version, issues);
-        ValidateMinimumRestGap(version, previous, issues);
+        ValidateMinimumRestGap(version, previous, shiftTimes, issues);
         ValidateGeneralRestInEverySevenDays(version, previous, issues);
         ValidateEightWeekBalances(version, issues);
         if (version.Workspace == WorkspaceCode.M) ValidateM(version, issues);
@@ -102,12 +104,13 @@ public sealed class ScheduleValidationService(NtmcDbContext db) : IScheduleValid
     private static void ValidateMinimumRestGap(
         ScheduleVersion version,
         IReadOnlyDictionary<string, Dictionary<DateOnly, ScheduleAssignment>> previous,
+        StandardShiftTimes shiftTimes,
         List<ValidationIssue> issues)
     {
         foreach (var employee in version.Employees)
         {
             var cells = previous.GetValueOrDefault(employee.EmployeeCode)?.Values.Concat(employee.Assignments) ?? employee.Assignments;
-            var work = cells.Select(cell => WorkInterval(version.Workspace, cell)).Where(x => x is not null).Select(x => x!.Value).OrderBy(x => x.Start).ToArray();
+            var work = cells.Select(cell => WorkInterval(version.Workspace, shiftTimes, cell)).Where(x => x is not null).Select(x => x!.Value).OrderBy(x => x.Start).ToArray();
             for (var index = 1; index < work.Length; index++)
                 if (work[index].Start - work[index - 1].End < TimeSpan.FromHours(11))
                     issues.Add(new(ValidationSeverity.Error, "最少十一小時休息", "相鄰工作區間重疊或休息少於十一小時。", employee.EmployeeCode, work[index].Date, IsLaborLawViolation: true));
@@ -230,24 +233,16 @@ public sealed class ScheduleValidationService(NtmcDbContext db) : IScheduleValid
         }).ToArray();
     }
 
-    private static (DateOnly Date, DateTimeOffset Start, DateTimeOffset End)? WorkInterval(WorkspaceCode workspace, ScheduleAssignment cell)
+    private static (DateOnly Date, DateTimeOffset Start, DateTimeOffset End)? WorkInterval(WorkspaceCode workspace, StandardShiftTimes shiftTimes, ScheduleAssignment cell)
     {
         if (cell.Kind == "WorkEvent" && cell.EventStart is not null && cell.EventEnd is not null)
             return (cell.Date, cell.EventStart.Value, cell.EventEnd.Value);
         if (cell.Kind != "Work" || cell.Shift is null) return null;
-        var (start, end, nextDay) = (workspace, cell.Shift) switch
-        {
-            (WorkspaceCode.M, "Early") => (new TimeOnly(6, 30), new TimeOnly(14, 30), false),
-            (WorkspaceCode.M, "Afternoon") => (new TimeOnly(14, 20), new TimeOnly(22, 20), false),
-            (WorkspaceCode.M, "Night") => (new TimeOnly(22, 0), new TimeOnly(7, 0), true),
-            (WorkspaceCode.T, "Early") => (new TimeOnly(7, 0), new TimeOnly(15, 0), false),
-            (WorkspaceCode.T, "Afternoon") => (new TimeOnly(15, 0), new TimeOnly(23, 0), false),
-            (WorkspaceCode.T, "Night") => (new TimeOnly(23, 0), new TimeOnly(7, 0), true),
-            _ => throw new DomainValidationException("班表含有不支援的班別。")
-        };
-        return (cell.Date,
-            new DateTimeOffset(cell.Date.ToDateTime(start), TaipeiOffset),
-            new DateTimeOffset(cell.Date.AddDays(nextDay ? 1 : 0).ToDateTime(end), TaipeiOffset));
+        if (!Enum.TryParse<Shift>(cell.Shift, out var shift))
+            throw new DomainValidationException("班表含有不支援的班別。");
+        var times = workspace == WorkspaceCode.M ? shiftTimes.M : shiftTimes.T;
+        var (start, end) = times.Resolve(cell.Date, shift);
+        return (cell.Date, start, end);
     }
 
     private static string[] StationsInSameGroup(string homeStation)

@@ -71,13 +71,17 @@ public sealed record SaveEmployeeCommand(
 
 public sealed record RestIntervalDto(DateOnly Start, DateOnly End, IReadOnlyList<DateOnly> NationalHolidays);
 public sealed record NonStandardShiftDto(string? Name, string Code, TimeOnly StartTime, TimeOnly EndTime);
+public sealed record ShiftTimePairDto(TimeOnly Start, TimeOnly End);
+public sealed record WorkspaceShiftTimesDto(ShiftTimePairDto Early, ShiftTimePairDto Afternoon, ShiftTimePairDto Night);
 public sealed record ConfigurationRevisionDto(
     Guid Id,
     int Version,
     DateTimeOffset CreatedAtUtc,
     Guid CurrentRevisionToken,
     IReadOnlyList<RestIntervalDto> RestIntervals,
-    IReadOnlyList<NonStandardShiftDto> NonStandardShifts);
+    IReadOnlyList<NonStandardShiftDto> NonStandardShifts,
+    WorkspaceShiftTimesDto MShiftTimes,
+    WorkspaceShiftTimesDto TShiftTimes);
 
 public sealed record DemandEmployeeDto(
     Guid Id,

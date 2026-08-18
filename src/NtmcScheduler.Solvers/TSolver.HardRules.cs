@@ -111,11 +111,12 @@ public static partial class TSolver
     // 最少十一小時休息——禁止工作區間重疊或間隔少於十一小時。
     private static void ForbidOverlappingOrInsufficientlySeparatedWork(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
     {
+        var times = input.StandardShiftTimes?.T;
         foreach (var employee in input.DemandMonth.Employees)
         {
             var normal = (from date in dates
                           from shift in Shifts
-                          let interval = NormalShiftInterval(date, shift)
+                          let interval = NormalShiftInterval(date, shift, times)
                           select (interval.Start, interval.End, Variable: variables.Work[(employee.EmployeeId, date, shift)]))
                 .ToArray();
             for (var first = 0; first < normal.Length; first++)
@@ -127,7 +128,7 @@ public static partial class TSolver
                 .Where(pair => pair.Value.Kind == AssignmentKind.WorkEvent)
                 .Select(pair => (pair.Value.EventStart!.Value, pair.Value.EventEnd!.Value))
                 .Concat(ResolvedHistoryFor(input, employee.EmployeeId)
-                    .Select(item => ResolvedWorkInterval(item.Date, item.Cell))
+                    .Select(item => ResolvedWorkInterval(item.Date, item.Cell, times))
                     .Where(item => item is not null)
                     .Select(item => (item!.Value.Start, item.Value.End)))
                 .ToArray();

@@ -1,0 +1,138 @@
+@page "/{workspace}/shift-times"
+@rendermode InteractiveServer
+@attribute [Authorize]
+@inject ICommonConfigurationService Service
+@inject CurrentActorService CurrentActor
+@using NtmcScheduler.Contracts
+
+<PageTitle>@WorkspaceLabel 班別時間設定</PageTitle>
+<WorkspaceNav Workspace="@workspace"/>
+<div class="page-title">
+    <div>
+        <h1>@WorkspaceLabel 班別時間設定</h1>
+        <p>維護早、午、夜班的起訖時間。</p>
+    </div>
+    <PageHelp Title="班別時間設定說明">
+        <p>儲存後只影響之後新建的需求與求解；現有班表沿用建立當時的設定。起訖不可相同；結束時間早於開始時間視為跨日班。三個班別的時間窗可以互相重疊（此設定與實際排班的最少十一小時休息規則無關）。</p>
+    </PageHelp>
+</div>
+@if (message is not null)
+{
+    <p class="alert @messageClass" role="status">@message</p>
+}
+
+<section class="card">
+    <div class="section-heading">
+        <h2>班別起訖時間</h2>
+        @if (canEdit)
+        {
+            <button type="button" class="primary" disabled="@isBusy" @onclick="SaveAsync">
+                @(isBusy ? "處理中…" : "儲存班別時間")
+            </button>
+        }
+    </div>
+    @if (current is null)
+    {
+        <p class="muted">尚未建立共同設定，請先至「共同設定」頁儲存八週區間。</p>
+    }
+    else
+    {
+        <div class="table-scroll">
+            <table>
+                <thead>
+                <tr><th>班別</th><th>開始</th><th>結束</th></tr>
+                </thead>
+                <tbody>
+                <tr>
+                    <td>早班</td>
+                    <td><input type="time" disabled="@(!canEdit)" value="@Format(earlyStart)" @onchange="e => earlyStart = Parse(e.Value)" /></td>
+                    <td><input type="time" disabled="@(!canEdit)" value="@Format(earlyEnd)" @onchange="e => earlyEnd = Parse(e.Value)" /></td>
+                </tr>
+                <tr>
+                    <td>@(workspace == "t" ? "午班" : "午班（小班）")</td>
+                    <td><input type="time" disabled="@(!canEdit)" value="@Format(afternoonStart)" @onchange="e => afternoonStart = Parse(e.Value)" /></td>
+                    <td><input type="time" disabled="@(!canEdit)" value="@Format(afternoonEnd)" @onchange="e => afternoonEnd = Parse(e.Value)" /></td>
+                </tr>
+                <tr>
+                    <td>夜班</td>
+                    <td><input type="time" disabled="@(!canEdit)" value="@Format(nightStart)" @onchange="e => nightStart = Parse(e.Value)" /></td>
+                    <td><input type="time" disabled="@(!canEdit)" value="@Format(nightEnd)" @onchange="e => nightEnd = Parse(e.Value)" /></td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="format-help">結束時間早於開始時間視為跨日班。</p>
+    }
+</section>
+
+@code {
+    [Parameter] public string workspace { get; set; } = "";
+
+    private ConfigurationRevisionDto? current;
+    private bool canEdit;
+    private bool isBusy;
+    private string? message;
+    private string messageClass = "success";
+
+    private TimeOnly earlyStart, earlyEnd, afternoonStart, afternoonEnd, nightStart, nightEnd;
+
+    private string WorkspaceLabel => workspace == "m" ? "站務 M" : "檢修 T";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var actor = await CurrentActor.GetAsync();
+        canEdit = Enum.TryParse<WorkspaceCode>(workspace, true, out var ws) && actor.CanEdit(ws);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var actor = await CurrentActor.GetAsync();
+        current = await Service.GetCurrentAsync(actor);
+        if (current is null) return;
+        var times = workspace == "m" ? current.MShiftTimes : current.TShiftTimes;
+        earlyStart = times.Early.Start;
+        earlyEnd = times.Early.End;
+        afternoonStart = times.Afternoon.Start;
+        afternoonEnd = times.Afternoon.End;
+        nightStart = times.Night.Start;
+        nightEnd = times.Night.End;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (current is null) return;
+        isBusy = true;
+        message = null;
+        try
+        {
+            if (!Enum.TryParse<WorkspaceCode>(workspace, true, out var ws))
+            {
+                message = "無效的工作區。";
+                messageClass = "error";
+                return;
+            }
+            var actor = await CurrentActor.GetAsync();
+            var times = new WorkspaceShiftTimesDto(
+                new ShiftTimePairDto(earlyStart, earlyEnd),
+                new ShiftTimePairDto(afternoonStart, afternoonEnd),
+                new ShiftTimePairDto(nightStart, nightEnd));
+            current = await Service.UpdateWorkspaceShiftTimesAsync(ws, times, current.CurrentRevisionToken, actor);
+            message = "已儲存班別時間。儲存後只影響之後新建的需求與求解。";
+            messageClass = "success";
+        }
+        catch (Exception ex)
+        {
+            messageClass = "error";
+            message = ex.Message;
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private static string Format(TimeOnly t) => t.ToString("HH:mm");
+    private static TimeOnly Parse(object? value) =>
+        TimeOnly.TryParse(value?.ToString(), out var t) ? t : TimeOnly.MinValue;
+}

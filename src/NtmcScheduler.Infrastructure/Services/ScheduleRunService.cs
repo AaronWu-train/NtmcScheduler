@@ -17,6 +17,7 @@ public sealed class ScheduleRunService(NtmcDbContext db, ScheduleRunQueue queue,
         var demand = await db.DemandDrafts.AsSplitQuery()
             .Include(x => x.ConfigurationRevision).ThenInclude(x => x.RestIntervals).ThenInclude(x => x.NationalHolidays)
             .Include(x => x.ConfigurationRevision).ThenInclude(x => x.NonStandardShifts)
+            .Include(x => x.ConfigurationRevision).ThenInclude(x => x.StandardShiftTimes)
             .Include(x => x.Employees).ThenInclude(x => x.Assignments)
             .Include(x => x.UploadedPreviousSchedule)
             .SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
@@ -32,7 +33,8 @@ public sealed class ScheduleRunService(NtmcDbContext db, ScheduleRunQueue queue,
             previous,
             SolverScheduleMapper.ToMonthlySchedule(demand),
             SolverScheduleMapper.ToRestIntervals(demand.ConfigurationRevision),
-            SolverScheduleMapper.ToNonStandardShifts(demand.ConfigurationRevision));
+            SolverScheduleMapper.ToNonStandardShifts(demand.ConfigurationRevision),
+            SolverScheduleMapper.ToStandardShiftTimes(demand.ConfigurationRevision));
         var snapshot = JsonSerializer.Serialize(input, ServiceSupport.JsonOptions);
         var perpetualScheduleJson = demand.PerpetualScheduleJson;
         if (demand.Workspace == WorkspaceCode.M && string.IsNullOrWhiteSpace(perpetualScheduleJson))

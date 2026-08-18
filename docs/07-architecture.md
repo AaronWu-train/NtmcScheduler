@@ -44,7 +44,7 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 | 實體 | 承載資訊 |
 |---|---|
 | `Employee` | 目前員工主檔：員工編號、姓名、單位（M/T）、M 所屬站、T 專業與 ability、revision token；刪除前內容保存在 AuditLog，既有月份使用獨立快照 |
-| `ConfigurationRevision` | 不可變的 56 日區間、國定假日與非常態班型版本；`CurrentConfiguration` 指向目前版 |
+| `ConfigurationRevision` | 不可變的 56 日區間、國定假日、非常態班型與 M/T 各三班起訖時間版本；`CurrentConfiguration` 指向目前版 |
 | `DemandDraft`／`DemandEmployee`／`DemandAssignment` | 每單位每月一份草稿、月份人員快照、T 月班別、期初額度、R\* 與 X |
 | `EmployeeDemandSubmission`／`EmployeeDemandSubmissionAssignment` | 每工作區／月份／員工一份目前填報；任何登入者可代填，AuditLog 保留每次覆蓋 |
 | `DemandSubmissionImport` | 記錄 Demand 從填報一次性匯入的時間與操作者；匯入後填報仍可保存但標示晚於截止 |
@@ -75,7 +75,7 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 
 | 類別 | 內容 |
 |---|---|
-| 班別 | M／T 早、午、夜的起訖時間 |
+| 班別 | M／T 早、午、夜起訖時間（可透過工作區設定頁維護，儲存於 `ConfigurationRevision`；預設 M 06:30–14:30、14:20–22:20、22:00–07:00，T 07:00–15:00、15:00–23:00、23:00–07:00） |
 | M 營運 | 車站群組、每日班位需求、可外派車站（LB02／LB04／LB09／LB11）、八週萬年班表 hint |
 | T 營運 | 月輪轉順序（早→午→夜→早），及必要時的下月班組例外 |
 | 休假週期 | 每個 8 週週期的 start、end、requiredR（一般休假，預設 16）、requiredR1（國定假日數） |

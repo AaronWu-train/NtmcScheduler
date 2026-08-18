@@ -1,5 +1,47 @@
 namespace NtmcScheduler.Solvers;
 
+/// <summary>Start and end times for one shift. End &lt;= Start means overnight (end is next day).</summary>
+public sealed record ShiftTimePair(TimeOnly Start, TimeOnly End);
+
+/// <summary>Early/Afternoon/Night times for one workspace. Null fields fall back to built-in defaults.</summary>
+public sealed record WorkspaceShiftTimes(ShiftTimePair Early, ShiftTimePair Afternoon, ShiftTimePair Night)
+{
+    private static readonly ShiftTimePair MDefaultEarly = new(new TimeOnly(6, 30), new TimeOnly(14, 30));
+    private static readonly ShiftTimePair MDefaultAfternoon = new(new TimeOnly(14, 20), new TimeOnly(22, 20));
+    private static readonly ShiftTimePair MDefaultNight = new(new TimeOnly(22, 0), new TimeOnly(7, 0));
+    private static readonly ShiftTimePair TDefaultEarly = new(new TimeOnly(7, 0), new TimeOnly(15, 0));
+    private static readonly ShiftTimePair TDefaultAfternoon = new(new TimeOnly(15, 0), new TimeOnly(23, 0));
+    private static readonly ShiftTimePair TDefaultNight = new(new TimeOnly(23, 0), new TimeOnly(7, 0));
+
+    public static readonly WorkspaceShiftTimes DefaultM = new(MDefaultEarly, MDefaultAfternoon, MDefaultNight);
+    public static readonly WorkspaceShiftTimes DefaultT = new(TDefaultEarly, TDefaultAfternoon, TDefaultNight);
+
+    public ShiftTimePair For(Shift shift) => shift switch
+    {
+        Shift.Early => Early,
+        Shift.Afternoon => Afternoon,
+        Shift.Night => Night,
+        _ => throw new ArgumentOutOfRangeException(nameof(shift))
+    };
+
+    /// <summary>Resolves shift to a DateTimeOffset interval. End &lt;= Start advances to the next day.</summary>
+    public (DateTimeOffset Start, DateTimeOffset End) Resolve(DateOnly date, Shift shift)
+    {
+        var pair = For(shift);
+        var taipeiOffset = TimeSpan.FromHours(8);
+        var nextDay = pair.End <= pair.Start;
+        return (
+            new DateTimeOffset(date.ToDateTime(pair.Start), taipeiOffset),
+            new DateTimeOffset(date.AddDays(nextDay ? 1 : 0).ToDateTime(pair.End), taipeiOffset));
+    }
+}
+
+/// <summary>Standard shift times for both M and T workspaces.</summary>
+public sealed record StandardShiftTimes(WorkspaceShiftTimes M, WorkspaceShiftTimes T)
+{
+    public static readonly StandardShiftTimes Default = new(WorkspaceShiftTimes.DefaultM, WorkspaceShiftTimes.DefaultT);
+}
+
 /// <summary>Normal operating shifts. A night shift belongs to its start date.</summary>
 public enum Shift
 {
@@ -101,7 +143,8 @@ public sealed record ScheduleInput(
     MonthlySchedule PreviousMonth,
     MonthlySchedule DemandMonth,
     IReadOnlyList<RestInterval> RestIntervals,
-    NonStandardShiftTable NonStandardShifts);
+    NonStandardShiftTable NonStandardShifts,
+    StandardShiftTimes? StandardShiftTimes = null);
 
 public sealed record ObjectiveComponent(string Name, long Value, int Weight)
 {

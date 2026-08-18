@@ -3,6 +3,7 @@ using System.Text;
 using NtmcScheduler.Contracts;
 using NtmcScheduler.Infrastructure.Csv;
 using NtmcScheduler.Infrastructure.Data;
+using NtmcScheduler.Solvers;
 
 namespace NtmcScheduler.Infrastructure.Services;
 
@@ -105,7 +106,23 @@ internal static class ServiceSupport
         revision.RestIntervals.OrderBy(x => x.Start).Select(x => new RestIntervalDto(
             x.Start, x.End, x.NationalHolidays.OrderBy(h => h.Date).Select(h => h.Date).ToArray())).ToArray(),
         revision.NonStandardShifts.OrderBy(x => x.Code).Select(x => new NonStandardShiftDto(
-            x.Name, x.Code, x.StartTime, x.EndTime)).ToArray());
+            x.Name, x.Code, x.StartTime, x.EndTime)).ToArray(),
+        ToWorkspaceShiftTimesDto(revision, "M"),
+        ToWorkspaceShiftTimesDto(revision, "T"));
+
+    private static WorkspaceShiftTimesDto ToWorkspaceShiftTimesDto(ConfigurationRevision revision, string workspace)
+    {
+        var defaults = workspace == "M" ? WorkspaceShiftTimes.DefaultM : WorkspaceShiftTimes.DefaultT;
+        ShiftTimePairDto Pair(string shift, ShiftTimePair fallback)
+        {
+            var e = revision.StandardShiftTimes.FirstOrDefault(x => x.Workspace == workspace && x.Shift == shift);
+            return e is null ? new(fallback.Start, fallback.End) : new(e.StartTime, e.EndTime);
+        }
+        return new(
+            Pair("Early", defaults.Early),
+            Pair("Afternoon", defaults.Afternoon),
+            Pair("Night", defaults.Night));
+    }
 }
 
 internal static class UploadFile

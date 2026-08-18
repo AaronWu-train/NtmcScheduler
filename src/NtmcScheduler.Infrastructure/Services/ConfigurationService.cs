@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using NtmcScheduler.Contracts;
 using NtmcScheduler.Infrastructure.Csv;
 using NtmcScheduler.Infrastructure.Data;
+using NtmcScheduler.Solvers;
 
 namespace NtmcScheduler.Infrastructure.Services;
 
@@ -13,6 +14,7 @@ public sealed class CommonConfigurationService(NtmcDbContext db) : ICommonConfig
         var current = await db.CurrentConfigurations.AsNoTracking().AsSplitQuery()
             .Include(x => x.ConfigurationRevision).ThenInclude(x => x.RestIntervals).ThenInclude(x => x.NationalHolidays)
             .Include(x => x.ConfigurationRevision).ThenInclude(x => x.NonStandardShifts)
+            .Include(x => x.ConfigurationRevision).ThenInclude(x => x.StandardShiftTimes)
             .SingleOrDefaultAsync(x => x.Id == 1, cancellationToken);
         return current is null ? null : ServiceSupport.ToDto(current.ConfigurationRevision, current.RevisionToken);
     }
@@ -23,6 +25,7 @@ public sealed class CommonConfigurationService(NtmcDbContext db) : ICommonConfig
         var revision = await db.ConfigurationRevisions.AsNoTracking().AsSplitQuery()
             .Include(x => x.RestIntervals).ThenInclude(x => x.NationalHolidays)
             .Include(x => x.NonStandardShifts)
+            .Include(x => x.StandardShiftTimes)
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
         return revision is null ? null : ServiceSupport.ToDto(revision);
     }
@@ -69,6 +72,8 @@ public sealed class CommonConfigurationService(NtmcDbContext db) : ICommonConfig
             StartTime = shift.StartTime,
             EndTime = shift.EndTime
         }));
+        var currentRevision = current is null ? null : await LoadRevisionAsync(current.ConfigurationRevisionId, cancellationToken);
+        AddStandardShiftTimes(revision, currentRevision);
         db.ConfigurationRevisions.Add(revision);
         if (current is null) db.CurrentConfigurations.Add(new() { ConfigurationRevision = revision });
         else
@@ -106,6 +111,112 @@ public sealed class CommonConfigurationService(NtmcDbContext db) : ICommonConfig
             if (string.IsNullOrWhiteSpace(shift.Code) || !tokens.Add(shift.Code.Trim()) ||
                 !string.IsNullOrWhiteSpace(shift.Name) && !tokens.Add(shift.Name.Trim()))
                 throw new DomainValidationException("非常態班型名稱與代碼必填／唯一，且不可互相重複。");
+        }
+    }
+
+    public async Task<ConfigurationRevisionDto> UpdateWorkspaceShiftTimesAsync(
+        WorkspaceCode workspace,
+        WorkspaceShiftTimesDto times,
+        Guid currentRevisionToken,
+        ActorContext actor,
+        CancellationToken cancellationToken = default)
+    {
+        ServiceSupport.RequireViewer(actor);
+        if (!actor.CanEdit(workspace))
+            throw new ForbiddenOperationException($"只有 {workspace} 工作區編輯者可修改班別時間。");
+        ValidateShiftTimes(times);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var current = await db.CurrentConfigurations.SingleOrDefaultAsync(x => x.Id == 1, cancellationToken)
+            ?? throw new DomainValidationException("尚未建立共同設定，請先儲存八週區間。");
+        if (current.RevisionToken != currentRevisionToken)
+            throw new ConcurrencyConflictException("共同設定已被其他人修改，請重新整理。");
+        var previousRevision = await LoadRevisionAsync(current.ConfigurationRevisionId, cancellationToken);
+        var version = (await db.ConfigurationRevisions.MaxAsync(x => (int?)x.Version, cancellationToken) ?? 0) + 1;
+        var revision = new ConfigurationRevision { Version = version, CreatedByUserId = actor.UserId };
+        revision.RestIntervals.AddRange(previousRevision.RestIntervals.Select(x => new RestIntervalEntity
+        {
+            Start = x.Start,
+            End = x.End,
+            NationalHolidays = x.NationalHolidays.Select(h => new NationalHoliday { Date = h.Date }).ToList()
+        }));
+        revision.NonStandardShifts.AddRange(previousRevision.NonStandardShifts.Select(x => new NonStandardShiftEntity
+        {
+            Name = x.Name,
+            Code = x.Code,
+            StartTime = x.StartTime,
+            EndTime = x.EndTime
+        }));
+        // Copy existing StandardShiftTimes from previous revision, overwrite the workspace being updated.
+        foreach (var existing in previousRevision.StandardShiftTimes)
+        {
+            if (existing.Workspace == workspace.ToString()) continue;
+            revision.StandardShiftTimes.Add(new StandardShiftTimeEntity
+            {
+                Workspace = existing.Workspace,
+                Shift = existing.Shift,
+                StartTime = existing.StartTime,
+                EndTime = existing.EndTime
+            });
+        }
+        AddWorkspaceShiftTimes(revision, workspace.ToString(), times);
+        db.ConfigurationRevisions.Add(revision);
+        current.ConfigurationRevision = revision;
+        current.RevisionToken = Guid.NewGuid();
+        ServiceSupport.AddAudit(db, actor, "ConfigurationRevisionCreated", workspace, "ConfigurationRevision", revision.Id, null,
+            new { revision.Version, Workspace = workspace.ToString(), ShiftTimes = times });
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        var savedCurrent = await db.CurrentConfigurations.AsNoTracking().SingleAsync(x => x.Id == 1, cancellationToken);
+        return ServiceSupport.ToDto(revision, savedCurrent.RevisionToken);
+    }
+
+    private async Task<ConfigurationRevision> LoadRevisionAsync(Guid id, CancellationToken cancellationToken) =>
+        await db.ConfigurationRevisions.AsNoTracking().AsSplitQuery()
+            .Include(x => x.RestIntervals).ThenInclude(x => x.NationalHolidays)
+            .Include(x => x.NonStandardShifts)
+            .Include(x => x.StandardShiftTimes)
+            .SingleAsync(x => x.Id == id, cancellationToken);
+
+    private static void AddStandardShiftTimes(ConfigurationRevision revision, ConfigurationRevision? previous)
+    {
+        // Copy from previous if available; otherwise seed with hard-coded defaults.
+        foreach (var ws in new[] { "M", "T" })
+        {
+            var defaults = ws == "M" ? WorkspaceShiftTimes.DefaultM : WorkspaceShiftTimes.DefaultT;
+            foreach (var (shift, fallback) in new[] { ("Early", defaults.Early), ("Afternoon", defaults.Afternoon), ("Night", defaults.Night) })
+            {
+                var existing = previous?.StandardShiftTimes.FirstOrDefault(x => x.Workspace == ws && x.Shift == shift);
+                revision.StandardShiftTimes.Add(new StandardShiftTimeEntity
+                {
+                    Workspace = ws,
+                    Shift = shift,
+                    StartTime = existing?.StartTime ?? fallback.Start,
+                    EndTime = existing?.EndTime ?? fallback.End
+                });
+            }
+        }
+    }
+
+    private static void AddWorkspaceShiftTimes(ConfigurationRevision revision, string workspace, WorkspaceShiftTimesDto times)
+    {
+        foreach (var (shift, pair) in new[] { ("Early", times.Early), ("Afternoon", times.Afternoon), ("Night", times.Night) })
+        {
+            revision.StandardShiftTimes.Add(new StandardShiftTimeEntity
+            {
+                Workspace = workspace,
+                Shift = shift,
+                StartTime = pair.Start,
+                EndTime = pair.End
+            });
+        }
+    }
+
+    private static void ValidateShiftTimes(WorkspaceShiftTimesDto times)
+    {
+        foreach (var (label, pair) in new[] { ("早班", times.Early), ("午班", times.Afternoon), ("夜班", times.Night) })
+        {
+            if (pair.Start == pair.End)
+                throw new DomainValidationException($"{label} 起訖時間不可相同。");
         }
     }
 

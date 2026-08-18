@@ -528,3 +528,13 @@
 
 - `tex/` 整目錄改為 `docs/tex/`。D-21 指定的唯一數學模型真相來源改為 `docs/tex/main2.tex`；編譯產物與 LaTeX ignore 一併搬移。
 - 舊決策中的 `tex/main2.tex` 路徑視為搬移前記錄，以後列路徑為準。
+
+## 2026-08-18：M/T 早午夜起訖時間改為可維護設定
+
+- 早、午、夜班起訖時間改存入 `ConfigurationRevision`，不再硬編碼於 Solver 與驗證原始碼。M 與 T 各有獨立的 `WorkspaceShiftTimes`（Early/Afternoon/Night 各一對 `TimeOnly`）。
+- 預設值維持現行：M 06:30–14:30、14:20–22:20、22:00–翌日 07:00；T 07:00–15:00、15:00–23:00、23:00–翌日 07:00。既有 `ConfigurationRevision` 回填此預設值，既有班表驗證結果不變。
+- 驗證規則：起訖不可相同；結束早於開始視為跨日；三班時間窗可互相重疊（與 CH03 實際排班限制無關）。
+- 工作區班別時間由對應工作區 Editor 維護（`RequireEditor(actor, workspace)`）；共同設定頁不開放此項。
+- 設定變更只影響之後新建的 Demand、求解與匯入班表：新建 Demand 綁定當下 `ConfigurationRevisionId`，求解時將班別時間寫入 `InputSnapshotJson`，既有資料沿用原 revision 或 fallback 常數。
+- Solver 與人工驗證共用同一解析邏輯：`ScheduleInput.StandardShiftTimes` 有值則用，否則 fallback 現行常數，確保舊快照重跑結果一致。
+- M/T 各增「班別時間設定」第二層頁（`/m/shift-times`、`/t/shift-times`）；Viewer 唯讀。
