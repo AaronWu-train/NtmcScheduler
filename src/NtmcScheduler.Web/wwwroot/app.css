@@ -215,7 +215,10 @@ thead th { background: #e9eef5; }
 .new-hire { display: block; color: #8a4b00; font-weight: 600; }
 .not-applicable { color: #a4acb7; }
 .summary-group { border-left: 2px solid #8998aa; }
-.interval-stat { font-variant-numeric: tabular-nums; font-weight: 650; }
+.interval-stat, .shift-stat { font-variant-numeric: tabular-nums; font-weight: 650; }
+.interval-over-1 { background: #f8d7da; }.interval-over-2 { background: #f3b6bd; }.interval-over-3 { background: #ec8f99; }.interval-over-4 { background: #dc3545; color: #fff; }
+.interval-under-1 { background: #fff0cf; }.interval-under-2 { background: #ffe1a1; }.interval-under-3 { background: #ffd071; }.interval-under-4 { background: #ffb533; }
+.shift-0 { background: #f8d7da; }.shift-1 { background: #fbe4d1; }.shift-2 { background: #fff3cd; }.shift-3 { background: #e5f0cf; }.shift-4 { background: #d4edda; }
 .coverage-row th, .coverage-row td { background: #eef3f7; font-size: .74rem; }
 .coverage-cell span { display: block; line-height: 1.2; }
 .coverage-cell strong { color: #075f9c; }

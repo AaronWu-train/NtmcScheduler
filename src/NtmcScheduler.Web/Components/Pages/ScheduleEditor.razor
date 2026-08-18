@@ -162,10 +162,12 @@ else
                     @foreach (var interval in Intervals())
                     {
                         var value = IntervalStat(employee.EmployeeCode, interval);
-                        <td class="interval-stat">@value.Rest/16</td>
-                        <td class="interval-stat">@value.SpecialRest/@value.RequiredSpecialRest</td>
+                        var restTarget = IntervalRestTarget(interval);
+                        var specialRestTarget = IntervalSpecialRestTarget(interval);
+                        <td class="@TargetHeatClass(value.Rest, restTarget)" title="實際 @value.Rest／本月目標 @restTarget（完整區間目標 16）">@value.Rest/16</td>
+                        <td class="@TargetHeatClass(value.SpecialRest, specialRestTarget)" title="實際 @value.SpecialRest／本月目標 @specialRestTarget（完整區間目標 @value.RequiredSpecialRest）">@value.SpecialRest/@value.RequiredSpecialRest</td>
                     }
-                    <td>@stats.Rest</td><td>@stats.SpecialRest</td><td>@stats.LeaveRest</td><td>@stats.Early</td><td>@stats.Afternoon</td><td>@stats.Night</td><td>@stats.Other</td><td>@(stats.Early + stats.Afternoon + stats.Night + stats.Other)</td>
+                    <td>@stats.Rest</td><td>@stats.SpecialRest</td><td>@stats.LeaveRest</td><td class="@ShiftHeatClass(stats.Early, x => x.Early)" title="早班：同欄最大值為綠、最小值為紅">@stats.Early</td><td class="@ShiftHeatClass(stats.Afternoon, x => x.Afternoon)" title="@(detail.Version.Workspace == WorkspaceCode.M ? "小班" : "午班")：同欄最大值為綠、最小值為紅">@stats.Afternoon</td><td class="@ShiftHeatClass(stats.Night, x => x.Night)" title="夜班：同欄最大值為綠、最小值為紅">@stats.Night</td><td>@stats.Other</td><td>@(stats.Early + stats.Afternoon + stats.Night + stats.Other)</td>
                 </tr>
             }
     @if (detail.Version.Workspace == WorkspaceCode.M)
@@ -400,6 +402,41 @@ else
     private string WorkText(ScheduleAssignmentDto cell, string shift) => detail!.Version.Workspace == WorkspaceCode.M && cell.Station is { Length: >= 4 } ? $"{int.Parse(cell.Station[2..])}{shift}" : shift;
     private ScheduleIntervalStatsDto IntervalStat(string employee, RestIntervalDto interval) => detail!.IntervalStats.Single(x => x.EmployeeCode == employee && x.Start == interval.Start);
     private ScheduleCoverageDto Coverage(DateOnly day, string station, string shift) => detail!.Coverage.Single(x => x.Date == day && x.Station == station && x.Shift == shift);
+    private int IntervalRestTarget(RestIntervalDto interval)
+    {
+        var monthStart = detail!.Version.Month;
+        var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+        if (interval.End <= monthEnd) return 16;
+        var start = interval.Start < monthStart ? monthStart : interval.Start;
+        var end = interval.End > monthEnd ? monthEnd : interval.End;
+        return Enumerable.Range(0, end.DayNumber - start.DayNumber + 1).Count(offset => start.AddDays(offset).DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday);
+    }
+
+    private int IntervalSpecialRestTarget(RestIntervalDto interval)
+    {
+        var monthStart = detail!.Version.Month;
+        var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+        if (interval.End <= monthEnd) return interval.NationalHolidays.Count;
+        var start = interval.Start < monthStart ? monthStart : interval.Start;
+        var end = interval.End > monthEnd ? monthEnd : interval.End;
+        return interval.NationalHolidays.Count(date => date >= start && date <= end);
+    }
+
+    private static string TargetHeatClass(int actual, int target)
+    {
+        if (actual == target) return "interval-stat";
+        var level = Math.Min(4, Math.Max(1, (int)Math.Ceiling(4d * Math.Abs(actual - target) / Math.Max(1, target))));
+        return $"interval-stat interval-{(actual > target ? "over" : "under")}-{level}";
+    }
+
+    private string ShiftHeatClass(int value, Func<ScheduleEmployeeStats, int> selector)
+    {
+        var values = detail!.EmployeeStats.Select(selector).ToArray();
+        var min = values.Min();
+        var max = values.Max();
+        var position = max == min ? .5 : (value - min) / (double)(max - min);
+        return $"shift-stat shift-{Math.Clamp((int)Math.Round(position * 4), 0, 4)}";
+    }
 
     private static bool HasCoverageProblem(params ScheduleCoverageDto[] values) => values.Any(x =>
         x.Internal + x.External < x.Required || !x.AllowsMultiple && x.Internal + x.External != x.Required);
