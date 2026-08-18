@@ -355,7 +355,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         var fileName = demand.PreviousSource == PreviousScheduleSource.Upload
             ? demand.UploadedPreviousSchedule?.FileName ?? $"previous-{schedule.MonthStart:yyyy-MM}.csv"
             : $"previous-{schedule.MonthStart:yyyy-MM}.csv";
-        return new(fileName, ScheduleCsv.WriteMonthlyDownload(schedule));
+        return new(fileName, ScheduleCsv.WriteMonthlyDownload(schedule, demand.Workspace));
     }
 
     public async Task UploadPerpetualScheduleAsync(Guid demandId, string fileName, Stream csv, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)

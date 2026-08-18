@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.VisualBasic.FileIO;
+using NtmcScheduler.Contracts;
 using NtmcScheduler.Solvers;
 
 namespace NtmcScheduler.Infrastructure.Csv;
@@ -25,6 +26,9 @@ public static partial class ScheduleCsv
 
     public static string MonthlyHeader => Join(Headers);
     public static IReadOnlyList<string> MonthlyHeaders { get; } = Array.AsReadOnly(Headers);
+    public static string MonthlyDownloadHeader(WorkspaceCode workspace) => Join(MonthlyDownloadHeaders(workspace));
+    public static IReadOnlyList<string> MonthlyDownloadHeaders(WorkspaceCode workspace) =>
+        Headers.Where(header => !IsExcludedFromDownload(header, workspace)).ToArray();
     public static string MPerpetualHeader => Join(["萬年班表", .. Enumerable.Range(1, 56).Select(day => day.ToString(CultureInfo.InvariantCulture))]);
 
     private static readonly TimeSpan TaipeiOffset = TimeSpan.FromHours(8);
@@ -35,11 +39,10 @@ public static partial class ScheduleCsv
         var rows = ReadRows(path);
         if (rows.Count == 0) throw new ScheduleCsvException(path, "CSV is empty.");
         var header = IgnoreTrailingEmptyFields(rows[0], Headers.Length);
-        var hasPerpetualSchedule = header.SequenceEqual(Headers);
-        if (!hasPerpetualSchedule) header = IgnoreTrailingEmptyFields(rows[0], LegacyHeaders.Length);
-        if (!hasPerpetualSchedule && !header.SequenceEqual(LegacyHeaders))
+        if (!TryResolveHeaderFormat(header, out var sourceHeaders))
             throw new ScheduleCsvException(path, "Monthly schedule headers do not match the required format.");
-        var fieldCount = hasPerpetualSchedule ? Headers.Length : LegacyHeaders.Length;
+        var hasPerpetualSchedule = sourceHeaders.Contains("萬年班表");
+        var fieldCount = sourceHeaders.Count;
         var nonStandardShiftLookup = NonStandardShiftLookup(nonStandardShifts);
 
         var employees = new List<EmployeeMonthlySchedule>();
@@ -49,7 +52,7 @@ public static partial class ScheduleCsv
             if (row.All(string.IsNullOrWhiteSpace)) continue;
             row = IgnoreTrailingEmptyFields(row, fieldCount);
             if (row.Length != fieldCount) throw new ScheduleCsvException($"{path}:{rowNumber + 1}", $"Expected {fieldCount} fields but found {row.Length}.");
-            employees.Add(ParseEmployee(row, rowNumber + 1, monthStart, nonStandardShiftLookup, historical, hasPerpetualSchedule));
+            employees.Add(ParseEmployee(NormalizeMonthlyRow(sourceHeaders, row), rowNumber + 1, monthStart, nonStandardShiftLookup, historical, hasPerpetualSchedule));
         }
         return new(monthStart, employees);
     }
@@ -65,12 +68,12 @@ public static partial class ScheduleCsv
         return Encoding.UTF8.GetBytes('\uFEFF' + string.Join(Environment.NewLine, lines) + Environment.NewLine);
     }
 
-    public static byte[] WriteMonthlyDownload(MonthlySchedule schedule)
+    public static byte[] WriteMonthlyDownload(MonthlySchedule schedule, WorkspaceCode workspace)
     {
-        const int abilityColumn = 4;
-        var lines = new List<string> { Join(Headers.Where((_, index) => index != abilityColumn)) };
+        var excludedColumns = ExcludedDownloadColumnIndexes(workspace);
+        var lines = new List<string> { MonthlyDownloadHeader(workspace) };
         foreach (var employee in schedule.Employees)
-            lines.Add(Join(MonthlyRow(schedule, employee).Where((_, index) => index != abilityColumn)));
+            lines.Add(Join(MonthlyRow(schedule, employee).Where((_, index) => !excludedColumns.Contains(index))));
         return Encoding.UTF8.GetBytes('\uFEFF' + string.Join(Environment.NewLine, lines) + Environment.NewLine);
     }
 
@@ -455,6 +458,50 @@ public static partial class ScheduleCsv
         number is >= 1 and <= 12
             ? number.ToString(CultureInfo.InvariantCulture) + MShiftText(shift)
             : station + MShiftText(shift);
+
+    private static bool IsExcludedFromDownload(string header, WorkspaceCode workspace) => workspace switch
+    {
+        WorkspaceCode.M => header is "能力" or "T月班別",
+        WorkspaceCode.T => header is "萬年班表",
+        _ => throw new ArgumentOutOfRangeException(nameof(workspace))
+    };
+
+    private static HashSet<int> ExcludedDownloadColumnIndexes(WorkspaceCode workspace) =>
+        Headers.Select((header, index) => (header, index))
+            .Where(x => IsExcludedFromDownload(x.header, workspace))
+            .Select(x => x.index)
+            .ToHashSet();
+
+    private static bool TryResolveHeaderFormat(string[] header, out IReadOnlyList<string> sourceHeaders)
+    {
+        header = IgnoreTrailingEmptyFields(header, Headers.Length);
+        if (header.SequenceEqual(Headers))
+        {
+            sourceHeaders = Headers;
+            return true;
+        }
+        if (header.SequenceEqual(LegacyHeaders))
+        {
+            sourceHeaders = LegacyHeaders;
+            return true;
+        }
+        var mDownloadHeaders = MonthlyDownloadHeaders(WorkspaceCode.M);
+        if (header.SequenceEqual(mDownloadHeaders))
+        {
+            sourceHeaders = mDownloadHeaders;
+            return true;
+        }
+        sourceHeaders = Array.Empty<string>();
+        return false;
+    }
+
+    private static string[] NormalizeMonthlyRow(IReadOnlyList<string> sourceHeaders, string[] row)
+    {
+        var values = Headers.ToDictionary(header => header, _ => "");
+        for (var index = 0; index < sourceHeaders.Count && index < row.Length; index++)
+            values[sourceHeaders[index]] = row[index];
+        return Headers.Select(header => values[header]).ToArray();
+    }
 
     private static string Join(IEnumerable<string> values) => string.Join(',', values.Select(Escape));
     private static string Escape(string value)

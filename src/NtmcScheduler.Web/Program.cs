@@ -280,7 +280,7 @@ app.MapGet("/download/templates/{workspace}/{kind}.csv", (string workspace, stri
     {
         "employees" when workspaceCode == WorkspaceCode.M => "ID,姓名,所屬車站,到職日期",
         "employees" when workspaceCode == WorkspaceCode.T => "ID,姓名,所屬,到職日期,能力",
-        "demand" or "previous" => ScheduleCsv.MonthlyHeader,
+        "demand" or "previous" => ScheduleCsv.MonthlyDownloadHeader(workspaceCode),
         "perpetual" when workspaceCode == WorkspaceCode.M => ScheduleCsv.MPerpetualHeader,
         "rest-intervals" => "區間開始日期,區間結束日期,國定假日日期",
         "non-standard-shifts" => "班型,時間,代碼",

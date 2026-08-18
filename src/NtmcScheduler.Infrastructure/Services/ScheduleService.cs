@@ -215,7 +215,7 @@ public sealed class ScheduleService(
         ServiceSupport.RequireViewer(actor);
         var version = await VersionQuery().AsNoTracking().SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
             ?? throw new DomainValidationException("找不到班表版本。");
-        var bytes = ScheduleCsv.WriteMonthlyDownload(SolverScheduleMapper.ToMonthlySchedule(version));
+        var bytes = ScheduleCsv.WriteMonthlyDownload(SolverScheduleMapper.ToMonthlySchedule(version), version.Workspace);
         ServiceSupport.AddAudit(db, actor, "ScheduleCsvDownloaded", version.Workspace, "ScheduleVersion", version.Id, null,
             new { version.Month, ScheduleName = version.Name, Bytes = bytes.Length });
         await db.SaveChangesAsync(cancellationToken);

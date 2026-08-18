@@ -766,8 +766,10 @@ public sealed class WebInfrastructureTests
         var file = await demandService.ExportPreviousScheduleAsync(demand.Id, actor);
         Assert.AreEqual("previous.csv", file.FileName);
         Assert.AreEqual(0xEF, file.Content[0]);
-        Assert.IsFalse(System.Text.Encoding.UTF8.GetString(file.Content)
+        Assert.IsTrue(System.Text.Encoding.UTF8.GetString(file.Content)
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)[0].Split(',').Contains("能力"));
+        Assert.IsFalse(System.Text.Encoding.UTF8.GetString(file.Content)
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)[0].Split(',').Contains("萬年班表"));
     }
 
     [TestMethod]
@@ -976,7 +978,8 @@ public sealed class WebInfrastructureTests
         Assert.AreEqual(5, (await service.GetAsync(version.Id, Editor(WorkspaceCode.T))).Employees.Single().Ability);
 
         var csv = System.Text.Encoding.UTF8.GetString(await service.ExportCsvAsync(version.Id, viewer));
-        Assert.IsFalse(csv.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)[0].Split(',').Contains("能力"));
+        Assert.IsTrue(csv.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)[0].Split(',').Contains("能力"));
+        Assert.IsFalse(csv.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)[0].Split(',').Contains("萬年班表"));
         Assert.HasCount(45, csv.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)[0].Split(','));
     }
 

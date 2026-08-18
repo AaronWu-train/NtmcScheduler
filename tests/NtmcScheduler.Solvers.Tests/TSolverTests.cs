@@ -1,5 +1,6 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using NtmcScheduler.Cli;
+using NtmcScheduler.Contracts;
 using NtmcScheduler.Infrastructure.Csv;
 
 namespace NtmcScheduler.Solvers.Tests;
@@ -305,6 +306,51 @@ public sealed class TSolverTests
         {
             Directory.Delete(root, true);
         }
+    }
+
+    [TestMethod]
+    public void ReadMonthly_AcceptsWorkspaceDownloadHeaders()
+    {
+        var mSchedule = MSolverTests.ValidInput().DemandMonth;
+        var tSchedule = ValidInput().DemandMonth;
+        var root = Path.Combine(Path.GetTempPath(), $"ntmc-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var mPath = Path.Combine(root, "m-download.csv");
+            File.WriteAllBytes(mPath, ScheduleCsv.WriteMonthlyDownload(mSchedule, WorkspaceCode.M));
+            var parsedM = ScheduleCsv.ReadMonthly(mPath, mSchedule.MonthStart);
+            var mEmployee = parsedM.Employees[0];
+            Assert.IsNull(mEmployee.Ability);
+            Assert.IsNull(mEmployee.MonthlyShift);
+            Assert.AreEqual(mSchedule.Employees[0].EmployeeId, mEmployee.EmployeeId);
+            Assert.AreEqual(mSchedule.Employees[0].PerpetualScheduleId, mEmployee.PerpetualScheduleId);
+
+            var tPath = Path.Combine(root, "t-download.csv");
+            File.WriteAllBytes(tPath, ScheduleCsv.WriteMonthlyDownload(tSchedule, WorkspaceCode.T));
+            var parsedT = ScheduleCsv.ReadMonthly(tPath, tSchedule.MonthStart);
+            var tEmployee = parsedT.Employees[0];
+            Assert.AreEqual(tSchedule.Employees[0].Ability, tEmployee.Ability);
+            Assert.AreEqual(tSchedule.Employees[0].MonthlyShift, tEmployee.MonthlyShift);
+            Assert.IsNull(tEmployee.PerpetualScheduleId);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public void MonthlyDownloadHeaders_AreWorkspaceSpecific()
+    {
+        CollectionAssert.AreEquivalent(
+            new[] { "能力", "T月班別" },
+            ScheduleCsv.MonthlyHeaders.Except(ScheduleCsv.MonthlyDownloadHeaders(WorkspaceCode.M)).ToArray());
+        CollectionAssert.AreEquivalent(
+            new[] { "萬年班表" },
+            ScheduleCsv.MonthlyHeaders.Except(ScheduleCsv.MonthlyDownloadHeaders(WorkspaceCode.T)).ToArray());
+        Assert.HasCount(44, ScheduleCsv.MonthlyDownloadHeaders(WorkspaceCode.M));
+        Assert.HasCount(45, ScheduleCsv.MonthlyDownloadHeaders(WorkspaceCode.T));
     }
 
     [TestMethod]

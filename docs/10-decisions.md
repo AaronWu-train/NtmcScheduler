@@ -546,3 +546,9 @@
 - 設定變更只影響之後新建的 Demand、求解與匯入班表：新建 Demand 綁定當下 `ConfigurationRevisionId`，求解時將班別時間寫入 `InputSnapshotJson`，既有資料沿用原 revision 或 fallback 常數。
 - Solver 與人工驗證共用同一解析邏輯：`ScheduleInput.StandardShiftTimes` 有值則用，否則 fallback 現行常數，確保舊快照重跑結果一致。
 - M/T 各增「班別時間設定」第二層頁（`/m/shift-times`、`/t/shift-times`）；Viewer 唯讀。
+
+## 2026-08-18：工作區別月班表下載欄位
+
+- M 班表、需求與上月範例／下載 CSV 移除「能力」與「T月班別」；保留「萬年班表」。
+- T 班表、需求與上月範例／下載 CSV 移除「萬年班表」；保留「能力」與「T月班別」。
+- 內部匯入仍使用完整 46 欄；此決策只影響 Web 下載與範例表頭，取代「2026-08-18：T 能力值限 T Editor 檢視」中「所有班表 CSV 下載均移除能力欄」的表述。
