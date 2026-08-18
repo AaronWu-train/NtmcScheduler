@@ -5,6 +5,7 @@
 - 不存在註冊、忘記密碼與電子郵件重設路徑；管理者 CLI 建立首位管理者，管理頁建立其餘帳號與一次性密碼。
 - 首次登入強制修改至少 8 字元、至少 2 種不同字元且包含數字的密碼；五次失敗鎖定 15 分鐘，另以帳號與 IP 做登入限流，錯誤訊息不揭露帳號是否存在。正式上線前須重新檢視並提高密碼政策。
 - Viewer、M Editor、T Editor、同時 M/T Editor 與 Administrator 的頁面及 application service 寫入授權一致；猜測資源 GUID 不可越權修改。
+- 個別 T 能力值只回傳給 T Editor 與 Administrator；Viewer 與只有 M 編輯權的帳號在員工主檔及既有班表快照都取得空值。
 - 停用、重設密碼及權限異動更新 security stamp；不提供持久登入，Cookie 為 Secure、HttpOnly、SameSite=Strict，閒置 30 分鐘到期。互動中的驗證狀態失效後自動離開受保護頁面，重新載入根頁並回到登入首頁。
 
 ## 共同設定、人員與 Demand
@@ -14,7 +15,7 @@
 - 每單位月份僅一份 Demand 草稿；重開仍保留，所有寫入以 revision token 拒絕陳舊更新。Demand 可刪除並以同月份重建；既有求解輸入快照、求解紀錄與班表保持可讀且不受影響。
 - 任何已登入者可在 M/T 填報頁代填任一員工的 R*、R休 上限、固定班與 X；選取已有填報的員工可讀取並覆蓋，AuditLog 含操作者與被填員工。Editor 在 Demand 寬表一次性匯入當下填報快照至對應員工列；每月份 Demand 只能匯入一次，匯入後填報仍可保存但不再修改 Demand。
 - 建立 Demand 自動使用上月 `★`；不存在時求解前必須成功上傳 previous schedule。兩種來源都依員工 ID，將上月月底 R/R1 與萬年班表帶入本月月初 R/R1 與人員資料。求解建立 immutable JSON input snapshot、hash、seed、程式版本與人員月快照。
-- 需求編輯器只顯示求解輸入；班表編輯器顯示實際月份日期、56 日區間與月統計，M 底部顯示車站與外派人數。CSV 仍固定保留 1–31 日及完整 46 欄。
+- 需求編輯器只顯示求解輸入；班表編輯器顯示實際月份日期、56 日區間與月統計，M 底部顯示車站與外派人數。內部匯入 CSV 固定保留 1–31 日及完整 46 欄；班表下載 CSV 移除「能力」欄。
 - 背景佇列一次只執行一個 solver；重啟將 Queued／Running 安全回復為 Queued，終態正確區分 Optimal、TimeLimit、Infeasible、InvalidInput、Failed。
 
 ## 班表版本與編輯器

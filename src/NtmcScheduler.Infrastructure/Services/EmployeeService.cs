@@ -13,10 +13,12 @@ public sealed class EmployeeService(NtmcDbContext db) : IEmployeeService
     public async Task<IReadOnlyList<EmployeeDto>> ListAsync(WorkspaceCode workspace, ActorContext actor, CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireViewer(actor);
+        var canViewAbility = actor.CanEdit(WorkspaceCode.T);
         return await db.Employees.AsNoTracking()
             .Where(x => x.Workspace == workspace)
             .OrderBy(x => x.EmployeeCode)
-            .Select(x => new EmployeeDto(x.Id, x.Workspace, x.EmployeeCode, x.Name, x.Affiliation, x.EmploymentStartDate, x.Ability, x.RevisionToken))
+            .Select(x => new EmployeeDto(x.Id, x.Workspace, x.EmployeeCode, x.Name, x.Affiliation, x.EmploymentStartDate,
+                canViewAbility ? x.Ability : null, x.RevisionToken))
             .ToListAsync(cancellationToken);
     }
 

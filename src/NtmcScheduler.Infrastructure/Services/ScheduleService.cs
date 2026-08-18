@@ -44,7 +44,7 @@ public sealed class ScheduleService(
             ?? throw new DomainValidationException("找不到班表版本。");
         var adopted = await db.AdoptedSchedules.AsNoTracking().AnyAsync(x => x.ScheduleVersionId == versionId, cancellationToken);
         var result = await validation.ValidateAsync(versionId, actor, cancellationToken);
-        return ToDetail(version, adopted, result.Issues, result.Stats);
+        return ToDetail(version, adopted, result.Issues, result.Stats, actor.CanEdit(WorkspaceCode.T));
     }
 
     public async Task<ScheduleDetailDto> UpdateAssignmentAsync(
@@ -89,7 +89,7 @@ public sealed class ScheduleService(
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         var adopted = await db.AdoptedSchedules.AsNoTracking().AnyAsync(x => x.ScheduleVersionId == version.Id, cancellationToken);
-        return ToDetail(version, adopted, checkedSchedule.Issues, checkedSchedule.Stats);
+        return ToDetail(version, adopted, checkedSchedule.Issues, checkedSchedule.Stats, actor.CanEdit(WorkspaceCode.T));
     }
 
     public async Task<ScheduleDetailDto> UpdateMonthlyShiftAsync(
@@ -124,7 +124,7 @@ public sealed class ScheduleService(
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         var adopted = await db.AdoptedSchedules.AsNoTracking().AnyAsync(x => x.ScheduleVersionId == version.Id, cancellationToken);
-        return ToDetail(version, adopted, checkedSchedule.Issues, checkedSchedule.Stats);
+        return ToDetail(version, adopted, checkedSchedule.Issues, checkedSchedule.Stats, actor.CanEdit(WorkspaceCode.T));
     }
 
     public async Task AdoptAsync(Guid versionId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
@@ -215,20 +215,11 @@ public sealed class ScheduleService(
         ServiceSupport.RequireViewer(actor);
         var version = await VersionQuery().AsNoTracking().SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
             ?? throw new DomainValidationException("找不到班表版本。");
-        var path = Path.Combine(Path.GetTempPath(), $"ntmc-export-{Guid.NewGuid():N}.csv");
-        try
-        {
-            ScheduleCsv.WriteMonthly(path, SolverScheduleMapper.ToMonthlySchedule(version));
-            var bytes = await File.ReadAllBytesAsync(path, cancellationToken);
-            ServiceSupport.AddAudit(db, actor, "ScheduleCsvDownloaded", version.Workspace, "ScheduleVersion", version.Id, null,
-                new { version.Month, ScheduleName = version.Name, Bytes = bytes.Length });
-            await db.SaveChangesAsync(cancellationToken);
-            return bytes;
-        }
-        finally
-        {
-            if (File.Exists(path)) File.Delete(path);
-        }
+        var bytes = ScheduleCsv.WriteMonthlyDownload(SolverScheduleMapper.ToMonthlySchedule(version));
+        ServiceSupport.AddAudit(db, actor, "ScheduleCsvDownloaded", version.Workspace, "ScheduleVersion", version.Id, null,
+            new { version.Month, ScheduleName = version.Name, Bytes = bytes.Length });
+        await db.SaveChangesAsync(cancellationToken);
+        return bytes;
     }
 
     public async Task<byte[]> ExportExternalCsvAsync(Guid versionId, ActorContext actor, CancellationToken cancellationToken = default)
@@ -300,16 +291,25 @@ public sealed class ScheduleService(
         .Include(x => x.Employees).ThenInclude(x => x.Assignments)
         .Include(x => x.ExternalAssignments);
 
-    private static ScheduleDetailDto ToDetail(ScheduleVersion version, bool adopted, IReadOnlyList<ValidationIssue> issues, IReadOnlyList<ScheduleEmployeeStats> stats)
+    private static ScheduleDetailDto ToDetail(
+        ScheduleVersion version,
+        bool adopted,
+        IReadOnlyList<ValidationIssue> issues,
+        IReadOnlyList<ScheduleEmployeeStats> stats,
+        bool canViewAbility)
     {
         var schedule = SolverScheduleMapper.ToMonthlySchedule(version);
         var scheduleEmployees = schedule.Employees.ToDictionary(x => x.EmployeeId, StringComparer.Ordinal);
         return new(
             ToDto(version, adopted),
-            version.Employees.OrderBy(x => x.EmployeeCode).Select(employee => new ScheduleEmployeeInfoDto(
-                employee.Id, employee.EmployeeCode, employee.Name, employee.Affiliation, employee.EmploymentStartDate,
-                employee.Ability, employee.MonthlyShift, employee.OpeningRest, employee.OpeningSpecialRest,
-                ScheduleCsv.MonthlyRow(schedule, scheduleEmployees[employee.EmployeeCode]))).ToArray(),
+            version.Employees.OrderBy(x => x.EmployeeCode).Select(employee =>
+            {
+                var row = ScheduleCsv.MonthlyRow(schedule, scheduleEmployees[employee.EmployeeCode]).ToArray();
+                if (!canViewAbility) row[4] = "";
+                return new ScheduleEmployeeInfoDto(
+                    employee.Id, employee.EmployeeCode, employee.Name, employee.Affiliation, employee.EmploymentStartDate,
+                    canViewAbility ? employee.Ability : null, employee.MonthlyShift, employee.OpeningRest, employee.OpeningSpecialRest, row);
+            }).ToArray(),
             version.Employees.OrderBy(x => x.EmployeeCode).SelectMany(employee => employee.Assignments.OrderBy(x => x.Date).Select(assignment => new ScheduleAssignmentDto(
                 assignment.Id, employee.Id, employee.EmployeeCode, employee.Name, assignment.Date, assignment.Kind, assignment.RequestedRest,
                 assignment.Station, assignment.Shift, assignment.EventStart, assignment.EventEnd, assignment.EventDescription))).ToArray(),

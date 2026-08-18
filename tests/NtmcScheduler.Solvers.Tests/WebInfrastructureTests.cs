@@ -108,6 +108,20 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
+    public async Task TAbility_IsOnlyReturnedToTEditors()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var service = new EmployeeService(database.Context);
+        var tEditor = Editor(WorkspaceCode.T);
+        var viewer = new ActorContext(Guid.NewGuid(), "viewer", false, new HashSet<WorkspaceCode>(), "viewer-test");
+        await service.SaveAsync(new(null, WorkspaceCode.T, "T001", "王小明", "號誌", null, 5, null), tEditor);
+
+        Assert.AreEqual(5, (await service.ListAsync(WorkspaceCode.T, tEditor)).Single().Ability);
+        Assert.IsNull((await service.ListAsync(WorkspaceCode.T, viewer)).Single().Ability);
+        Assert.IsNull((await service.ListAsync(WorkspaceCode.T, Editor(WorkspaceCode.M))).Single().Ability);
+    }
+
+    [TestMethod]
     public async Task ScheduleCreation_ReadsRequireMatchingWorkspaceEditor()
     {
         await using var database = await TestDatabase.CreateAsync();
@@ -702,6 +716,8 @@ public sealed class WebInfrastructureTests
         var file = await demandService.ExportPreviousScheduleAsync(demand.Id, actor);
         Assert.AreEqual("previous.csv", file.FileName);
         Assert.AreEqual(0xEF, file.Content[0]);
+        Assert.IsFalse(System.Text.Encoding.UTF8.GetString(file.Content)
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)[0].Split(',').Contains("能力"));
     }
 
     [TestMethod]
@@ -882,6 +898,36 @@ public sealed class WebInfrastructureTests
         Assert.AreEqual(1, detail.IntervalStats.Single().RequiredSpecialRest);
         Assert.AreEqual(1, detail.Coverage.Single(x => x.Date == version.Month && x.Station == "LB09" && x.Shift == "Early").External);
         Assert.IsTrue(detail.Coverage.Single(x => x.Date == version.Month && x.Station == "LB01" && x.Shift == "Early").AllowsMultiple);
+    }
+
+    [TestMethod]
+    public async Task TSchedule_HidesAbilityFromViewersAndDownload()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var revision = new ConfigurationRevision { Version = 1, CreatedByUserId = Guid.NewGuid() };
+        var version = Version(revision, new DateOnly(2026, 8, 1), "T 班表");
+        version.Workspace = WorkspaceCode.T;
+        version.Employees.Add(new ScheduleEmployeeSnapshot
+        {
+            EmployeeCode = "T001",
+            Name = "王小明",
+            Affiliation = "號誌",
+            Ability = 5,
+            MonthlyShift = "Early"
+        });
+        database.Context.AddRange(revision, version);
+        await database.Context.SaveChangesAsync();
+        var service = new ScheduleService(database.Context, new ScheduleValidationService(database.Context));
+        var viewer = new ActorContext(Guid.NewGuid(), "viewer", false, new HashSet<WorkspaceCode>(), "viewer-test");
+
+        var viewerDetail = await service.GetAsync(version.Id, viewer);
+        Assert.IsNull(viewerDetail.Employees.Single().Ability);
+        Assert.AreEqual("", viewerDetail.Employees.Single().MonthlyCsvValues[4]);
+        Assert.AreEqual(5, (await service.GetAsync(version.Id, Editor(WorkspaceCode.T))).Employees.Single().Ability);
+
+        var csv = System.Text.Encoding.UTF8.GetString(await service.ExportCsvAsync(version.Id, viewer));
+        Assert.IsFalse(csv.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)[0].Split(',').Contains("能力"));
+        Assert.HasCount(45, csv.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)[0].Split(','));
     }
 
     [TestMethod]

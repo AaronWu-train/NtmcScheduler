@@ -99,7 +99,7 @@
                     <span>到職日期</span><span class="sort-indicator" aria-hidden="true"></span>
                 </button>
             </th>
-            @if (workspaceCode == WorkspaceCode.T)
+            @if (workspaceCode == WorkspaceCode.T && canEdit)
             {
                 <th class="sortable" aria-sort='@AriaSort("ability")'>
                     <button class="sort-button" @onclick='() => SortBy("ability")'>
@@ -115,7 +115,7 @@
         {
             <tr>
                 <td>@employee.EmployeeCode</td><td>@employee.Name</td><td>@employee.Affiliation</td><td>@employee.EmploymentStartDate?.ToString("yyyy-MM-dd")</td>
-                @if (workspaceCode == WorkspaceCode.T)
+                @if (workspaceCode == WorkspaceCode.T && canEdit)
                 {
                     <td>@employee.Ability</td>
                 }

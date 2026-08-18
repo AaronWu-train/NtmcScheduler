@@ -65,6 +65,15 @@ public static partial class ScheduleCsv
         return Encoding.UTF8.GetBytes('\uFEFF' + string.Join(Environment.NewLine, lines) + Environment.NewLine);
     }
 
+    public static byte[] WriteMonthlyDownload(MonthlySchedule schedule)
+    {
+        const int abilityColumn = 4;
+        var lines = new List<string> { Join(Headers.Where((_, index) => index != abilityColumn)) };
+        foreach (var employee in schedule.Employees)
+            lines.Add(Join(MonthlyRow(schedule, employee).Where((_, index) => index != abilityColumn)));
+        return Encoding.UTF8.GetBytes('\uFEFF' + string.Join(Environment.NewLine, lines) + Environment.NewLine);
+    }
+
     public static IReadOnlyList<string> MonthlyRow(MonthlySchedule schedule, EmployeeMonthlySchedule employee)
     {
         var values = new List<string>
