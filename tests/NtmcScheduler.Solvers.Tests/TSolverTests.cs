@@ -332,8 +332,52 @@ public sealed class TSolverTests
 
             Assert.HasCount(2, shifts.Shifts);
             Assert.AreEqual(AssignmentKind.WorkEvent, assignments[new(2026, 9, 1)].Kind);
+            Assert.AreEqual("日一", assignments[new(2026, 9, 1)].EventDescription);
+            Assert.AreEqual("日一", assignments[new(2026, 9, 2)].EventDescription);
+            Assert.AreEqual("夜一", assignments[new(2026, 9, 3)].EventDescription);
             Assert.AreEqual(new TimeOnly(8, 30), TimeOnly.FromDateTime(assignments[new(2026, 9, 2)].EventStart!.Value.DateTime));
             Assert.AreEqual(new DateOnly(2026, 9, 4), DateOnly.FromDateTime(assignments[new(2026, 9, 3)].EventEnd!.Value.Date));
+
+            ScheduleCsv.WriteMonthly(schedulePath, parsed);
+            var output = File.ReadAllText(schedulePath);
+            StringAssert.Contains(output, "X[08:30-17:30|日一]");
+            StringAssert.Contains(output, "X[22:30-06:30|夜一]");
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public void Csv_WorkEventAnnotationRoundTripsAndBlankAnnotationFails()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"ntmc-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var schedulePath = Path.Combine(root, "schedule.csv");
+            ScheduleCsv.WriteMonthly(schedulePath, ValidInput().DemandMonth);
+            var lines = File.ReadAllLines(schedulePath);
+            var fields = lines[1].Split(',');
+            fields[8] = "X[08:30-17:30|外訓A]";
+            fields[9] = "X[22:30-06:30|夜間支援]";
+            lines[1] = string.Join(',', fields);
+            File.WriteAllLines(schedulePath, lines);
+
+            var parsed = ScheduleCsv.ReadMonthly(schedulePath, new(2026, 9, 1));
+            Assert.AreEqual("外訓A", parsed.Employees[0].Assignments[new(2026, 9, 1)].EventDescription);
+            Assert.AreEqual("夜間支援", parsed.Employees[0].Assignments[new(2026, 9, 2)].EventDescription);
+
+            ScheduleCsv.WriteMonthly(schedulePath, parsed);
+            var output = File.ReadAllText(schedulePath);
+            StringAssert.Contains(output, "X[08:30-17:30|外訓A]");
+            StringAssert.Contains(output, "X[22:30-06:30|夜間支援]");
+
+            fields[8] = "X[08:30-17:30|   ]";
+            lines[1] = string.Join(',', fields);
+            File.WriteAllLines(schedulePath, lines);
+            Assert.ThrowsExactly<ScheduleCsvException>(() => ScheduleCsv.ReadMonthly(schedulePath, new(2026, 9, 1)));
         }
         finally
         {

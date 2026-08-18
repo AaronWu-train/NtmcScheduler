@@ -268,9 +268,9 @@ public static partial class ScheduleCsv
             "R*[R]" => new() { Kind = AssignmentKind.Rest, RequestedRest = true },
             "R*[R1]" => new() { Kind = AssignmentKind.SpecialRest, RequestedRest = true },
             "R*[R休]" => new() { Kind = AssignmentKind.LeaveRest, RequestedRest = true },
-            _ when EventPattern().Match(text) is { Success: true } match => EventCell(match, date, field),
+            _ when TryParseEventCell(text, date, field, out var eventCell) => eventCell,
             _ when monthlyShift is not null && ShiftFromText(text) is { } shift => new() { Kind = AssignmentKind.Work, Shift = shift },
-            _ when nonStandardShifts.GetValueOrDefault(text) is { } shift => EventCell(shift.StartTime, shift.EndTime, date),
+            _ when nonStandardShifts.GetValueOrDefault(text) is { } shift => EventCell(shift.StartTime, shift.EndTime, date, shift.Name ?? shift.Code),
             _ when MWorkCell(text) is { } cell => cell,
             _ => throw new ScheduleCsvException(field, $"Unsupported schedule cell '{text}'.")
         };
@@ -302,19 +302,31 @@ public static partial class ScheduleCsv
             : null;
     }
 
-    private static ScheduleCell EventCell(Match match, DateOnly date, string field)
-    {
-        if (!TimeOnly.TryParseExact(match.Groups[1].Value, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var startTime) ||
-            !TimeOnly.TryParseExact(match.Groups[2].Value, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var endTime))
-            throw new ScheduleCsvException(field, "X time must use HH:mm-HH:mm.");
-        return EventCell(startTime, endTime, date);
-    }
-
-    private static ScheduleCell EventCell(TimeOnly startTime, TimeOnly endTime, DateOnly date)
+    private static ScheduleCell EventCell(TimeOnly startTime, TimeOnly endTime, DateOnly date, string? eventDescription = null)
     {
         var start = new DateTimeOffset(date.ToDateTime(startTime), TaipeiOffset);
         var end = new DateTimeOffset((endTime <= startTime ? date.AddDays(1) : date).ToDateTime(endTime), TaipeiOffset);
-        return new() { Kind = AssignmentKind.WorkEvent, EventStart = start, EventEnd = end };
+        return new() { Kind = AssignmentKind.WorkEvent, EventStart = start, EventEnd = end, EventDescription = NormalizeEventDescription(eventDescription, null) };
+    }
+
+    private static bool TryParseEventCell(string text, DateOnly date, string field, out ScheduleCell cell)
+    {
+        cell = null!;
+        if (!text.StartsWith("X[", StringComparison.Ordinal) || !text.EndsWith(']')) return false;
+
+        var body = text[2..^1];
+        var separatorIndex = body.IndexOf('|');
+        var timePart = separatorIndex >= 0 ? body[..separatorIndex] : body;
+        var descriptionPart = separatorIndex >= 0 ? body[(separatorIndex + 1)..] : null;
+        var dashIndex = timePart.IndexOf('-');
+        if (dashIndex <= 0 || dashIndex >= timePart.Length - 1)
+            throw new ScheduleCsvException(field, "X time must use HH:mm-HH:mm.");
+        if (!TimeOnly.TryParseExact(timePart[..dashIndex], "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var startTime) ||
+            !TimeOnly.TryParseExact(timePart[(dashIndex + 1)..], "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var endTime))
+            throw new ScheduleCsvException(field, "X time must use HH:mm-HH:mm.");
+
+        cell = EventCell(startTime, endTime, date, NormalizeEventDescription(descriptionPart, field));
+        return true;
     }
 
     private static IReadOnlyDictionary<string, NonStandardShift> NonStandardShiftLookup(NonStandardShiftTable? table)
@@ -342,11 +354,18 @@ public static partial class ScheduleCsv
             AssignmentKind.Rest => "R",
             AssignmentKind.SpecialRest => "R1",
             AssignmentKind.LeaveRest => "R休",
-            AssignmentKind.WorkEvent => $"X[{cell.EventStart:HH\\:mm}-{cell.EventEnd:HH\\:mm}]",
+            AssignmentKind.WorkEvent => EventCellText(cell),
             AssignmentKind.Work when cell.Station is not null => MWorkCellText(cell.Station, cell.Shift),
             AssignmentKind.Work => ShiftText(cell.Shift),
             _ => ""
         };
+    }
+
+    private static string EventCellText(ScheduleCell cell)
+    {
+        var text = $"X[{cell.EventStart:HH\\:mm}-{cell.EventEnd:HH\\:mm}";
+        var description = NormalizeEventDescription(cell.EventDescription, null);
+        return description is null ? text + "]" : $"{text}|{description}]";
     }
 
     private static List<string[]> ReadRows(string path)
@@ -445,8 +464,22 @@ public static partial class ScheduleCsv
         return value.IndexOfAny([',', '"', '\r', '\n']) < 0 ? value : $"\"{value.Replace("\"", "\"\"")}\"";
     }
 
-    [GeneratedRegex(@"^X\[(\d{2}:\d{2})-(\d{2}:\d{2})\]$", RegexOptions.CultureInvariant)]
-    private static partial Regex EventPattern();
+    private static string? NormalizeEventDescription(string? description, string? field)
+    {
+        if (description is null) return null;
+        var trimmed = description.Trim();
+        if (trimmed.Length == 0)
+        {
+            if (field is not null) throw new ScheduleCsvException(field, "X annotation cannot be blank.");
+            return null;
+        }
+        if (trimmed.Length > 500)
+        {
+            if (field is not null) throw new ScheduleCsvException(field, "X annotation cannot exceed 500 characters.");
+            return trimmed[..500];
+        }
+        return trimmed;
+    }
 
     [GeneratedRegex(@"^(LB(?:0[1-9]|1[0-2]))(早|午|小|夜)$", RegexOptions.CultureInvariant)]
     private static partial Regex MWorkPattern();

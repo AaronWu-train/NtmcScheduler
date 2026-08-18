@@ -639,6 +639,56 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
+    public async Task DemandAndScheduleCsv_RoundTripWorkEventAnnotation()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var actor = Editor(WorkspaceCode.M);
+        var input = MSolverTests.ValidInput();
+        var employeeService = new EmployeeService(database.Context);
+        foreach (var employee in input.DemandMonth.Employees)
+            await employeeService.SaveAsync(new(null, WorkspaceCode.M, employee.EmployeeId, employee.Name, employee.Affiliation, employee.EmploymentStartDate, null, null), actor);
+        await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+            input.RestIntervals.Select(x => new RestIntervalDto(x.Start, x.End, x.NationalHolidays.ToArray())).ToArray(),
+            [new NonStandardShiftDto("日一", "0837", new TimeOnly(8, 30), new TimeOnly(17, 30))],
+            null,
+            actor);
+
+        var demandService = DemandService(database);
+        var demand = await demandService.CreateAsync(WorkspaceCode.M, input.DemandMonth.MonthStart, actor);
+        var schedulePath = Path.GetTempFileName();
+        try
+        {
+            ScheduleCsv.WriteMonthly(schedulePath, input.DemandMonth);
+            var lines = await File.ReadAllLinesAsync(schedulePath);
+            var fields = lines[1].Split(',');
+            fields[8] = "X[08:30-17:30|日一]";
+            lines[1] = string.Join(',', fields);
+            await File.WriteAllLinesAsync(schedulePath, lines);
+
+            await demandService.ImportDemandAsync(demand.Id, new MemoryStream(await File.ReadAllBytesAsync(schedulePath)), demand.RevisionToken, actor);
+            var importedDemand = (await demandService.GetAsync(WorkspaceCode.M, demand.Month, actor))!;
+            var importedEmployee = importedDemand.Employees.Single(x => x.EmployeeCode == input.DemandMonth.Employees[0].EmployeeId);
+            var assignment = importedEmployee.Assignments.Single(x => x.Date == demand.Month);
+            Assert.AreEqual("日一", assignment.EventDescription);
+            Assert.AreEqual("X[08:30-17:30|日一]", importedEmployee.MonthlyCsvValues[8]);
+
+            var scheduleService = new ScheduleService(database.Context, new ScheduleValidationService(database.Context));
+            await using var stream = File.OpenRead(schedulePath);
+            var importedVersion = await scheduleService.ImportAsync(WorkspaceCode.M, demand.Month, "annotated.csv", stream, actor);
+            var importedDetail = await scheduleService.GetAsync(importedVersion.Id, actor);
+            Assert.AreEqual("日一", importedDetail.Assignments.Single(x =>
+                x.EmployeeCode == input.DemandMonth.Employees[0].EmployeeId && x.Date == demand.Month).EventDescription);
+
+            var exported = System.Text.Encoding.UTF8.GetString(await scheduleService.ExportCsvAsync(importedVersion.Id, actor));
+            StringAssert.Contains(exported, "X[08:30-17:30|日一]");
+        }
+        finally
+        {
+            File.Delete(schedulePath);
+        }
+    }
+
+    [TestMethod]
     public async Task ScheduleValidation_TAttendanceUsesHalfOfMonthlyShiftGroup()
     {
         await using var database = await TestDatabase.CreateAsync();

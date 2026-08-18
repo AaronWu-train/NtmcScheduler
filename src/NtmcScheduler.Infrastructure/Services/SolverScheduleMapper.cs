@@ -126,7 +126,8 @@ internal static class SolverScheduleMapper
                 Station = pair.Value.Station,
                 Shift = ShiftText(pair.Value.Shift),
                 EventStart = pair.Value.EventStart,
-                EventEnd = pair.Value.EventEnd
+                EventEnd = pair.Value.EventEnd,
+                EventDescription = pair.Value.EventDescription
             }));
             version.Employees.Add(snapshot);
         }
@@ -186,7 +187,8 @@ internal static class SolverScheduleMapper
                 Station = pair.Value.Station,
                 Shift = ShiftText(pair.Value.Shift),
                 EventStart = pair.Value.EventStart,
-                EventEnd = pair.Value.EventEnd
+                EventEnd = pair.Value.EventEnd,
+                EventDescription = pair.Value.EventDescription
             }));
             version.Employees.Add(snapshot);
         }
@@ -216,7 +218,8 @@ internal static class SolverScheduleMapper
             Station = pair.Value.Station,
             Shift = ShiftText(pair.Value.Shift),
             EventStart = pair.Value.EventStart,
-            EventEnd = pair.Value.EventEnd
+            EventEnd = pair.Value.EventEnd,
+            EventDescription = pair.Value.EventDescription
         }));
         return result;
     }
@@ -228,7 +231,8 @@ internal static class SolverScheduleMapper
         Station = assignment.Station,
         Shift = ParseShift(assignment.Shift),
         EventStart = assignment.EventStart,
-        EventEnd = assignment.EventEnd
+        EventEnd = assignment.EventEnd,
+        EventDescription = assignment.EventDescription
     };
 
     private static ScheduleCell ToScheduleCell(ScheduleAssignment assignment) => new()
@@ -238,7 +242,8 @@ internal static class SolverScheduleMapper
         Station = assignment.Station,
         Shift = ParseShift(assignment.Shift),
         EventStart = assignment.EventStart,
-        EventEnd = assignment.EventEnd
+        EventEnd = assignment.EventEnd,
+        EventDescription = assignment.EventDescription
     };
 
     public static SolverShift? ParseShift(string? value) => value switch
