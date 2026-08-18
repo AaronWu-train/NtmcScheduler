@@ -337,7 +337,7 @@
                     <label>每次時間上限（秒）<input class="number-field" type="number" min="1" @bind="solveTimeLimitSeconds"/></label><label>平行運算數<input class="number-field" type="number" min="1" @bind="solveWorkerCount"/></label>
                     @if (workspaceCode == WorkspaceCode.M)
                     {
-                        <label>嘗試次數<input class="number-field" type="number" min="1" @bind="solveSeedCount"/></label>
+                        <label>Seed數量<input class="number-field" type="number" min="1" @bind="solveSeedCount"/></label>
                     }
                 </div>
             </div>
@@ -386,7 +386,6 @@
                                 }
                             </td>
                         </tr>
-                        }
                     }
                     </tbody>
                 </table>
