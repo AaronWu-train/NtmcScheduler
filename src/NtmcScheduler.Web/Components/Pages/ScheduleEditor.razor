@@ -179,11 +179,13 @@ else
                             var early = Coverage(day, station, "Early");
                             var afternoon = Coverage(day, station, "Afternoon");
                             var night = Coverage(day, station, "Night");
-                            <td class="coverage-cell @DateClass(day) @(HasCoverageProblem(early, afternoon, night) ? "coverage-problem" : "")" title="需求／實際；外派另列">
-                                <span>早 @early.Required/@(early.Internal + early.External)</span><span>小 @afternoon.Required/@(afternoon.Internal + afternoon.External)</span><span>夜 @night.Required/@(night.Internal + night.External)</span>
+                            <td class="coverage-cell @DateClass(day) @(HasCoverageProblem(early, afternoon, night) ? "coverage-problem" : "")" title="實際/需求；外派PA另列">
+                                <span>早 @(early.Internal + early.External)/@early.Required</span>
+                                <span>小 @(afternoon.Internal + afternoon.External)/@afternoon.Required</span>
+                                <span>夜 @(night.Internal + night.External)/@night.Required</span>
                                 @if (early.External + afternoon.External + night.External > 0)
                                 {
-                                    <strong>外 @(early.External + afternoon.External + night.External)</strong>
+                                    <strong>PA @(early.External + afternoon.External + night.External)</strong>
                                 }
                             </td>
                         }
