@@ -1,7 +1,7 @@
 # Solver 流程、狀態與輸出
 
 本文件定義程式流程與輸出契約；完整問題定義、M/T 數學模型及解法見
-[`tex/main2.tex`](../tex/main2.tex)。
+[`docs/tex/main2.tex`](tex/main2.tex)。
 
 ## 公開介面
 

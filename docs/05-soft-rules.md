@@ -2,7 +2,7 @@
 
 Solver 依 `Priority` 由小到大逐組最小化。只有目前組證明 `Optimal` 後，才固定該組最佳值並繼續下一組。權重只用於同一優先組內比較，不會跨組取代字典序。
 
-完整符號、違反量公式與 CP-SAT 建模方法見單一數學報告 [`tex/main2.tex`](../tex/main2.tex)。
+完整符號、違反量公式與 CP-SAT 建模方法見單一數學報告 [`docs/tex/main2.tex`](tex/main2.tex)。
 
 C# 不使用 J1–J5 或 Rule ID；輸出 `Priority + 有意義名稱`。
 

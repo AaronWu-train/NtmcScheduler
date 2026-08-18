@@ -4,7 +4,7 @@
 
 - `dotnet build NtmcScheduler.slnx -c Release` 成功。
 - `dotnet test NtmcScheduler.slnx -c Release` 成功。
-- 不修改、不編譯 `tex/` 或 PDF。
+- 不修改、不編譯 `docs/tex/` 或 PDF。
 
 ## Web 身分與授權
 
