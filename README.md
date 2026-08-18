@@ -4,6 +4,8 @@
 
 目前 repository 已包含站務（M）、檢修（T）的 Solver、共用 CSV adapter、Blazor Interactive Server、EF Core／Identity、背景求解佇列與多版本班表管理。
 
+第一個穩定版為 **v1.0.0**（2026-08-18，git tag）。對應產品「第一版」範圍（站務 M、檢修 T）；正式 Linux＋SQL Server 部署驗收與上線前密碼政策仍見 `docs/11-implementation-plan.md`、`docs/10-decisions.md`。
+
 ## 環境需求
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)

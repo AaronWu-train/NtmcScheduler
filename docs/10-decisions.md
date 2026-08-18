@@ -1,5 +1,11 @@
 # 決策紀錄
 
+## 2026-08-18：第一個穩定版 v1.0.0
+
+- 以 git annotated tag `v1.0.0` 標示目前 `main` 為第一個穩定快照。產品範圍仍是文件所稱「第一版」（站務 M、檢修 T），此 tag 是該範圍的第一個穩定程式版本，不是範圍擴充。
+- 組件 `Version`／`InformationalVersion` 為 `1.0.0`；Web 頁首顯示此號，`ScheduleRun.ProgramVersion` 寫入同一字串。
+- 本快照不包含：正式 Linux＋SQL Server 部署環境驗收、上線前密碼政策強化、行控 S，以及文件已列為不納入第一版的項目。
+
 ## 2026-08-18：T 能力值限 T Editor 檢視
 
 - 個別 T 人員能力值只對 T Editor 與 Administrator 顯示；Viewer 與只有 M 編輯權的帳號從員工主檔、既有 Demand／班表快照等讀取路徑都不得取得該值。

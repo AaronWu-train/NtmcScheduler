@@ -1,10 +1,11 @@
+@using System.Reflection
 @inherits LayoutComponentBase
 @implements IDisposable
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
 
 <header class="app-header">
-    <a class="brand" href="/">新北捷運人員排班系統</a>
+    <a class="brand" href="/">新北捷運人員排班系統 <span class="app-version">v@(AppVersion)</span></a>
     <AuthorizeView>
         <Authorized Context="auth">
             <NavMenu />
@@ -21,6 +22,9 @@
 </main>
 
 @code {
+    private static readonly string AppVersion =
+        typeof(App).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "1.0.0";
+
     protected override async Task OnInitializedAsync()
     {
         AuthenticationStateProvider.AuthenticationStateChanged += AuthenticationStateChanged;

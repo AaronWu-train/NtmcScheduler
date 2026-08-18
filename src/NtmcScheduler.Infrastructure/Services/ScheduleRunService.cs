@@ -54,7 +54,9 @@ public sealed class ScheduleRunService(NtmcDbContext db, ScheduleRunQueue queue,
             WorkerCount = options.WorkerCount,
             SeedCount = options.SeedCount,
             TimeLimitSeconds = options.TimeLimitSeconds,
-            ProgramVersion = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown",
+            ProgramVersion = Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+                ?? Assembly.GetEntryAssembly()?.GetName().Version?.ToString()
+                ?? "unknown",
             InputSnapshotJson = snapshot,
             InputHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(snapshot))),
             PerpetualScheduleJson = perpetualScheduleJson
