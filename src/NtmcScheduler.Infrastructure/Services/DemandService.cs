@@ -334,6 +334,34 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         await SaveDemandChangesAsync(db, cancellationToken);
     }
 
+    public async Task<DemandDraftDto> RestorePreviousInheritedFieldsAsync(
+        Guid demandId,
+        Guid revisionToken,
+        ActorContext actor,
+        CancellationToken cancellationToken = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        var demand = await Query(db).SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
+            ?? throw new DomainValidationException("找不到本月需求。");
+        ServiceSupport.RequireEditor(actor, demand.Workspace);
+        if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
+        var previous = await TryGetPreviousScheduleAsync(db, demand, cancellationToken)
+            ?? throw new DomainValidationException("找不到上月班表來源，請先在步驟一設定上月班表。");
+        var before = demand.Employees.Select(employee => new
+        {
+            employee.EmployeeCode,
+            employee.OpeningRest,
+            employee.OpeningSpecialRest,
+            employee.PerpetualScheduleId
+        }).ToArray();
+        ApplyPreviousSchedule(demand, previous);
+        Touch(demand, actor.UserId);
+        ServiceSupport.AddAudit(db, actor, "DemandPreviousInheritedFieldsRestored", demand.Workspace, "DemandDraft", demand.Id, before,
+            new { demand.Month, demand.PreviousSource, EmployeeCount = demand.Employees.Count });
+        await SaveDemandChangesAsync(db, cancellationToken);
+        return await DemandDtoAsync(demand.Id, cancellationToken);
+    }
+
     public async Task<PreviousSchedulePreviewDto> GetPreviousSchedulePreviewAsync(Guid demandId, ActorContext actor, CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);

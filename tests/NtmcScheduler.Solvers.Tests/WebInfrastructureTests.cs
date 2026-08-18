@@ -557,6 +557,55 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
+    public async Task DemandRestorePreviousInheritedFields_RestoresOpeningUsageAndPerpetualSchedule()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var actor = Editor(WorkspaceCode.M);
+        var input = MSolverTests.ValidInput();
+        var previousEmployee = input.PreviousMonth.Employees[0];
+        await new EmployeeService(database.Context).SaveAsync(new(null, WorkspaceCode.M, previousEmployee.EmployeeId,
+            previousEmployee.Name, previousEmployee.Affiliation, null, null, null), actor);
+        var configuration = await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+            input.RestIntervals.Select(x => new RestIntervalDto(x.Start, x.End, x.NationalHolidays.ToArray())).ToArray(), [], null, actor);
+        var revision = await database.Context.ConfigurationRevisions.SingleAsync(x => x.Id == configuration.Id);
+        var adoptedVersion = Version(revision, input.PreviousMonth.MonthStart, "上月採用班表");
+        adoptedVersion.Employees.Add(new()
+        {
+            EmployeeCode = previousEmployee.EmployeeId,
+            Name = previousEmployee.Name,
+            Affiliation = previousEmployee.Affiliation,
+            RequestedLeaveRestCount = 3,
+            ClosingRest = 12,
+            ClosingSpecialRest = 2,
+            PerpetualScheduleId = "P-ADOPTED"
+        });
+        database.Context.AdoptedSchedules.Add(new()
+        {
+            Workspace = WorkspaceCode.M,
+            Month = input.PreviousMonth.MonthStart,
+            ScheduleVersion = adoptedVersion,
+            AdoptedByUserId = actor.UserId
+        });
+        await database.Context.SaveChangesAsync();
+
+        var service = DemandService(database);
+        var demand = await service.CreateAsync(WorkspaceCode.M, input.DemandMonth.MonthStart, actor);
+        var employee = demand.Employees.Single();
+        demand = await service.UpdateEmployeeAsync(demand.Id, employee.EmployeeCode, employee.EmploymentStartDate, null,
+            0, 0, employee.RequestedLeaveRestCount, "CHANGED", demand.RevisionToken, actor);
+        employee = demand.Employees.Single();
+        Assert.AreEqual(0, employee.OpeningRest);
+        Assert.AreEqual(0, employee.OpeningSpecialRest);
+        Assert.AreEqual("CHANGED", employee.PerpetualScheduleId);
+
+        demand = await service.RestorePreviousInheritedFieldsAsync(demand.Id, demand.RevisionToken, actor);
+        employee = demand.Employees.Single();
+        Assert.AreEqual(12, employee.OpeningRest);
+        Assert.AreEqual(2, employee.OpeningSpecialRest);
+        Assert.AreEqual("P-ADOPTED", employee.PerpetualScheduleId);
+    }
+
+    [TestMethod]
     public async Task PerpetualUpload_StoresMetadataAndCanBeDownloaded()
     {
         await using var database = await TestDatabase.CreateAsync();

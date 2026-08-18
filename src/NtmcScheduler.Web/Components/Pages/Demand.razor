@@ -163,6 +163,10 @@
                     <a class="button-link" href="/download/templates/@Workspace.ToLowerInvariant()/demand.csv">下載需求範本</a>
                     @if (canEdit)
                     {
+                        @if (CanRestorePreviousInheritedFields)
+                        {
+                            <button disabled="@isBusy" @onclick="RestorePreviousInheritedFieldsAsync">@(workspaceCode == WorkspaceCode.M ? "還原上月 R/R1 與萬年班表" : "還原上月 R/R1")</button>
+                        }
                         <label class="button-link file-upload-button primary">匯入需求 CSV<InputFile OnChange="PreviewDemandAsync" accept=".csv,text/csv" disabled="@isBusy"/></label>
                         @if (submissionImport is null)
                         {
@@ -635,6 +639,7 @@
     };
 
     private bool IsUploadPreviousSelected => demand?.PreviousSource == PreviousScheduleSource.Upload || pendingUploadPreviousSource;
+    private bool CanRestorePreviousInheritedFields => demand?.PreviousScheduleVersionId is not null || demand?.HasUploadedPreviousSchedule == true;
     private string PreviousSourceValue => IsUploadPreviousSelected ? "upload" : previousVersion?.Id.ToString() ?? "";
     private string PerpetualSourceLabel() => demand?.PerpetualUpload is not null ? "本月份暫用萬年班表" : globalPerpetual is not null ? "全域萬年班表" : "未使用萬年班表";
     private static bool TryDay(string header, out int day) => int.TryParse(header, NumberStyles.None, CultureInfo.InvariantCulture, out day);
@@ -806,6 +811,12 @@
             LeaveRest = x.RequestedLeaveRestCount, PerpetualId = x.PerpetualScheduleId ?? ""
         }) ?? [];
     }
+
+    private async Task RestorePreviousInheritedFieldsAsync() => await RunUiAsync(async () =>
+    {
+        demand = await DemandService.RestorePreviousInheritedFieldsAsync(demand!.Id, demand.RevisionToken, await CurrentActor.GetAsync());
+        InitializeEmployeeEdits();
+    }, workspaceCode == WorkspaceCode.M ? "已還原上月 R/R1 與萬年班表。" : "已還原上月 R/R1。");
 
     private void ClearLocalDemandEdits() => employeeEdits.Clear();
 
