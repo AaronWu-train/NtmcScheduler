@@ -96,4 +96,4 @@ CLI 不包含業務規則，solver 不知道 CSV 路徑。
 
 ## 尚待部署環境驗收
 
-正式 Linux＋SQL Server migration、資料庫備份／還原、Data Protection X.509 憑證與 volume、journald／container driver 一年保留、反向代理可信來源，以及 Microsoft Playwright 端對端與基準規模互動測試，必須在部署環境取得連線與瀏覽器 runtime 後執行。
+部署步驟見 [`12-deployment.md`](12-deployment.md)。正式 Linux＋SQL Server migration、資料庫備份／還原、Data Protection X.509 憑證與 volume、journald／container driver 一年保留、反向代理可信來源，以及 Microsoft Playwright 端對端與基準規模互動測試，必須在部署環境取得連線與瀏覽器 runtime 後執行。

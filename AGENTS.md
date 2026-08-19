@@ -37,6 +37,7 @@
 | [docs/09-acceptance.md](docs/09-acceptance.md) | 最低驗收案例 |
 | [docs/10-decisions.md](docs/10-decisions.md) | 決策紀錄（由舊到新；後列取代先列衝突項） |
 | [docs/11-implementation-plan.md](docs/11-implementation-plan.md) | 實作架構、CP-SAT 演算法、頁面／服務／里程碑 |
+| [docs/12-deployment.md](docs/12-deployment.md) | Ubuntu 24.04＋SQL Server 部署步驟、憑證、systemd、備份 |
 | [docs/tex/main2.tex](docs/tex/main2.tex) | Solver 數學模型（D-21 真相來源） |
 | [docs/新北捷運人員排班系統_完整開發規格書_v6.pdf](docs/新北捷運人員排班系統_完整開發規格書_v6.pdf) | 原始規格書 v6（交叉比對用） |
 

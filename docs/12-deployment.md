@@ -1,0 +1,350 @@
+# 12. 部署指南：Ubuntu 24.04 + SQL Server
+
+本文件是把 NtmcScheduler 部署到公司內網 Ubuntu 24.04 VM 的完整步驟，資料庫使用外部 Microsoft SQL Server，
+對外只有 IP、沒有網域，且必須走 HTTPS。應用程式不需要修改任何程式碼，全部由環境變數與設定驅動。
+
+架構是 Kestrel 直接對外：`NtmcScheduler.Web` 本身內建網頁伺服器，自己持有憑證處理 HTTPS，
+由 systemd 負責開機自啟與異常重啟，不使用 nginx／IIS 反向代理。
+
+以下指令中的預留值請自行替換：
+
+| 預留值 | 意義 | 範例 |
+|---|---|---|
+| `<APP_IP>` | VM 對使用者的 IP | `10.20.30.40` |
+| `<SQL_HOST>` | SQL Server 主機名或 IP | `10.20.30.50` |
+| `<DB_NAME>` | 資料庫名稱 | `NtmcScheduler` |
+| `<DB_PASSWORD>` | 資料庫帳號密碼 | — |
+| `<PFX_PASSWORD>` | 伺服器憑證密碼 | — |
+| `<DPKEY_PASSWORD>` | Data Protection 憑證密碼 | — |
+
+## 0. 事前準備清單
+
+開始之前先確認這些東西都到位，否則會卡在中途：
+
+- Ubuntu 24.04 LTS VM，具 sudo 權限。
+- SQL Server 連線資訊，且 VM 到 SQL Server 的 TCP 1433 已開通。
+- 公司內部 CA 願意簽發一張 **含 IP SAN** 的伺服器憑證（見第 4 節）。公有 CA 不會對私有 IP 簽發。
+- 內部 CA 的根憑證能透過 GPO 推送到所有使用者電腦。本系統是 Blazor Interactive Server，
+  靠 WebSocket（`wss:`）維持連線；瀏覽器若不信任憑證會直接封鎖 WSS，畫面會停在載入後完全沒有反應。
+
+## 1. 安裝 .NET 10
+
+專案目標框架是 `net10.0`。若在這台 VM 上直接建置，安裝 SDK；若只執行由別台機器 publish 出來的檔案，
+安裝 ASP.NET Core Runtime 即可。
+
+```bash
+sudo apt update
+sudo apt install -y dotnet-sdk-10.0          # 建置用
+# 或只要執行：sudo apt install -y aspnetcore-runtime-10.0
+dotnet --list-sdks
+```
+
+Ubuntu 官方套件庫若還沒有 .NET 10，改用 Microsoft 套件庫：
+
+```bash
+wget https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb -O /tmp/ms.deb
+sudo dpkg -i /tmp/ms.deb
+sudo apt update && sudo apt install -y dotnet-sdk-10.0
+```
+
+OR-Tools 是 native library，需要 C++ 執行期與 ICU。dotnet 套件通常會一併帶入，仍建議明確確認：
+
+```bash
+sudo apt install -y libstdc++6 libicu74
+```
+
+程式所有時間計算都以固定的 UTC+8 偏移量處理，**不依賴系統時區**，所以不設定 VM 時區也不會算錯班表。
+但為了讓 log 與維運人員的認知一致，建議還是設好：
+
+```bash
+sudo timedatectl set-timezone Asia/Taipei
+```
+
+## 2. 建立系統使用者與目錄
+
+不要用 root 執行應用程式。
+
+```bash
+sudo useradd --system --create-home --home-dir /var/lib/ntmc --shell /usr/sbin/nologin ntmc
+sudo mkdir -p /opt/ntmc /var/lib/ntmc/keys /etc/ntmc
+sudo chown -R ntmc:ntmc /opt/ntmc /var/lib/ntmc
+sudo chmod 700 /var/lib/ntmc/keys
+```
+
+| 路徑 | 用途 |
+|---|---|
+| `/opt/ntmc` | publish 出來的應用程式檔案 |
+| `/var/lib/ntmc/keys` | Data Protection key ring，**必須持久保存** |
+| `/var/lib/ntmc/*.pfx` | 憑證 |
+| `/etc/ntmc/ntmc.env` | 環境變數，含密碼，權限 600 |
+
+## 3. 準備 SQL Server 資料庫
+
+在 SQL Server 上（用 SSMS 或 `sqlcmd`）執行：
+
+```sql
+CREATE DATABASE <DB_NAME>;
+GO
+CREATE LOGIN ntmc_app WITH PASSWORD = '<DB_PASSWORD>';
+GO
+USE <DB_NAME>;
+CREATE USER ntmc_app FOR LOGIN ntmc_app;
+ALTER ROLE db_owner ADD MEMBER ntmc_app;
+GO
+```
+
+應用程式啟動時會自動執行 EF Core migration 建立資料表，所以帳號需要建表權限。
+若公司政策不允許應用程式帳號長期持有 `db_owner`，改用第 10 節的手動套用 schema 流程。
+
+從 VM 確認網路可通：
+
+```bash
+sudo apt install -y netcat-openbsd
+nc -zv <SQL_HOST> 1433
+```
+
+## 4. 準備兩張憑證
+
+**這是兩張不同用途的憑證，不要共用。**
+
+### 4a. 伺服器憑證（HTTPS，需 IP SAN）
+
+在 VM 上產生私鑰與 CSR：
+
+```bash
+sudo openssl req -new -newkey rsa:2048 -nodes \
+  -keyout /var/lib/ntmc/server.key -out /var/lib/ntmc/server.csr \
+  -subj "/CN=<APP_IP>" \
+  -addext "subjectAltName=IP:<APP_IP>" \
+  -addext "extendedKeyUsage=serverAuth"
+```
+
+把 `server.csr` 交給公司內部 CA 簽發，取回 `server.crt` 後合併成 Kestrel 使用的 PKCS#12：
+
+```bash
+sudo openssl pkcs12 -export \
+  -inkey /var/lib/ntmc/server.key -in /var/lib/ntmc/server.crt \
+  -out /var/lib/ntmc/server.pfx -passout pass:<PFX_PASSWORD>
+```
+
+`subjectAltName` 必須是 `IP:`，不是 `DNS:`；只有 CN 而沒有 SAN 的憑證現代瀏覽器一律拒絕。
+
+### 4b. Data Protection 憑證（加密硬碟上的 key ring）
+
+Production 環境沒有這張憑證會**拒絕啟動**。它不對外，不需要 IP SAN，可自簽並設長效期：
+
+```bash
+sudo openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+  -subj "/CN=NtmcScheduler Data Protection" \
+  -keyout /tmp/dp.key -out /tmp/dp.crt
+sudo openssl pkcs12 -export -inkey /tmp/dp.key -in /tmp/dp.crt \
+  -out /var/lib/ntmc/dp.pfx -passout pass:<DPKEY_PASSWORD>
+sudo rm /tmp/dp.key /tmp/dp.crt
+```
+
+設定權限：
+
+```bash
+sudo chown ntmc:ntmc /var/lib/ntmc/*.pfx /var/lib/ntmc/server.key
+sudo chmod 600 /var/lib/ntmc/*.pfx /var/lib/ntmc/server.key
+```
+
+`dp.pfx` 與 `/var/lib/ntmc/keys` 一定要納入備份。遺失的後果是所有使用者的登入 cookie 立即失效，
+必須全部重新登入。
+
+## 5. 建置與發行
+
+在專案原始碼目錄執行：
+
+```bash
+dotnet publish src/NtmcScheduler.Web -c Release -r linux-x64 --self-contained false -o /tmp/ntmc-publish
+sudo cp -r /tmp/ntmc-publish/. /opt/ntmc/
+sudo chown -R ntmc:ntmc /opt/ntmc
+sudo chmod 500 /opt/ntmc/NtmcScheduler.Web
+```
+
+指定 `-r linux-x64` 可確保 OR-Tools 的 Linux native library 被正確複製，在非 Linux 機器上建置時尤其重要。
+若 VM 不允許安裝 .NET runtime，改用 `--self-contained true`，publish 產物會自帶執行期，體積較大但不需預裝任何東西。
+
+## 6. 環境變數設定檔
+
+建立 `/etc/ntmc/ntmc.env`：
+
+```ini
+ASPNETCORE_ENVIRONMENT=Production
+ASPNETCORE_URLS=https://0.0.0.0:443
+ASPNETCORE_HTTPS_PORTS=443
+AllowedHosts=<APP_IP>
+
+DatabaseProvider=SqlServer
+ConnectionStrings__Default=Server=<SQL_HOST>,1433;Database=<DB_NAME>;User Id=ntmc_app;Password=<DB_PASSWORD>;Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=False
+
+Kestrel__Certificates__Default__Path=/var/lib/ntmc/server.pfx
+Kestrel__Certificates__Default__Password=<PFX_PASSWORD>
+
+DataProtection__KeyPath=/var/lib/ntmc/keys
+DataProtection__CertificatePath=/var/lib/ntmc/dp.pfx
+DataProtection__CertificatePassword=<DPKEY_PASSWORD>
+```
+
+```bash
+sudo chown root:ntmc /etc/ntmc/ntmc.env
+sudo chmod 640 /etc/ntmc/ntmc.env
+```
+
+幾個容易踩到的點：
+
+- 這個檔案由 systemd 讀取，值**不要加引號**，連線字串裡的分號也不需跳脫。
+- `DataProtection__KeyPath` 請用絕對路徑；相對路徑會相對於 `ContentRootPath`，隨工作目錄改變。
+- 若 SQL Server 使用公司正式憑證，把 `TrustServerCertificate=True` 拿掉以取得完整驗證；
+  自簽憑證則必須保留，否則連線會被拒絕。
+- **不要設定 `KnownProxies`**。本架構沒有反向代理，若信任了不存在的代理，
+  `X-Forwarded-For` 就可被偽造，AuditLog 記錄的來源 IP 將不可信。
+
+## 7. 初始化資料庫與第一位管理者
+
+以 `ntmc` 身分手動執行一次。這個指令會先跑 migration 建好所有資料表，再建立管理者，然後結束程序：
+
+```bash
+sudo -u ntmc env $(grep -v '^#' /etc/ntmc/ntmc.env | xargs -d '\n') \
+  /opt/ntmc/NtmcScheduler.Web --init-admin admin
+```
+
+終端機會提示 `Temporary password:`，輸入不會回顯。密碼規則為至少 8 字元、至少 2 種不同字元且含數字。
+建立完成後首次登入會強制修改密碼。
+
+## 8. systemd 服務
+
+建立 `/etc/systemd/system/ntmc.service`：
+
+```ini
+[Unit]
+Description=NtmcScheduler Web
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ntmc
+Group=ntmc
+WorkingDirectory=/opt/ntmc
+ExecStart=/opt/ntmc/NtmcScheduler.Web
+EnvironmentFile=/etc/ntmc/ntmc.env
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=120
+SyslogIdentifier=ntmc
+
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ntmc
+
+[Install]
+WantedBy=multi-user.target
+```
+
+啟用並啟動：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now ntmc
+sudo systemctl status ntmc
+sudo journalctl -u ntmc -f
+```
+
+`AmbientCapabilities=CAP_NET_BIND_SERVICE` 讓非 root 的 `ntmc` 能綁定 443。
+`TimeoutStopSec=120` **不是**等待求解跑完的時間。收到 SIGTERM 時，背景 worker 會把 host 的 stopping token
+傳給 solver 觸發 `CpSolver.StopSearch()`，CP-SAT 數秒內就會中止，未完成的求解在下次啟動時由 `RecoverAsync`
+重新排入佇列（該次求解需從頭重跑）。實際的等待上限是 .NET Generic Host 的 `ShutdownTimeout`，預設 30 秒；
+120 秒只是留給 systemd 的安全邊界，確保 systemd 不會比 host 更早送出 SIGKILL。
+不要把它設成求解時限（最長可達 4 seeds × 600 秒），否則每次部署都會呆等。
+`ProtectSystem=strict` 讓整個檔案系統唯讀，因此必須用 `ReadWritePaths` 明確開放 key ring 目錄。
+`Type=simple` 是刻意的：程式沒有呼叫 `UseSystemd()`，不會送出 `READY=1`，改用 `Type=notify` 會讓 systemd 一直等到逾時而判定啟動失敗。
+
+## 9. 防火牆與 Log 保留
+
+只開 443，不要開 80。HSTS 依 RFC 6797 對 IP 位址無效，瀏覽器會忽略，
+所以「不提供 http」是這個架構唯一的降級保護手段。
+
+```bash
+sudo ufw allow 443/tcp
+sudo ufw enable
+```
+
+驗收要求 Log 保留一年。編輯 `/etc/systemd/journald.conf`：
+
+```ini
+[Journal]
+Storage=persistent
+MaxRetentionSec=1year
+SystemMaxUse=2G
+```
+
+```bash
+sudo systemctl restart systemd-journald
+```
+
+`SystemMaxUse` 請依磁碟容量調整；容量上限會早於時間上限生效，設太小仍然存不滿一年。
+
+## 10. 由 DBA 手動套用 schema（選用）
+
+不希望應用程式帳號擁有建表權限時，改由 DBA 套用 SQL script：
+
+```bash
+dotnet tool restore
+NTMC_MIGRATION_PROVIDER=SqlServer dotnet ef migrations script --idempotent \
+  -p src/NtmcScheduler.Infrastructure -s src/NtmcScheduler.Web -o ntmc.sql
+```
+
+script 為 idempotent，可重複套用。套用後把 `ntmc_app` 權限降為
+`db_datareader`、`db_datawriter` 與必要的 `EXECUTE`，但仍需保留讀取 `__EFMigrationsHistory` 的權限，
+因為應用程式啟動時仍會呼叫 migration 檢查。
+
+## 11. 升級既有部署
+
+```bash
+sudo systemctl stop ntmc
+sudo cp -r /tmp/ntmc-publish/. /opt/ntmc/
+sudo chown -R ntmc:ntmc /opt/ntmc
+sudo systemctl start ntmc
+sudo journalctl -u ntmc -n 100
+```
+
+新版若含 migration，啟動時會自動套用。**升級前務必先備份資料庫**，migration 沒有自動回滾機制。
+
+## 12. 備份
+
+三樣東西都要備份，缺一不可：
+
+| 對象 | 方式 | 頻率 |
+|---|---|---|
+| SQL Server 資料庫 | `BACKUP DATABASE <DB_NAME> TO DISK = ...`，建議由 SQL Server Agent 排程 | 每日 |
+| `/var/lib/ntmc/keys` | 檔案備份 | 變更時 |
+| `/var/lib/ntmc/dp.pfx`、`server.pfx` | 離線保管 | 一次 |
+
+還原演練必須實際做過一次才算通過驗收：還原資料庫、還原 key ring，確認既有使用者不需重設密碼即可登入。
+
+## 13. 疑難排解
+
+| 症狀 | 原因與處理 |
+|---|---|
+| 啟動即失敗，訊息含 `Production requires DataProtection:CertificatePath` | 沒設 `DataProtection__CertificatePath`，見第 4b 節 |
+| 啟動即失敗，`ConnectionStrings:Default is required` | `EnvironmentFile` 沒被讀到，檢查路徑與 640 權限 |
+| 啟動即失敗，`DatabaseProvider must be Sqlite or SqlServer` | 拼字錯誤，必須剛好是 `SqlServer` |
+| 資料庫連線失敗，訊息含 `SSL Provider` 或 `no protocols available` | Ubuntu 24.04 的 OpenSSL 3 預設安全等級拒絕舊版 SQL Server 的 TLS。優先請 DBA 升級 SQL Server 或更新其憑證；短期權宜可在 `/etc/ssl/openssl.cnf` 降低 `CipherString` 的 `SECLEVEL`，但這會削弱全機器的 TLS policy，須經資安同意 |
+| 頁面載得出來但完全沒有反應、按鈕無效 | WebSocket 被擋。多半是使用者電腦不信任內部 CA 根憑證，或憑證缺少 IP SAN |
+| 瀏覽器顯示憑證錯誤 | 憑證的 SAN 不是 `IP:<APP_IP>`，或使用者用了與憑證不同的位址連入 |
+| 無法綁定 443 | systemd unit 缺 `AmbientCapabilities=CAP_NET_BIND_SERVICE` |
+| 找不到 OR-Tools native library | publish 時未指定 `-r linux-x64`，或缺 `libstdc++6` |
+| AuditLog 來源 IP 都是 `127.0.0.1` 或明顯錯誤 | 誤設了 `KnownProxies`；本架構沒有反向代理，應留空 |
+
+## 14. 上線前尚待確認事項
+
+- **密碼政策**目前是開發階段暫行值（8 字元、2 種不同字元、含數字），程式中已標註 TODO。
+  正式上線前須依公司資安要求調整，屬程式修改，並須同步更新 `docs/10-decisions.md`。
+- 資料庫備份／還原演練、Data Protection key ring 還原演練、journald 一年保留，須在本環境實際驗收。
+- Microsoft Playwright 端對端與基準規模互動測試需在具備瀏覽器 runtime 的環境執行。
