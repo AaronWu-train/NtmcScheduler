@@ -176,6 +176,6 @@ dotnet test NtmcScheduler.slnx
 
 ## 文件
 
-第一個穩定版為 **v1.0.0**（2026-08-18，git tag `v1.0.0`）；目前穩定版為 **v1.0.1**（git tag `v1.0.1`）。產品範圍仍是「第一版」（站務 M、檢修 T）。正式環境部署步驟見 [`docs/12-deployment.md`](docs/12-deployment.md)；尚待完成的部署驗收與上線前密碼政策見 `docs/11-implementation-plan.md`。
+第一個穩定版為 **v1.0.0**（2026-08-18，git tag `v1.0.0`）；目前穩定版為 **v1.0.2**（git tag `v1.0.2`）。產品範圍仍是「第一版」（站務 M、檢修 T）。正式環境部署步驟見 [`docs/12-deployment.md`](docs/12-deployment.md)；尚待完成的部署驗收與上線前密碼政策見 `docs/11-implementation-plan.md`。
 
 閱讀順序：`01` 範圍 → `02` 名詞 → `03` 資料 → `04`–`06` 規則與求解 → `07`–`08` 架構與畫面 → `09` 驗收 → `10` 決策（由舊到新）→ `11` 實作檔案。業務規則與資料格式見 [`docs/`](docs/)。Agent 守則見 [`AGENTS.md`](AGENTS.md)。

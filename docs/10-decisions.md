@@ -596,3 +596,10 @@
 - Web 求解參數上限：每 seed 時限 600 秒、worker 數 8、seed 數 4（T 仍固定 1 seed）。超出上限由 `ScheduleRunService.QueueAsync` 擋下，上限常數定義在 `ScheduleRunOptions`，前端輸入欄同步套用 `max`。
 - Web 預設值改為 300 秒、8 workers、1 seed（M/T 相同）；CLI 省略 `--search` 時改為 8 workers、2 seeds、300 秒。
 - 選取規則不變：比較各 seed 第一候選的具名目標字典序分數，只採用較佳 seed 的整批候選。
+
+## 2026-08-19：穩定版 v1.0.2
+
+- 以 git annotated tag `v1.0.2` 標示目前 `main` 為第一版範圍內的修訂穩定版。
+- 組件 `Version`／`InformationalVersion` 為 `1.0.2`；Web 頁首與 `ScheduleRun.ProgramVersion` 沿用同一字串。
+- 本版新增 `docs/12-deployment.md`（Ubuntu 24.04＋SQL Server 部署指南），程式行為未變更。
+- 上線前密碼政策強化與部署環境驗收仍未完成，範圍與 v1.0.1 相同。

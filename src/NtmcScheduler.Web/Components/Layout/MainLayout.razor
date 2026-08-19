@@ -27,7 +27,7 @@
     private static string GetAppVersion()
     {
         var version =
-            typeof(App).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "1.0.1";
+            typeof(App).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "1.0.2";
         var metadataIndex = version.IndexOf('+');
         return metadataIndex >= 0 && version.Length > metadataIndex + 8
             ? version[..(metadataIndex + 8)]
