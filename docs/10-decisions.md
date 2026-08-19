@@ -587,3 +587,12 @@
 - 取消要求記為 AuditLog `ScheduleRunCancelled`（記錄取消者與取消當下狀態）；終態 `Cancelled` 由背景工作在求解實際停止後寫入並推播，因此按下取消到狀態更新之間有短暫延遲。
 - 取消入口同時放在建立班表頁的「最近求解工作」與首頁 Dashboard；Dashboard 逐列依該筆所屬工作區的編輯權限決定是否顯示按鈕，顯示範圍不變。
 - 取消訊號只存在於單一程序記憶體。系統重啟時未完成的工作依既有規則重新排隊，先前的取消要求不會保留。
+
+## 2026-08-19：M 多 seed 改為依序執行並限制求解參數
+
+- 取代「2026-08-12：M CLI 新增 `--m-search`」與「2026-08-12：候選時間改以餘時分配」中「並行 seed 數」與「並行使用量約為 `workers × seeds`」的敘述。
+- M 的多 seed portfolio 由並行改為**依序執行**，Web 背景工作與 CLI 一致。每個 seed 仍各自取得完整的 worker 數與完整時限，因此總耗時約為 `seeds × seconds`（例如 300 秒 × 2 seeds 約 600 秒）。
+- 依序執行後，同時只有一次求解在記憶體中，資源用量不再隨 seed 數相乘；`workers × seeds` 不再是資源上限的判斷依據，改以總佔用時間為準。
+- Web 求解參數上限：每 seed 時限 600 秒、worker 數 8、seed 數 4（T 仍固定 1 seed）。超出上限由 `ScheduleRunService.QueueAsync` 擋下，上限常數定義在 `ScheduleRunOptions`，前端輸入欄同步套用 `max`。
+- Web 預設值改為 300 秒、8 workers、1 seed（M/T 相同）；CLI 省略 `--search` 時改為 8 workers、2 seeds、300 秒。
+- 選取規則不變：比較各 seed 第一候選的具名目標字典序分數，只採用較佳 seed 的整批候選。

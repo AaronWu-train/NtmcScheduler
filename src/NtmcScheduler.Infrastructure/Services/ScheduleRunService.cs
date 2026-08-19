@@ -26,6 +26,12 @@ public sealed class ScheduleRunService(NtmcDbContext db, ScheduleRunQueue queue,
         if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理後再求解。");
         if (options.TimeLimitSeconds <= 0 || options.WorkerCount <= 0 || options.SeedCount <= 0)
             throw new DomainValidationException("求解時限、worker 數與 seed 數都必須是正整數。");
+        // Seeds run sequentially, so the ceiling is deployment wall time rather than memory: at the
+        // limits one run occupies the single-reader queue for 4 x 600 seconds.
+        if (options.TimeLimitSeconds > ScheduleRunOptions.MaxTimeLimitSeconds
+            || options.WorkerCount > ScheduleRunOptions.MaxWorkerCount
+            || options.SeedCount > ScheduleRunOptions.MaxSeedCount)
+            throw new DomainValidationException($"求解時限最多 {ScheduleRunOptions.MaxTimeLimitSeconds} 秒、worker 數最多 {ScheduleRunOptions.MaxWorkerCount}、seed 數最多 {ScheduleRunOptions.MaxSeedCount}。");
         if (demand.Workspace == WorkspaceCode.T && options.SeedCount != 1)
             throw new DomainValidationException("T 只支援一個 seed。");
         var previous = await ResolvePreviousAsync(demand, cancellationToken);

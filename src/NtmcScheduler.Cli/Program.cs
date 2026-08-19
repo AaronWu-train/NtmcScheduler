@@ -49,7 +49,7 @@ public static class Program
             var perpetualSchedule = string.IsNullOrWhiteSpace(perpetualSchedulePath)
                 ? null
                 : ScheduleCsv.ReadMPerpetualSchedule(perpetualSchedulePath);
-            Console.WriteLine($"M 多 seed 求解：seed 0–{mSearch.Seeds - 1} 並行，各 {mSearch.Seconds} 秒、{mSearch.Workers} workers（最多約 {(long)mSearch.Seeds * mSearch.Workers} workers）。");
+            Console.WriteLine($"M 多 seed 求解：seed 0–{mSearch.Seeds - 1} 依序執行，各 {mSearch.Seconds} 秒、{mSearch.Workers} workers（總時限約 {(long)mSearch.Seeds * mSearch.Seconds} 秒）。");
             var mStartedAt = Stopwatch.GetTimestamp();
             var (mResult, selectedSeed) = SolveMPortfolio(input, perpetualSchedule, mSearch, cancellation.Token);
             Console.WriteLine($"採用 seed：{selectedSeed}");
@@ -82,24 +82,24 @@ public static class Program
         MSearchOptions search,
         CancellationToken cancellationToken)
     {
-        var runs = Enumerable.Range(0, search.Seeds).Select(seed => Task.Run(() =>
+        // Seeds run one after another, matching the web worker: each seed gets the full worker count
+        // and its own time limit, so the wall time is seeds x seconds.
+        (MSolveResult Result, int Seed)? best = null;
+        for (var seed = 0; seed < search.Seeds; seed++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var options = new SolverOptions { TimeLimit = TimeSpan.FromSeconds(search.Seconds), RandomSeed = seed, WorkerCount = search.Workers };
             var result = perpetualSchedule is null
                 ? MSolver.Solve(input, options, cancellationToken)
                 : MSolver.Solve(input, perpetualSchedule, options, cancellationToken);
-            return (Result: result, Seed: seed);
-        }, cancellationToken)).ToArray();
-        var results = Task.WhenAll(runs).GetAwaiter().GetResult();
-        var best = results[0];
-        for (var index = 1; index < results.Length; index++)
-            if (CompareMResults(results[index].Result, best.Result) < 0) best = results[index];
-        return best;
+            if (best is null || CompareMResults(result, best.Value.Result) < 0) best = (result, seed);
+        }
+        return best ?? throw new InvalidOperationException("seeds must be at least one.");
     }
 
     private static MSearchOptions ReadMSearchOptions(string[] args)
     {
-        if (args.Length == 0) return new(4, 2, 300);
+        if (args.Length == 0) return new(8, 2, 300);
         const string usage = "用法：--search workers=4,seeds=2,seconds=300";
         if (args.Length != 2 || args[0] != "--search") throw new FormatException(usage);
         var values = new Dictionary<string, int>(StringComparer.Ordinal);

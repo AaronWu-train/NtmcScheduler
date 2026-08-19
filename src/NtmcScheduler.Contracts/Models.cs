@@ -292,7 +292,12 @@ public sealed record ScheduleRunCandidateDto(int Number, IReadOnlyList<Objective
 public sealed record ObjectiveScoreDto(int Priority, string Name, long Value, IReadOnlyList<ObjectiveComponentDto> Components);
 public sealed record ObjectiveComponentDto(string Name, long Value, int Weight);
 
-public sealed record ScheduleRunOptions(int TimeLimitSeconds, int WorkerCount, int SeedCount);
+public sealed record ScheduleRunOptions(int TimeLimitSeconds, int WorkerCount, int SeedCount)
+{
+    public const int MaxTimeLimitSeconds = 600;
+    public const int MaxWorkerCount = 8;
+    public const int MaxSeedCount = 4;
+}
 
 public sealed record AuditFieldChangeDto(string Label, string? Before, string? After);
 

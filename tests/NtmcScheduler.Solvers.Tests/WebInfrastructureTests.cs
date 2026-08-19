@@ -260,6 +260,14 @@ public sealed class WebInfrastructureTests
         await new MPerpetualScheduleService(database.Context).UploadAsync("global.csv",
             new MemoryStream(ScheduleCsv.WriteMPerpetualSchedule(globalSchedule)), actor);
         var runService = new ScheduleRunService(database.Context, new ScheduleRunQueue());
+        foreach (var rejected in new[]
+                 {
+                     new ScheduleRunOptions(ScheduleRunOptions.MaxTimeLimitSeconds + 1, 4, 1),
+                     new ScheduleRunOptions(300, ScheduleRunOptions.MaxWorkerCount + 1, 1),
+                     new ScheduleRunOptions(300, 4, ScheduleRunOptions.MaxSeedCount + 1)
+                 })
+            await Assert.ThrowsExactlyAsync<DomainValidationException>(() => runService.QueueAsync(
+                disposableDemand.Id, disposableDemand.RevisionToken, rejected, actor));
         var queued = await runService.QueueAsync(
             disposableDemand.Id, disposableDemand.RevisionToken, new ScheduleRunOptions(300, 4, 1), actor);
         var savedRun = await database.Context.ScheduleRuns.SingleAsync(x => x.Id == queued.Id);
@@ -913,8 +921,6 @@ public sealed class WebInfrastructureTests
             (bool)predicate.Invoke(null, [exception, solving, stopping])!;
 
         Assert.IsTrue(Evaluate(new OperationCanceledException(), cancelled.Token, CancellationToken.None));
-        Assert.IsTrue(Evaluate(new AggregateException(new OperationCanceledException()), cancelled.Token, CancellationToken.None),
-            "PLINQ wraps the M portfolio cancellation.");
         Assert.IsFalse(Evaluate(new InvalidOperationException(), cancelled.Token, CancellationToken.None),
             "A real failure must still be reported as a failure.");
         Assert.IsFalse(Evaluate(new OperationCanceledException(), cancelled.Token, cancelled.Token),

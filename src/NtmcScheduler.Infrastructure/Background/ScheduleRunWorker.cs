@@ -103,11 +103,9 @@ public sealed class ScheduleRunWorker(
         }
     }
 
-    // The solver throws OperationCanceledException, but the M portfolio runs through PLINQ, which
-    // wraps anything it does not recognise as its own cancellation into an AggregateException.
     private static bool WasCancelledByOperator(Exception exception, CancellationToken solving, CancellationToken stoppingToken) =>
         solving.IsCancellationRequested && !stoppingToken.IsCancellationRequested &&
-        exception is OperationCanceledException or AggregateException;
+        exception is OperationCanceledException;
 
     private async Task MarkCancelledAsync(NtmcDbContext db, ScheduleRun run, CancellationToken cancellationToken)
     {
@@ -164,12 +162,19 @@ public sealed class ScheduleRunWorker(
     {
         var template = string.IsNullOrWhiteSpace(run.PerpetualScheduleJson) ? null
             : JsonSerializer.Deserialize<MPerpetualSchedule>(run.PerpetualScheduleJson, ServiceSupport.JsonOptions);
-        var results = Enumerable.Range(0, run.SeedCount).AsParallel().AsOrdered().WithCancellation(cancellationToken)
-            .Select(index => template is null
-                ? MSolver.Solve(input, options with { RandomSeed = unchecked(run.RandomSeed + index) }, cancellationToken)
-                : MSolver.Solve(input, template, options with { RandomSeed = unchecked(run.RandomSeed + index) }, cancellationToken))
-            .ToArray();
-        return results.Aggregate((best, current) => Compare(current, best) < 0 ? current : best);
+        // Seeds run one after another so a portfolio never multiplies the memory and CPU of a single
+        // solve. TimeLimit stays per seed, which makes the wall time SeedCount x TimeLimit.
+        MSolveResult? best = null;
+        for (var index = 0; index < run.SeedCount; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var seeded = options with { RandomSeed = unchecked(run.RandomSeed + index) };
+            var result = template is null
+                ? MSolver.Solve(input, seeded, cancellationToken)
+                : MSolver.Solve(input, template, seeded, cancellationToken);
+            if (best is null || Compare(result, best) < 0) best = result;
+        }
+        return best ?? throw new InvalidOperationException("A run must have at least one seed.");
     }
 
     private static int Compare(MSolveResult left, MSolveResult right)

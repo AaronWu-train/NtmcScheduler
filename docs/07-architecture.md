@@ -80,7 +80,7 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 | T 營運 | 月輪轉順序（早→午→夜→早），及必要時的下月班組例外 |
 | 休假週期 | 每個 8 週週期的 start、end、requiredR（一般休假，預設 16）、requiredR1（國定假日數） |
 | 規則 | 固定群組、違反量與權重寫在 M/T solver 原始碼；M 為 J1 與直接加權合併的 `J4+J5`，T 為 J1–J5 |
-| 求解 | CLI 以 `--search workers=N,seconds=N` 調整 worker 數與總時限。M 另可設 `seeds=N`，預設 4 workers、2 seeds、300 秒，並選取第一候選字典序較佳的整批結果；T 固定單 seed 0，預設 8 workers、300 秒。不預留固定候選時間，目標最佳化後才以餘時搜尋。差異門檻固定 5%，最多 3 份候選。M 找不到同分第二份時各目標最多可差 20%；T 候選維持同分 |
+| 求解 | CLI 以 `--search workers=N,seconds=N` 調整 worker 數與總時限。M 另可設 `seeds=N`，seed 依序執行、各自計時，預設 8 workers、2 seeds、300 秒，並選取第一候選字典序較佳的整批結果；T 固定單 seed 0，預設 8 workers、300 秒。Web 求解參數上限為 600 秒／seed、8 workers、4 seeds。不預留固定候選時間，目標最佳化後才以餘時搜尋。差異門檻固定 5%，最多 3 份候選。M 找不到同分第二份時各目標最多可差 20%；T 候選維持同分 |
 
 ## 8. 背景工作與併發
 

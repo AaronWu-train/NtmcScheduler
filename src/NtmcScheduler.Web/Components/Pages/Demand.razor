@@ -363,10 +363,11 @@
             <div class="advanced-settings">
                 <strong>進階求解設定</strong>
                 <div class="toolbar">
-                    <label>每次時間上限（秒）<input class="number-field" type="number" min="1" @bind="solveTimeLimitSeconds"/></label><label>平行運算數<input class="number-field" type="number" min="1" @bind="solveWorkerCount"/></label>
+                    <label>每個 Seed 時間上限（秒）<input class="number-field" type="number" min="1" max="@ScheduleRunOptions.MaxTimeLimitSeconds" @bind="solveTimeLimitSeconds"/></label><label>平行運算數<input class="number-field" type="number" min="1" max="@ScheduleRunOptions.MaxWorkerCount" @bind="solveWorkerCount"/></label>
                     @if (workspaceCode == WorkspaceCode.M)
                     {
-                        <label>Seed數量<input class="number-field" type="number" min="1" @bind="solveSeedCount"/></label>
+                        <label>Seed數量<input class="number-field" type="number" min="1" max="@ScheduleRunOptions.MaxSeedCount" @bind="solveSeedCount"/></label>
+                        <small>Seed 依序執行，總時間最多約 @(solveTimeLimitSeconds * solveSeedCount) 秒。</small>
                     }
                 </div>
             </div>
@@ -518,8 +519,6 @@
     protected override async Task OnParametersSetAsync()
     {
         if (!Enum.TryParse<WorkspaceCode>(Workspace, true, out workspaceCode)) throw new DomainValidationException("工作區只支援 M 或 T。");
-        solveWorkerCount = workspaceCode == WorkspaceCode.M ? 4 : 8;
-        solveSeedCount = workspaceCode == WorkspaceCode.M ? 2 : 1;
         var actor = await CurrentActor.GetAsync();
         if (!actor.CanEdit(workspaceCode))
         {

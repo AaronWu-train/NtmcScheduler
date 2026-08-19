@@ -91,12 +91,12 @@ M 候選另包含外派日期、車站、班別與人數。
 dotnet run --project src/NtmcScheduler.Cli
 ```
 
-CLI 依序詢問目標月、上月 CSV、本月 CSV、八週區間 CSV 與非常態班型 CSV；偵測為 M 後再詢問可留白的八週萬年班表 CSV。CSV 只由 CLI 解析；solver 收到 typed snapshot。Ctrl+C 傳入 cancellation token。M/T 都可使用 `--search workers=N,seconds=N` 調整 worker 數與每次的整體總時限。M 另可加 `seeds=N`，省略開關時預設並行執行 2 seeds、每個 4 workers、300 秒；CLI 比較各 seed 第一候選的具名目標字典序分數，只輸出較佳 seed 的整批結果。T 只執行單一 seed 0，預設 8 workers、300 秒，不接受 `seeds>1`。結果摘要另以小數一位顯示實際求解時間，不包含互動輸入、CSV 讀取與候選檔寫入時間。
+CLI 依序詢問目標月、上月 CSV、本月 CSV、八週區間 CSV 與非常態班型 CSV；偵測為 M 後再詢問可留白的八週萬年班表 CSV。CSV 只由 CLI 解析；solver 收到 typed snapshot。Ctrl+C 傳入 cancellation token。M/T 都可使用 `--search workers=N,seconds=N` 調整 worker 數與每次的整體總時限。M 另可加 `seeds=N`，各 seed **依序執行**、每個 seed 各自計算完整時限，總耗時約 `seeds × seconds`；省略開關時預設 2 seeds、8 workers、300 秒。CLI 比較各 seed 第一候選的具名目標字典序分數，只輸出較佳 seed 的整批結果。T 只執行單一 seed 0，預設 8 workers、300 秒，不接受 `seeds>1`。結果摘要另以小數一位顯示實際求解時間，不包含互動輸入、CSV 讀取與候選檔寫入時間。
 
 透過 `dotnet run` 時，開關放在參數分隔符號之後：
 
 ```bash
-dotnet run --project src/NtmcScheduler.Cli -- --search workers=4,seeds=2,seconds=300
+dotnet run --project src/NtmcScheduler.Cli -- --search workers=8,seeds=2,seconds=300
 ```
 
 `workers`、`seconds` 與 M 可選的 `seeds` 都必須是正整數；未知、缺漏或重複欄位視為格式錯誤。
