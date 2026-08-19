@@ -1,6 +1,9 @@
+using Microsoft.AspNetCore.Components;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using NtmcScheduler.Contracts;
 using NtmcScheduler.Infrastructure.Data;
 using NtmcScheduler.Infrastructure.Background;
@@ -28,6 +31,26 @@ public sealed class WebInfrastructureTests
         Assert.IsFalse(limiter.IsAllowed("viewer", "198.51.100.1", now), "Account limit must apply across IP addresses.");
         Assert.IsFalse(limiter.IsAllowed("another", "192.0.2.1", now), "IP limit must apply across account names.");
         Assert.IsTrue(limiter.IsAllowed("viewer", "192.0.2.1", now.AddMinutes(15)));
+    }
+
+    [TestMethod]
+    public void IdentityRedirectManager_KeepsLocalReturnUrlsAndNeverLeavesTheApplication()
+    {
+        Assert.AreEqual("https://scheduler.local/schedules", Redirect("schedules"), "RedirectToLogin supplies base-relative return URLs without a leading slash.");
+        Assert.AreEqual("https://scheduler.local/m/shift-times?month=2026-08", Redirect("m/shift-times?month=2026-08"), "Query strings must survive the round trip.");
+        Assert.AreEqual("https://scheduler.local/Account/ChangePassword", Redirect("/Account/ChangePassword"), "Rooted paths are used by the sign-in and password flows.");
+        Assert.AreEqual("https://scheduler.local/", Redirect(null));
+
+        string[] hostile = ["//evil.example/phishing", "https://evil.example/phishing", @"/\evil.example", @"\\evil.example", "javascript:alert(1)"];
+        foreach (var returnUrl in hostile)
+            Assert.AreEqual("scheduler.local", new Uri(Redirect(returnUrl)).Host, $"'{returnUrl}' must not redirect off-site after a successful sign-in.");
+
+        static string Redirect(string? returnUrl)
+        {
+            var navigation = new FakeNavigationManager("https://scheduler.local/");
+            new IdentityRedirectManager(navigation).RedirectTo(returnUrl);
+            return navigation.Target ?? throw new InvalidOperationException("RedirectTo did not navigate.");
+        }
     }
 
     [TestMethod]
@@ -823,6 +846,93 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
+    public async Task ScheduleRunCancel_RequiresWorkspaceEditorAndRejectsFinishedRuns()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var queue = new ScheduleRunQueue();
+        var service = new ScheduleRunService(database.Context, queue);
+        var run = QueuedRun(WorkspaceCode.M);
+        database.Context.ScheduleRuns.Add(run);
+        var finished = QueuedRun(WorkspaceCode.M);
+        finished.Status = ScheduleRunStatus.Optimal;
+        database.Context.ScheduleRuns.Add(finished);
+        await database.Context.SaveChangesAsync();
+        await queue.QueueAsync(run.Id);
+        await queue.QueueAsync(finished.Id);
+
+        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => service.CancelAsync(run.Id, Editor(WorkspaceCode.T)));
+        Assert.IsFalse(queue.CancellationFor(run.Id).IsCancellationRequested, "A rejected request must not signal the run.");
+        await Assert.ThrowsExactlyAsync<DomainValidationException>(() => service.CancelAsync(finished.Id, Editor(WorkspaceCode.M)));
+
+        await service.CancelAsync(run.Id, Editor(WorkspaceCode.M));
+        Assert.IsTrue(queue.CancellationFor(run.Id).IsCancellationRequested);
+        Assert.IsTrue(await database.Context.AuditLogs.AnyAsync(x => x.Action == "ScheduleRunCancelled"));
+        await Assert.ThrowsExactlyAsync<DomainValidationException>(() => service.CancelAsync(run.Id, Editor(WorkspaceCode.M)));
+
+        queue.Release(run.Id);
+        Assert.IsFalse(queue.Cancel(run.Id), "A released run is no longer cancellable.");
+    }
+
+    [TestMethod]
+    public async Task ScheduleRunWorker_CancelledWhileQueued_EndsCancelledWithoutSolving()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var queue = new ScheduleRunQueue();
+        // An unparseable snapshot fails the run loudly if the worker ever reaches the solver.
+        var run = QueuedRun(WorkspaceCode.M);
+        run.InputSnapshotJson = "not a schedule input";
+        database.Context.ScheduleRuns.Add(run);
+        await database.Context.SaveChangesAsync();
+        await queue.QueueAsync(run.Id);
+        await new ScheduleRunService(database.Context, queue).CancelAsync(run.Id, Editor(WorkspaceCode.M));
+
+        var services = new ServiceCollection();
+        services.AddScoped(_ => database.NewContext());
+        await using var provider = services.BuildServiceProvider();
+        var worker = new ScheduleRunWorker(queue, provider.GetRequiredService<IServiceScopeFactory>(), NullLogger<ScheduleRunWorker>.Instance);
+        var process = typeof(ScheduleRunWorker).GetMethod("ProcessAsync",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        await (Task)process.Invoke(worker, [run.Id, CancellationToken.None])!;
+
+        await using var verification = database.NewContext();
+        var stored = await verification.ScheduleRuns.SingleAsync(x => x.Id == run.Id);
+        Assert.AreEqual(ScheduleRunStatus.Cancelled, stored.Status);
+        Assert.IsNotNull(stored.CompletedAtUtc);
+        Assert.IsNull(stored.StartedAtUtc, "A run cancelled before it started must not be marked as started.");
+        Assert.IsEmpty(await verification.ScheduleVersions.ToListAsync(), "Cancelling must not keep any candidate.");
+    }
+
+    [TestMethod]
+    public void ScheduleRunWorker_TellsOperatorCancellationApartFromShutdownAndFailure()
+    {
+        var predicate = typeof(ScheduleRunWorker).GetMethod("WasCancelledByOperator",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        bool Evaluate(Exception exception, CancellationToken solving, CancellationToken stopping) =>
+            (bool)predicate.Invoke(null, [exception, solving, stopping])!;
+
+        Assert.IsTrue(Evaluate(new OperationCanceledException(), cancelled.Token, CancellationToken.None));
+        Assert.IsTrue(Evaluate(new AggregateException(new OperationCanceledException()), cancelled.Token, CancellationToken.None),
+            "PLINQ wraps the M portfolio cancellation.");
+        Assert.IsFalse(Evaluate(new InvalidOperationException(), cancelled.Token, CancellationToken.None),
+            "A real failure must still be reported as a failure.");
+        Assert.IsFalse(Evaluate(new OperationCanceledException(), cancelled.Token, cancelled.Token),
+            "Shutdown must be left to the restart recovery path, not recorded as cancelled.");
+    }
+
+    private static ScheduleRun QueuedRun(WorkspaceCode workspace) => new()
+    {
+        Workspace = workspace,
+        Month = new DateOnly(2026, 8, 1),
+        Status = ScheduleRunStatus.Queued,
+        RequestedByName = "editor",
+        CorrelationId = "cancel-test",
+        TimeLimitSeconds = 300,
+        WorkerCount = 4
+    };
+
+    [TestMethod]
     public async Task ScheduleRunWorker_RetriesTransientSqliteWriteLock()
     {
         var path = Path.Combine(Path.GetTempPath(), $"ntmc-worker-lock-{Guid.NewGuid():N}.db");
@@ -1306,6 +1416,17 @@ public sealed class WebInfrastructureTests
         ResourceId = "test",
         CorrelationId = "test"
     };
+
+    private sealed class FakeNavigationManager : NavigationManager
+    {
+        public string? Target { get; private set; }
+
+        public FakeNavigationManager(string baseUri) => Initialize(baseUri, baseUri);
+
+        protected override void NavigateToCore(string uri, bool forceLoad) => Target = uri;
+
+        protected override void NavigateToCore(string uri, NavigationOptions options) => Target = uri;
+    }
 
     private sealed class TestDatabase : IDbContextFactory<NtmcDbContext>, IAsyncDisposable
     {

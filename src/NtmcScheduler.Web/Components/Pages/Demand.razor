@@ -375,7 +375,7 @@
                 <table>
                     <thead>
                     <tr>
-                        <th>建立時間</th><th>狀態</th><th>參數</th><th>完成時間</th><th>詳細資訊</th>
+                        <th>建立時間</th><th>狀態</th><th>參數</th><th>完成時間</th><th>詳細資訊</th><th>操作</th>
                     </tr>
                     </thead>
                     <tbody>
@@ -412,6 +412,12 @@
                                             }
                                         }
                                     </details>
+                                }
+                            </td>
+                            <td>
+                                @if (canEdit && IsCancellable(run))
+                                {
+                                    <button type="button" class="danger" disabled="@isBusy" @onclick="() => CancelRunAsync(run.Id)">取消求解</button>
                                 }
                             </td>
                         </tr>
@@ -689,6 +695,12 @@
         await LoadRunsAsync();
     }, "已送出，已排入背景求解佇列。請到首頁 Dashboard 查看即時進度。");
 
+    private async Task CancelRunAsync(Guid runId) => await RunUiAsync(async () =>
+    {
+        await RunService.CancelAsync(runId, await CurrentActor.GetAsync());
+        await LoadRunsAsync();
+    }, "已要求取消，求解停止後狀態會更新為已取消。");
+
     private async Task PreviewDemandAsync(InputFileChangeEventArgs args) => await RunUiAsync(async () =>
     {
         pendingDemand = await ReadFileAsync(args.File);
@@ -929,7 +941,8 @@
         }
     }
 
-    private static string RunStatusText(ScheduleRunDto run) => run.Status == ScheduleRunStatus.TimeLimit && string.IsNullOrWhiteSpace(run.Error) ? "時限到，已產生合法班表" : run.Status switch { ScheduleRunStatus.Queued => "已送出，等待處理", ScheduleRunStatus.Running => "處理中", _ => run.Status.ToString() };
+    private static bool IsCancellable(ScheduleRunDto run) => run.Status is ScheduleRunStatus.Queued or ScheduleRunStatus.Running;
+    private static string RunStatusText(ScheduleRunDto run) => run.Status == ScheduleRunStatus.TimeLimit && string.IsNullOrWhiteSpace(run.Error) ? "時限到，已產生合法班表" : run.Status switch { ScheduleRunStatus.Queued => "已送出，等待處理", ScheduleRunStatus.Running => "處理中", ScheduleRunStatus.Cancelled => "已取消", _ => run.Status.ToString() };
     private static string ObjectiveText(string name) => name switch { "RequestedRest" => "指定休假", "ScheduleQualityAndFairness" => "排班品質與公平性", "StaffingQuality" => "班組人力品質", "RestDistribution" => "休假分布", "WorkPatternQuality" => "工作型態品質", "RestFairness" => "休假公平", _ => name };
     private static string ComponentText(string name) => name switch { "RequestedRest" => "未滿足 R*", "UnusedLeaveRest" => "未使用指定 R休額度", "ExternalStaffing" => "外援人力", "MonthlyRest" => "每月一般 R 偏差", "SpecialRestBalance" => "八週累積 R1 餘額", "WorkStreak" => "連續工作區段", "MixedShiftWorkStreak" => "連續工作區段混合班型", "NightRestEarly" => "夜R早", "NightRestAfternoon" => "夜R午", "ShiftChangeWithoutRest" => "未休假直接換班", "WeekdayRestFairness" => "平日休假公平", "HolidayRestFairness" => "假日休假公平", "EarlyAfternoonImbalance" => "早午班差距", "NightShiftTarget" => "夜班 3, 4 天目標", "NonMonthlyShift" => "月班別不一致", "Attendance" => "班組出勤不足", "Specialty" => "專業缺席", "Ability" => "高能力人員不足", "NightToEarlyRest" => "跨月夜轉早休假不足", "MonthBoundaryRestBalance" => "月交界休假不平衡", _ => name };
 

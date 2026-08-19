@@ -35,6 +35,10 @@ public sealed class ScheduleRunWorker(
                 logger.LogError(exception, "Schedule run {RunId} failed.", runId);
                 await MarkFailedAsync(runId, exception, stoppingToken);
             }
+            finally
+            {
+                queue.Release(runId);
+            }
         }
     }
 
@@ -52,16 +56,25 @@ public sealed class ScheduleRunWorker(
         foreach (var run in pending) await queue.QueueAsync(run.Id, cancellationToken);
     }
 
-    private async Task ProcessAsync(Guid runId, CancellationToken cancellationToken)
+    private async Task ProcessAsync(Guid runId, CancellationToken stoppingToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<NtmcDbContext>();
-        var run = await db.ScheduleRuns.SingleOrDefaultAsync(x => x.Id == runId, cancellationToken);
+        var run = await db.ScheduleRuns.SingleOrDefaultAsync(x => x.Id == runId, stoppingToken);
         if (run is null || run.Status != ScheduleRunStatus.Queued) return;
+
+        // Persistence keeps using stoppingToken so an operator cancellation still records a final
+        // status; only the solver itself observes the combined token.
+        using var solving = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, queue.CancellationFor(runId));
+        if (solving.IsCancellationRequested && !stoppingToken.IsCancellationRequested)
+        {
+            await MarkCancelledAsync(db, run, stoppingToken);
+            return;
+        }
         run.Status = ScheduleRunStatus.Running;
         run.StartedAtUtc = DateTimeOffset.UtcNow;
-        await SaveChangesWithSqliteRetryAsync(db, cancellationToken);
-        await NotifyAsync(run, cancellationToken);
+        await SaveChangesWithSqliteRetryAsync(db, stoppingToken);
+        await NotifyAsync(run, stoppingToken);
 
         var input = JsonSerializer.Deserialize<ScheduleInput>(run.InputSnapshotJson, ServiceSupport.JsonOptions)
             ?? throw new InvalidOperationException("Run input snapshot is invalid.");
@@ -71,16 +84,37 @@ public sealed class ScheduleRunWorker(
             WorkerCount = run.WorkerCount,
             TimeLimit = TimeSpan.FromSeconds(run.TimeLimitSeconds)
         };
-        if (run.Workspace == WorkspaceCode.M)
+        try
         {
-            var result = SolveMPortfolio(input, run, options, cancellationToken);
-            await StoreMResultAsync(db, run, input.DemandMonth, result, cancellationToken);
+            if (run.Workspace == WorkspaceCode.M)
+            {
+                var result = SolveMPortfolio(input, run, options, solving.Token);
+                await StoreMResultAsync(db, run, input.DemandMonth, result, stoppingToken);
+            }
+            else
+            {
+                var result = TSolver.Solve(input, options, solving.Token);
+                await StoreTResultAsync(db, run, input.DemandMonth, result, stoppingToken);
+            }
         }
-        else
+        catch (Exception exception) when (WasCancelledByOperator(exception, solving.Token, stoppingToken))
         {
-            var result = TSolver.Solve(input, options, cancellationToken);
-            await StoreTResultAsync(db, run, input.DemandMonth, result, cancellationToken);
+            await MarkCancelledAsync(db, run, stoppingToken);
         }
+    }
+
+    // The solver throws OperationCanceledException, but the M portfolio runs through PLINQ, which
+    // wraps anything it does not recognise as its own cancellation into an AggregateException.
+    private static bool WasCancelledByOperator(Exception exception, CancellationToken solving, CancellationToken stoppingToken) =>
+        solving.IsCancellationRequested && !stoppingToken.IsCancellationRequested &&
+        exception is OperationCanceledException or AggregateException;
+
+    private async Task MarkCancelledAsync(NtmcDbContext db, ScheduleRun run, CancellationToken cancellationToken)
+    {
+        run.Status = ScheduleRunStatus.Cancelled;
+        run.CompletedAtUtc = DateTimeOffset.UtcNow;
+        await SaveChangesWithSqliteRetryAsync(db, cancellationToken);
+        await NotifyAsync(run, cancellationToken);
     }
 
     private async Task StoreMResultAsync(NtmcDbContext db, ScheduleRun run, MonthlySchedule demand, MSolveResult result, CancellationToken cancellationToken)

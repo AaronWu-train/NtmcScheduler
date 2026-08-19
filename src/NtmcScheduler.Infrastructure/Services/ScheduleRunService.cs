@@ -103,6 +103,22 @@ public sealed class ScheduleRunService(NtmcDbContext db, ScheduleRunQueue queue,
         return runs.OrderByDescending(x => x.CreatedAtUtc).Take(count).Select(ToDto).ToArray();
     }
 
+    public async Task CancelAsync(Guid runId, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        var run = await db.ScheduleRuns.SingleOrDefaultAsync(x => x.Id == runId, cancellationToken)
+            ?? throw new DomainValidationException("找不到求解工作。");
+        ServiceSupport.RequireEditor(actor, run.Workspace);
+        if (queue.CancellationFor(runId).IsCancellationRequested)
+            throw new DomainValidationException("已經要求取消，請等待求解停止。");
+        if (run.Status is not (ScheduleRunStatus.Queued or ScheduleRunStatus.Running) || !queue.Cancel(runId))
+            throw new DomainValidationException("求解工作已經結束，無法取消。");
+        // The worker owns the final status: it writes Cancelled once the solver has actually
+        // stopped, and notifies the UI from there.
+        ServiceSupport.AddAudit(db, actor, "ScheduleRunCancelled", run.Workspace, "ScheduleRun", run.Id, null,
+            new { run.Month, CancelledFrom = run.Status });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     private async Task<MonthlySchedule> ResolvePreviousAsync(DemandDraft demand, CancellationToken cancellationToken)
     {
         if (demand.PreviousSource == PreviousScheduleSource.Upload)

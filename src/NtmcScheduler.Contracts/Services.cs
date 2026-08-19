@@ -65,6 +65,7 @@ public interface IScheduleRunService
     Task<IReadOnlyList<ScheduleRunDto>> ListAsync(WorkspaceCode workspace, DateOnly month, ActorContext actor, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ScheduleRunDto>> ListActiveAsync(ActorContext actor, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ScheduleRunDto>> ListRecentAsync(int count, ActorContext actor, CancellationToken cancellationToken = default);
+    Task CancelAsync(Guid runId, ActorContext actor, CancellationToken cancellationToken = default);
 }
 
 public interface IScheduleRunNotifier

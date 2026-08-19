@@ -21,7 +21,8 @@ public enum ScheduleRunStatus
     Infeasible,
     InvalidInput,
     Failed,
-    Imported
+    Imported,
+    Cancelled
 }
 
 public enum ValidationSeverity

@@ -86,5 +86,8 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 
 - ScheduleRun 先寫入資料庫（Queued），BackgroundService 依序取出執行，**一次一個** Solver。
 - 系統重啟後，Queued／Running 的工作依快照重新開始。
+- Queued 與 Running 的工作可由該工作區 Editor 或 Administrator 手動取消，成為終態 `Cancelled`。
+  取消訊號是同一程序內的 cancellation token，由背景工作在求解實際停止後寫入終態；已取消的工作
+  不保留任何候選，也不產生班表版本。重啟會讓未完成的工作重新排隊，不沿用先前的取消要求。
 - 同單位同月可保存多份班表，`AdoptedSchedule` 只允許一份 `★`；每次儲存格修改都送後端重新驗證，
   以後端驗證結果為準。紅色違規版本不可標示為 `★`。

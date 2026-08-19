@@ -52,6 +52,7 @@ public static class AuditPresentation
         ["ScheduleRunQueued"] = "排程求解",
         ["ScheduleRunCompleted"] = "求解完成",
         ["ScheduleRunFailed"] = "求解失敗",
+        ["ScheduleRunCancelled"] = "取消求解",
         ["ScheduleAssignmentUpdated"] = "修改班表日格",
         ["ScheduleEmployeeMonthlyShiftUpdated"] = "修改 T 月班別",
         ["ScheduleAdopted"] = "採用班表",

@@ -39,6 +39,10 @@
     <div class="section-heading">
         <h2>最近工作</h2><span>狀態會自動更新</span>
     </div>
+    @if (message is not null)
+    {
+        <p class="alert @messageClass" role="alert">@message</p>
+    }
     @if (runs.Count == 0)
     {
         <p class="empty-state">還沒有求解紀錄。請先進入 M 或 T 建立班表。</p>
@@ -49,7 +53,7 @@
             <table class="dashboard-table">
                 <thead>
                 <tr>
-                    <th>單位／月份</th><th>狀態</th><th>分數</th><th>送出時間</th>
+                    <th>單位／月份</th><th>狀態</th><th>分數</th><th>送出時間</th><th>操作</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -91,6 +95,12 @@
                         <td>
                             @Taipei(run.CreatedAtUtc)<small>@run.TimeLimitSeconds 秒／@run.WorkerCount worker@(run.Workspace == WorkspaceCode.M ? $"／{run.SeedCount} 次嘗試" : "")</small>
                         </td>
+                        <td>
+                            @if (CanCancel(run))
+                            {
+                                <button type="button" class="danger" disabled="@isBusy" @onclick="() => CancelRunAsync(run.Id)">取消求解</button>
+                            }
+                        </td>
                     </tr>
                 }
                 </tbody>
@@ -101,6 +111,10 @@
 
 @code {
     private IReadOnlyList<ScheduleRunDto> runs = [];
+    private ActorContext? actor;
+    private string? message;
+    private string messageClass = "success";
+    private bool isBusy;
 
     protected override async Task OnInitializedAsync()
     {
@@ -109,7 +123,38 @@
     }
 
     private void OnRunChanged(ScheduleRunDto run) => _ = InvokeAsync(ReloadAsync);
-    private async Task ReloadAsync() => runs = await RunService.ListRecentAsync(5, await CurrentActor.GetAsync());
+
+    private async Task ReloadAsync()
+    {
+        actor = await CurrentActor.GetAsync();
+        runs = await RunService.ListRecentAsync(5, actor);
+    }
+
+    // The dashboard lists every workspace, so the button follows the same workspace editor
+    // permission that queuing and cancelling a run require on the server.
+    private bool CanCancel(ScheduleRunDto run) =>
+        run.Status is (ScheduleRunStatus.Queued or ScheduleRunStatus.Running) && actor?.CanEdit(run.Workspace) == true;
+
+    private async Task CancelRunAsync(Guid runId)
+    {
+        isBusy = true;
+        try
+        {
+            await RunService.CancelAsync(runId, await CurrentActor.GetAsync());
+            messageClass = "success";
+            message = "已要求取消，求解停止後狀態會更新為已取消。";
+            await ReloadAsync();
+        }
+        catch (Exception exception)
+        {
+            messageClass = "error";
+            message = exception.Message;
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
 
     private static string RunStatusText(ScheduleRunDto run) => run.Status switch
     {
@@ -121,10 +166,11 @@
         ScheduleRunStatus.Infeasible => "無解",
         ScheduleRunStatus.InvalidInput => "輸入錯誤",
         ScheduleRunStatus.Imported => "已匯入",
+        ScheduleRunStatus.Cancelled => "已取消",
         _ => "失敗"
     };
 
-    private static string RunStatusClass(ScheduleRunDto run) => run.Status switch { ScheduleRunStatus.Optimal or ScheduleRunStatus.Imported => "ok", ScheduleRunStatus.TimeLimit when run.Candidates.Count > 0 => "ok", ScheduleRunStatus.Queued or ScheduleRunStatus.Running => "working", _ => "error" };
+    private static string RunStatusClass(ScheduleRunDto run) => run.Status switch { ScheduleRunStatus.Optimal or ScheduleRunStatus.Imported => "ok", ScheduleRunStatus.TimeLimit when run.Candidates.Count > 0 => "ok", ScheduleRunStatus.Queued or ScheduleRunStatus.Running => "working", ScheduleRunStatus.Cancelled => "warning", _ => "error" };
     private static string ObjectiveText(string name) => name switch { "RequestedRest" => "指定休假", "ScheduleQualityAndFairness" => "排班品質與公平性", "StaffingQuality" => "班組人力品質", "RestDistribution" => "休假分布", "WorkPatternQuality" => "工作型態品質", "RestFairness" => "休假公平", _ => name };
     private static string ComponentText(string name) => name switch { "RequestedRest" => "未滿足 R*", "UnusedLeaveRest" => "未使用指定 R休額度", "ExternalStaffing" => "外援人力", "MonthlyRest" => "每月一般 R 偏差", "SpecialRestBalance" => "八週累積 R1 餘額", "WorkStreak" => "連續工作區段", "MixedShiftWorkStreak" => "連續工作區段混合班型", "NightRestEarly" => "夜R早", "NightRestAfternoon" => "夜R午", "ShiftChangeWithoutRest" => "未休假直接換班", "WeekdayRestFairness" => "平日休假公平", "HolidayRestFairness" => "假日休假公平", "EarlyAfternoonImbalance" => "早午班差距", "NightShiftTarget" => "夜班 3, 4 天目標", "NonMonthlyShift" => "月班別不一致", "Attendance" => "班組出勤不足", "Specialty" => "專業缺席", "Ability" => "高能力人員不足", "NightToEarlyRest" => "跨月夜轉早休假不足", "MonthBoundaryRestBalance" => "月交界休假不平衡", _ => name };
 
