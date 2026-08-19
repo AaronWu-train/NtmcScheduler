@@ -57,7 +57,7 @@ internal static class SolverAcceptanceAssertions
             Math.Max(0, candidate.ExternalAssignments.Where(item => item.Station != "LB09").Sum(item => item.Count) - 70) +
             Math.Max(0, candidate.ExternalAssignments.Where(item => item.Station == "LB09").Sum(item => item.Count) - 4));
         Expect(candidate.Objectives, "MonthlyRest", MonthlyRestPenalty(input, candidate.Schedule, AssignmentKind.Rest));
-        Expect(candidate.Objectives, "SpecialRestBalance", SpecialRestBalancePenalty(input, candidate.Schedule));
+        Expect(candidate.Objectives, "SpecialRestBalance", SpecialRestBalancePenalty(input, candidate.Schedule, allowOneOutstandingDeficitDay: true));
 
         var completedStreakPenalty = CompletedWorkStreakPenalty(input, candidate.Schedule, false);
         Assert.IsGreaterThanOrEqualTo(completedStreakPenalty, Component(candidate.Objectives, "WorkStreak").Value);
@@ -97,7 +97,7 @@ internal static class SolverAcceptanceAssertions
         Expect(candidate.Objectives, "Specialty", TSpecialty(input, candidate.Schedule));
         Expect(candidate.Objectives, "Ability", TAbility(input, candidate.Schedule));
         Expect(candidate.Objectives, "MonthlyRest", MonthlyRestPenalty(input, candidate.Schedule, AssignmentKind.Rest));
-        Expect(candidate.Objectives, "SpecialRestBalance", SpecialRestBalancePenalty(input, candidate.Schedule));
+        Expect(candidate.Objectives, "SpecialRestBalance", SpecialRestBalancePenalty(input, candidate.Schedule, allowOneOutstandingDeficitDay: false));
 
         var completedStreakPenalty = CompletedWorkStreakPenalty(input, candidate.Schedule, true);
         Assert.IsGreaterThanOrEqualTo(completedStreakPenalty, Component(candidate.Objectives, "WorkStreak").Value);
@@ -213,7 +213,7 @@ internal static class SolverAcceptanceAssertions
         });
     }
 
-    private static long SpecialRestBalancePenalty(ScheduleInput input, MonthlySchedule schedule)
+    private static long SpecialRestBalancePenalty(ScheduleInput input, MonthlySchedule schedule, bool allowOneOutstandingDeficitDay)
     {
         var monthStart = input.DemandMonth.MonthStart;
         var monthEnd = TargetDates(input).Last();
@@ -233,7 +233,11 @@ internal static class SolverAcceptanceAssertions
                     pair.Key >= interval.Start && pair.Key <= interval.End && pair.Value.Kind == AssignmentKind.SpecialRest);
                 var expected = interval.NationalHolidays.Count(date => date <= (interval.End < monthEnd ? interval.End : monthEnd));
                 var balance = actual - expected;
-                var deviation = balance > 0 ? balance : Math.Max(0, -balance - 1);
+                var deviation = balance > 0
+                    ? balance
+                    : allowOneOutstandingDeficitDay
+                        ? Math.Max(0, -balance - 1)
+                        : -balance;
                 return (long)deviation * deviation;
             }));
     }
