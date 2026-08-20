@@ -9,9 +9,13 @@ public sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<Ntm
     {
         var builder = new DbContextOptionsBuilder<NtmcDbContext>();
         if (string.Equals(Environment.GetEnvironmentVariable("NTMC_MIGRATION_PROVIDER"), "SqlServer", StringComparison.OrdinalIgnoreCase))
-            builder.UseSqlServer("Server=localhost;Database=NtmcSchedulerDesign;User Id=sa;Password=NotUsedForScriptGeneration!1;TrustServerCertificate=True");
+            builder.UseSqlServer(
+                "Server=localhost;Database=NtmcSchedulerDesign;User Id=sa;Password=NotUsedForScriptGeneration!1;TrustServerCertificate=True",
+                sql => sql.MigrationsAssembly("NtmcScheduler.Migrations.SqlServer"));
         else
-            builder.UseSqlite("Data Source=ntmc-scheduler-design.db");
+            builder.UseSqlite(
+                "Data Source=ntmc-scheduler-design.db",
+                sqlite => sqlite.MigrationsAssembly("NtmcScheduler.Migrations.Sqlite"));
         var options = builder.Options;
         return new NtmcDbContext(options);
     }

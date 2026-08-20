@@ -609,3 +609,9 @@
 - 既有 `/Account/ChangePassword` 原本只在首次登入或管理者重設後強制導向；頁首新增「修改密碼」，任何已登入者可隨時開啟同一頁。
 - 自行修改仍須驗證目前密碼，寫入 AuditLog `PasswordChanged`，並保留同一 SessionId；不開放忘記密碼或郵件重設。
 - 首次登入／重設後強制改密碼的攔截不變，該狀態下不可返回其他頁面。
+
+## 2026-08-20：SQLite 與 SQL Server 使用獨立 migration sets
+
+- 取代「單一 provider-neutral migration」設計；SQLite 與 SQL Server 分別使用 `NtmcScheduler.Migrations.Sqlite` 與 `NtmcScheduler.Migrations.SqlServer` assembly，避免 provider metadata 差異造成 pending model changes。
+- 既有 migration 歷史與 snapshot 原樣移至 SQLite project；SQL Server 以目前完整 model 的 `InitialCreate` 起始，適用於尚無 NtmcScheduler schema 的正式資料庫。
+- 每次 model 變更都必須對兩個 provider 各新增 migration；Web runtime 與 design-time factory 依 provider 指定對應 migration assembly，不停用 `PendingModelChangesWarning`。

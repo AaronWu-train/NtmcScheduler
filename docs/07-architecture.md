@@ -59,7 +59,7 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 ## 5. 資料庫
 
 - EF Core。開發環境用 **SQLite**；正式環境使用 **SQL Server**。
-- 不使用 provider 專屬查詢；單一 migration 可分別產生 SQLite 與 SQL Server script。
+- 不使用 provider 專屬查詢；SQLite 與 SQL Server 各自使用獨立 migration project、歷史與 model snapshot。每次 model 變更必須為兩個 provider 分別新增 migration。
 - SQLite 啟動後使用 WAL journal，避免背景求解保存班表時阻塞 UI 讀取；載入完整班表的多集合查詢使用 EF Core split query，避免集合笛卡兒積。
 
 ## 6. 登入與授權（第一版）

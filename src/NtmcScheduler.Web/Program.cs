@@ -56,8 +56,10 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
 var provider = builder.Configuration["DatabaseProvider"] ?? "Sqlite";
 builder.Services.AddNtmcInfrastructure(options =>
 {
-    if (provider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase)) options.UseSqlServer(connectionString);
-    else if (provider.Equals("Sqlite", StringComparison.OrdinalIgnoreCase)) options.UseSqlite(connectionString);
+    if (provider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase))
+        options.UseSqlServer(connectionString, sql => sql.MigrationsAssembly("NtmcScheduler.Migrations.SqlServer"));
+    else if (provider.Equals("Sqlite", StringComparison.OrdinalIgnoreCase))
+        options.UseSqlite(connectionString, sqlite => sqlite.MigrationsAssembly("NtmcScheduler.Migrations.Sqlite"));
     else throw new InvalidOperationException("DatabaseProvider must be Sqlite or SqlServer.");
 });
 

@@ -47,7 +47,13 @@ src/
 
 - Identity、WorkspacePermission、Employee、不可變 ConfigurationRevision、DemandDraft／快照、EmployeeDemandSubmission、ScheduleRun、ScheduleVersion／assignments、AdoptedSchedule、全域 MPerpetualScheduleTemplate 與 append-only AuditLog（含 SessionId）。
 - 所有 domain 主鍵與 revision token 使用應用程式產生 GUID；`AdoptedSchedule(Workspace, Month)` 主鍵保證每月唯一 `★`。
-- repository-local `dotnet-ef` 產生單一 provider-neutral migration；開發用 SQLite，正式用 SQL Server。`NTMC_MIGRATION_PROVIDER=SqlServer` 可產生 SQL Server script。
+- repository-local `dotnet-ef` 管理兩套 provider-specific migration：現有歷史保留在 `NtmcScheduler.Migrations.Sqlite`，SQL Server 由 `NtmcScheduler.Migrations.SqlServer` 的 `InitialCreate` 起始。每次 model 變更必須對兩個 project 各新增一份 migration：
+
+```bash
+dotnet ef migrations add <Name> -p src/NtmcScheduler.Migrations.Sqlite -s src/NtmcScheduler.Web
+NTMC_MIGRATION_PROVIDER=SqlServer dotnet ef migrations add <Name> \
+  -p src/NtmcScheduler.Migrations.SqlServer -s src/NtmcScheduler.Web
+```
 
 ## 資安邊界
 

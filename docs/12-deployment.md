@@ -308,10 +308,12 @@ sudo systemctl restart systemd-journald
 ```bash
 dotnet tool restore
 NTMC_MIGRATION_PROVIDER=SqlServer dotnet ef migrations script --idempotent \
-  -p src/NtmcScheduler.Infrastructure -s src/NtmcScheduler.Web -o ntmc.sql
+  -p src/NtmcScheduler.Migrations.SqlServer -s src/NtmcScheduler.Web -o ntmc.sql
 ```
 
-script 為 idempotent，可重複套用。套用後可由 DBA 把 `<DB_USER>` 權限降為
+SQL Server migration set 從目前完整 model 的 `InitialCreate` 起始；只可直接套用至尚未包含
+NtmcScheduler tables 與 `__EFMigrationsHistory` 的空資料庫。script 為 idempotent，可重複套用。
+套用後可由 DBA 把 `<DB_USER>` 權限降為
 `db_datareader`、`db_datawriter` 與必要的 `EXECUTE`，但仍需保留讀取 `__EFMigrationsHistory` 的權限，
 因為應用程式啟動時仍會呼叫 migration 檢查。
 

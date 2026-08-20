@@ -9,6 +9,8 @@
   <ItemGroup>
     <ProjectReference Include="../NtmcScheduler.Contracts/NtmcScheduler.Contracts.csproj" />
     <ProjectReference Include="../NtmcScheduler.Infrastructure/NtmcScheduler.Infrastructure.csproj" />
+    <ProjectReference Include="../NtmcScheduler.Migrations.Sqlite/NtmcScheduler.Migrations.Sqlite.csproj" />
+    <ProjectReference Include="../NtmcScheduler.Migrations.SqlServer/NtmcScheduler.Migrations.SqlServer.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10">
