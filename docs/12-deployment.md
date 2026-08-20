@@ -60,12 +60,13 @@ sudo apt install -y libstdc++6 libicu74
 sudo timedatectl set-timezone Asia/Taipei
 ```
 
-## 2. 建立系統使用者與目錄
+## 2. 準備執行帳號與目錄
 
-不要用 root 執行應用程式。
+不要用 root 執行應用程式。VM 上已有一般使用者 `ntmsy-schedule` 與既有家目錄時，**不要再執行 `useradd`**，也不要改家目錄或 shell。
+
+仍須另外建立應用程式目錄。`/var/lib/ntmsy-schedule` 只放憑證與 Data Protection key ring，不是使用者的 home；systemd unit 設了 `ProtectHome=true`，服務程序讀不到 `/home`，所以 key 與憑證不能放在家目錄裡。
 
 ```bash
-sudo useradd --system --create-home --home-dir /var/lib/ntmsy-schedule --shell /usr/sbin/nologin ntmsy-schedule
 sudo mkdir -p /opt/ntmsy-schedule /var/lib/ntmsy-schedule/keys /etc/ntmsy-schedule
 sudo chown -R ntmsy-schedule:ntmsy-schedule /opt/ntmsy-schedule /var/lib/ntmsy-schedule
 sudo chmod 700 /var/lib/ntmsy-schedule/keys
@@ -73,10 +74,11 @@ sudo chmod 700 /var/lib/ntmsy-schedule/keys
 
 | 路徑 | 用途 |
 |---|---|
+| 既有家目錄（例如 `/home/ntmsy-schedule`） | 登入與維運用，應用程式不寫入 |
 | `/opt/ntmsy-schedule` | publish 出來的應用程式檔案 |
 | `/var/lib/ntmsy-schedule/keys` | Data Protection key ring，**必須持久保存** |
 | `/var/lib/ntmsy-schedule/*.pfx` | 憑證 |
-| `/etc/ntmsy-schedule/ntmsy-schedule.env` | 環境變數，含密碼，權限 600 |
+| `/etc/ntmsy-schedule/ntmsy-schedule.env` | 環境變數，含密碼，權限 640 |
 
 ## 3. 準備 SQL Server 資料庫
 
