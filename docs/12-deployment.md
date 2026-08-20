@@ -23,9 +23,9 @@
 
 - Ubuntu 24.04 LTS VM，具 sudo 權限。
 - SQL Server 連線資訊，且 VM 到 SQL Server 的 TCP 1433 已開通。
-- 公司內部 CA 願意簽發一張 **含 IP SAN** 的伺服器憑證（見第 4 節）。公有 CA 不會對私有 IP 簽發。
-- 內部 CA 的根憑證能透過 GPO 推送到所有使用者電腦。本系統是 Blazor Interactive Server，
-  靠 WebSocket（`wss:`）維持連線；瀏覽器若不信任憑證會直接封鎖 WSS，畫面會停在載入後完全沒有反應。
+- 本系統只在公司內網使用，網路存取限制由公司既有 Firewall／ACL 管理；VM 本身不另外啟用 UFW。
+- 準備一張 **含 IP SAN** 的自簽 HTTPS 伺服器憑證（見第 4 節），並讓所有使用者電腦信任該憑證。
+  本系統是 Blazor Interactive Server，靠 WebSocket（`wss:`）維持連線；瀏覽器若不信任憑證，WSS 會被封鎖，畫面可能載入後完全沒有反應。
 
 ## 1. 安裝 .NET 10
 
@@ -39,13 +39,7 @@ sudo apt install -y dotnet-sdk-10.0          # 建置用
 dotnet --list-sdks
 ```
 
-Ubuntu 官方套件庫若還沒有 .NET 10，改用 Microsoft 套件庫：
-
-```bash
-wget https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb -O /tmp/ms.deb
-sudo dpkg -i /tmp/ms.deb
-sudo apt update && sudo apt install -y dotnet-sdk-10.0
-```
+Ubuntu 24.04 的 .NET 10 套件由 Ubuntu 套件來源提供；若 `apt` 找不到套件，先檢查 VM 的 Ubuntu 套件來源設定並重新執行 `sudo apt update`，不要另外混用 Microsoft 的 Ubuntu 套件庫。
 
 OR-Tools 是 native library，需要 C++ 執行期與 ICU。dotnet 套件通常會一併帶入，仍建議明確確認：
 
@@ -68,8 +62,12 @@ sudo timedatectl set-timezone Asia/Taipei
 
 ```bash
 sudo mkdir -p /opt/ntmsy-schedule /var/lib/ntmsy-schedule/keys /etc/ntmsy-schedule
-sudo chown -R ntmsy-schedule:ntmsy-schedule /opt/ntmsy-schedule /var/lib/ntmsy-schedule
+sudo chown root:root /opt/ntmsy-schedule
+sudo chmod 755 /opt/ntmsy-schedule
+sudo chown -R ntmsy-schedule:ntmsy-schedule /var/lib/ntmsy-schedule
 sudo chmod 700 /var/lib/ntmsy-schedule/keys
+sudo chown root:ntmsy-schedule /etc/ntmsy-schedule
+sudo chmod 750 /etc/ntmsy-schedule
 ```
 
 | 路徑 | 用途 |
@@ -109,46 +107,50 @@ nc -zv <SQL_HOST> 1433
 
 **這是兩張不同用途的憑證，不要共用。**
 
-### 4a. 伺服器憑證（HTTPS，需 IP SAN）
+### 4a. 伺服器憑證（HTTPS，自簽且需 IP SAN）
 
-在 VM 上產生私鑰與 CSR：
+本系統只在公司內網使用，直接在 VM 上建立含 IP SAN 的自簽伺服器憑證：
 
 ```bash
-sudo openssl req -new -newkey rsa:2048 -nodes \
-  -keyout /var/lib/ntmsy-schedule/server.key -out /var/lib/ntmsy-schedule/server.csr \
+sudo openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+  -keyout /var/lib/ntmsy-schedule/server.key \
+  -out /var/lib/ntmsy-schedule/server.crt \
   -subj "/CN=<APP_IP>" \
   -addext "subjectAltName=IP:<APP_IP>" \
   -addext "extendedKeyUsage=serverAuth"
 ```
 
-把 `server.csr` 交給公司內部 CA 簽發，取回 `server.crt` 後合併成 Kestrel 使用的 PKCS#12：
+再合併成 Kestrel 使用的 PKCS#12。不要把密碼直接寫在 command line；OpenSSL 會在終端機提示輸入匯出密碼，該密碼就是後續的 `<PFX_PASSWORD>`：
 
 ```bash
 sudo openssl pkcs12 -export \
-  -inkey /var/lib/ntmsy-schedule/server.key -in /var/lib/ntmsy-schedule/server.crt \
-  -out /var/lib/ntmsy-schedule/server.pfx -passout pass:<PFX_PASSWORD>
+  -inkey /var/lib/ntmsy-schedule/server.key \
+  -in /var/lib/ntmsy-schedule/server.crt \
+  -out /var/lib/ntmsy-schedule/server.pfx
 ```
 
-`subjectAltName` 必須是 `IP:`，不是 `DNS:`；只有 CN 而沒有 SAN 的憑證現代瀏覽器一律拒絕。
+將 `server.crt` 匯入所有使用者電腦的受信任憑證存放區；若公司有 GPO，可由 GPO 集中派送。`subjectAltName` 必須是 `IP:`，不是 `DNS:`；使用者也必須以憑證中的 `<APP_IP>` 連線。
 
 ### 4b. Data Protection 憑證（加密硬碟上的 key ring）
 
-Production 環境沒有這張憑證會**拒絕啟動**。它不對外，不需要 IP SAN，可自簽並設長效期：
+Production 環境沒有這張憑證會**拒絕啟動**。它不對外，不需要 IP SAN，可自簽並設長效期。第二個 `openssl pkcs12 -export` 會提示輸入匯出密碼，該密碼就是後續的 `<DPKEY_PASSWORD>`：
 
 ```bash
 sudo openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
   -subj "/CN=NtmcScheduler Data Protection" \
   -keyout /tmp/dp.key -out /tmp/dp.crt
 sudo openssl pkcs12 -export -inkey /tmp/dp.key -in /tmp/dp.crt \
-  -out /var/lib/ntmsy-schedule/dp.pfx -passout pass:<DPKEY_PASSWORD>
+  -out /var/lib/ntmsy-schedule/dp.pfx
 sudo rm /tmp/dp.key /tmp/dp.crt
 ```
 
 設定權限：
 
 ```bash
-sudo chown ntmsy-schedule:ntmsy-schedule /var/lib/ntmsy-schedule/*.pfx /var/lib/ntmsy-schedule/server.key
-sudo chmod 600 /var/lib/ntmsy-schedule/*.pfx /var/lib/ntmsy-schedule/server.key
+sudo chown ntmsy-schedule:ntmsy-schedule /var/lib/ntmsy-schedule/*.pfx
+sudo chmod 600 /var/lib/ntmsy-schedule/*.pfx
+sudo chown root:root /var/lib/ntmsy-schedule/server.key
+sudo chmod 600 /var/lib/ntmsy-schedule/server.key
 ```
 
 `dp.pfx` 與 `/var/lib/ntmsy-schedule/keys` 一定要納入備份。遺失的後果是所有使用者的登入 cookie 立即失效，
@@ -160,9 +162,11 @@ sudo chmod 600 /var/lib/ntmsy-schedule/*.pfx /var/lib/ntmsy-schedule/server.key
 
 ```bash
 dotnet publish src/NtmcScheduler.Web -c Release -r linux-x64 --self-contained false -o /tmp/ntmsy-schedule-publish
-sudo cp -r /tmp/ntmsy-schedule-publish/. /opt/ntmsy-schedule/
-sudo chown -R ntmsy-schedule:ntmsy-schedule /opt/ntmsy-schedule
-sudo chmod 500 /opt/ntmsy-schedule/NtmcScheduler.Web
+sudo cp -a /tmp/ntmsy-schedule-publish/. /opt/ntmsy-schedule/
+sudo chown -R root:root /opt/ntmsy-schedule
+sudo find /opt/ntmsy-schedule -type d -exec chmod 755 {} +
+sudo find /opt/ntmsy-schedule -type f -exec chmod 644 {} +
+sudo chmod 755 /opt/ntmsy-schedule/NtmcScheduler.Web
 ```
 
 指定 `-r linux-x64` 可確保 OR-Tools 的 Linux native library 被正確複製，在非 Linux 機器上建置時尤其重要。
@@ -196,10 +200,9 @@ sudo chmod 640 /etc/ntmsy-schedule/ntmsy-schedule.env
 
 幾個容易踩到的點：
 
-- 這個檔案由 systemd 讀取，值**不要加引號**，連線字串裡的分號也不需跳脫。
+- 這個檔案使用 systemd 的 `EnvironmentFile=` 語法，不要用 shell 的 `source` 方式載入。一般值可直接寫；若值需要引號，使用 systemd 支援的單引號或雙引號語法。連線字串中的分號不需額外跳脫。
 - `DataProtection__KeyPath` 請用絕對路徑；相對路徑會相對於 `ContentRootPath`，隨工作目錄改變。
-- 若 SQL Server 使用公司正式憑證，把 `TrustServerCertificate=True` 拿掉以取得完整驗證；
-  自簽憑證則必須保留，否則連線會被拒絕。
+- 本環境的 SQL Server 使用自簽 TLS 憑證，因此連線字串刻意保留 `Encrypt=True;TrustServerCertificate=True`。流量仍會加密，但不另外驗證 SQL Server 憑證鏈；此設定只適用於目前受公司內網與 Firewall 控制的部署環境。
 - **不要設定 `KnownProxies`**。本架構沒有反向代理，若信任了不存在的代理，
   `X-Forwarded-For` 就可被偽造，AuditLog 記錄的來源 IP 將不可信。
 
@@ -208,9 +211,15 @@ sudo chmod 640 /etc/ntmsy-schedule/ntmsy-schedule.env
 以 `ntmsy-schedule` 身分手動執行一次。這個指令會先跑 migration 建好所有資料表，再建立管理者，然後結束程序：
 
 ```bash
-sudo -u ntmsy-schedule env $(grep -v '^#' /etc/ntmsy-schedule/ntmsy-schedule.env | xargs -d '\n') \
+sudo systemd-run --unit=ntmsy-schedule-init \
+  --wait --collect --pty \
+  --uid=ntmsy-schedule --gid=ntmsy-schedule \
+  --working-directory=/opt/ntmsy-schedule \
+  --property=EnvironmentFile=/etc/ntmsy-schedule/ntmsy-schedule.env \
   /opt/ntmsy-schedule/NtmcScheduler.Web --init-admin admin
 ```
+
+這裡直接讓 systemd 讀取同一份 `EnvironmentFile`，避免用 `grep | xargs | env` 展開密碼時被空白或特殊字元破壞。
 
 終端機會提示 `Temporary password:`，輸入不會回顯。密碼規則為至少 8 字元、至少 2 種不同字元且含數字。
 建立完成後首次登入會強制修改密碼。
@@ -267,15 +276,16 @@ sudo journalctl -u ntmsy-schedule -f
 `ProtectSystem=strict` 讓整個檔案系統唯讀，因此必須用 `ReadWritePaths` 明確開放 key ring 目錄。
 `Type=simple` 是刻意的：程式沒有呼叫 `UseSystemd()`，不會送出 `READY=1`，改用 `Type=notify` 會讓 systemd 一直等到逾時而判定啟動失敗。
 
-## 9. 防火牆與 Log 保留
+## 9. 網路限制與 Log 保留
 
-只開 443，不要開 80。HSTS 依 RFC 6797 對 IP 位址無效，瀏覽器會忽略，
-所以「不提供 http」是這個架構唯一的降級保護手段。
+本 VM **不另外啟用 UFW**，網路存取限制由公司既有 Firewall／ACL 管理。部署前確認：
 
-```bash
-sudo ufw allow 443/tcp
-sudo ufw enable
-```
+- 使用者端只需要連入 VM 的 TCP 443。
+- 不提供 TCP 80；本系統沒有 HTTP listener。
+- VM 需要能連到 SQL Server 的 TCP 1433。
+- 其他對 VM 的連入規則依公司既有維運政策處理。
+
+HSTS 依 RFC 6797 對 IP 位址無效，因此本架構直接不提供 HTTP，避免從 HTTPS 降級。
 
 驗收要求 Log 保留一年。編輯 `/etc/systemd/journald.conf`：
 
@@ -310,13 +320,17 @@ script 為 idempotent，可重複套用。套用後把 `App_SYSchedule` 權限�
 
 ```bash
 sudo systemctl stop ntmsy-schedule
-sudo cp -r /tmp/ntmsy-schedule-publish/. /opt/ntmsy-schedule/
-sudo chown -R ntmsy-schedule:ntmsy-schedule /opt/ntmsy-schedule
+sudo find /opt/ntmsy-schedule -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+sudo cp -a /tmp/ntmsy-schedule-publish/. /opt/ntmsy-schedule/
+sudo chown -R root:root /opt/ntmsy-schedule
+sudo find /opt/ntmsy-schedule -type d -exec chmod 755 {} +
+sudo find /opt/ntmsy-schedule -type f -exec chmod 644 {} +
+sudo chmod 755 /opt/ntmsy-schedule/NtmcScheduler.Web
 sudo systemctl start ntmsy-schedule
 sudo journalctl -u ntmsy-schedule -n 100
 ```
 
-新版若含 migration，啟動時會自動套用。**升級前務必先備份資料庫**，migration 沒有自動回滾機制。
+新版若含 migration，啟動時會自動套用。升級時先清空舊 publish 內容，避免已被新版移除的 DLL 或靜態檔殘留。**升級前務必先備份資料庫**，migration 沒有自動回滾機制。
 
 ## 12. 備份
 
@@ -325,10 +339,10 @@ sudo journalctl -u ntmsy-schedule -n 100
 | 對象 | 方式 | 頻率 |
 |---|---|---|
 | SQL Server 資料庫 | `BACKUP DATABASE <DB_NAME> TO DISK = ...`，建議由 SQL Server Agent 排程 | 每日 |
-| `/var/lib/ntmsy-schedule/keys` | 檔案備份 | 變更時 |
-| `/var/lib/ntmsy-schedule/dp.pfx`、`server.pfx` | 離線保管 | 一次 |
+| `/var/lib/ntmsy-schedule/keys` | 檔案備份 | 每日，或納入既有持續備份 |
+| `/var/lib/ntmsy-schedule/dp.pfx`、`server.pfx` | 離線保管 | 建立／更換憑證時 |
 
-還原演練必須實際做過一次才算通過驗收：還原資料庫、還原 key ring，確認既有使用者不需重設密碼即可登入。
+還原演練必須實際做過一次才算通過驗收：還原資料庫、Data Protection key ring 與 `dp.pfx`，並確認還原前已建立的登入 session／cookie 仍可被系統解密使用。
 
 ## 13. 疑難排解
 
@@ -338,7 +352,7 @@ sudo journalctl -u ntmsy-schedule -n 100
 | 啟動即失敗，`ConnectionStrings:Default is required` | `EnvironmentFile` 沒被讀到，檢查路徑與 640 權限 |
 | 啟動即失敗，`DatabaseProvider must be Sqlite or SqlServer` | 拼字錯誤，必須剛好是 `SqlServer` |
 | 資料庫連線失敗，訊息含 `SSL Provider` 或 `no protocols available` | Ubuntu 24.04 的 OpenSSL 3 預設安全等級拒絕舊版 SQL Server 的 TLS。優先請 DBA 升級 SQL Server 或更新其憑證；短期權宜可在 `/etc/ssl/openssl.cnf` 降低 `CipherString` 的 `SECLEVEL`，但這會削弱全機器的 TLS policy，須經資安同意 |
-| 頁面載得出來但完全沒有反應、按鈕無效 | WebSocket 被擋。多半是使用者電腦不信任內部 CA 根憑證，或憑證缺少 IP SAN |
+| 頁面載得出來但完全沒有反應、按鈕無效 | WebSocket 被擋。先確認使用者電腦已信任 `server.crt`，再確認憑證包含正確的 IP SAN |
 | 瀏覽器顯示憑證錯誤 | 憑證的 SAN 不是 `IP:<APP_IP>`，或使用者用了與憑證不同的位址連入 |
 | 無法綁定 443 | systemd unit 缺 `AmbientCapabilities=CAP_NET_BIND_SERVICE` |
 | 找不到 OR-Tools native library | publish 時未指定 `-r linux-x64`，或缺 `libstdc++6` |
