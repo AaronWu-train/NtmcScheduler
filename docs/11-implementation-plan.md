@@ -41,6 +41,7 @@ src/
 - T 頁：員工主檔、建立班表、班表列表、互動寬表班表編輯器。
 - 每頁使用共用 `PageHelp` 顯示說明；編輯器固定人員欄、日期表頭、右側統計與底部 coverage 品質列。
 - 所有寫入 service command 接收 `ActorContext` 與資源 revision token；服務層再次驗證工作區權限，資料與 AuditLog 在同一 transaction。
+- Blazor circuit 內的 application service 不以 scoped `NtmcDbContext` 長期持有連線；每次操作經 `IDbContextFactory` 建立 context。帳號管理每個操作建立短生命週期 scope，讓 Identity 與 EF 共用同一 context。
 - `ScheduleRunWorker` 單一讀取者執行 M/T solver，從 immutable typed input JSON 重現；重啟恢復未完成工作且不重複處理終態 run。
 
 ## 資料庫與 migration

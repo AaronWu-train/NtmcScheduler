@@ -1,18 +1,19 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using NtmcScheduler.Contracts;
 using NtmcScheduler.Infrastructure.Data;
 
 namespace NtmcScheduler.Infrastructure.Services;
 
-public sealed class UserAdministrationService(
-    NtmcDbContext db,
-    UserManager<ApplicationUser> userManager,
-    RoleManager<IdentityRole<Guid>> roleManager) : IUserAdministrationService
+public sealed class UserAdministrationService(IServiceScopeFactory scopes) : IUserAdministrationService
 {
     public async Task<IReadOnlyList<UserAccountDto>> ListAsync(ActorContext actor, CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireAdministrator(actor);
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<NtmcDbContext>();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
         var users = await db.Users.AsNoTracking().Include(x => x.WorkspacePermissions).OrderBy(x => x.UserName).ToListAsync(cancellationToken);
         var result = new List<UserAccountDto>(users.Count);
         foreach (var user in users)
@@ -26,11 +27,15 @@ public sealed class UserAdministrationService(
     {
         ServiceSupport.RequireAdministrator(actor);
         ValidateUserName(command.UserName);
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<NtmcDbContext>();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var user = new ApplicationUser { Id = Guid.NewGuid(), UserName = command.UserName.Trim(), MustChangePassword = true };
         var result = await userManager.CreateAsync(user, command.TemporaryPassword);
         if (!result.Succeeded) throw new DomainValidationException(string.Join("；", result.Errors.Select(x => x.Description)));
-        await EnsureAdministratorRoleAsync();
+        await EnsureAdministratorRoleAsync(roleManager);
         if (command.IsAdministrator) await userManager.AddToRoleAsync(user, "Administrator");
         foreach (var workspace in command.EditableWorkspaces)
             db.WorkspacePermissions.Add(new() { UserId = user.Id, Workspace = workspace });
@@ -44,6 +49,9 @@ public sealed class UserAdministrationService(
     public async Task ResetPasswordAsync(Guid userId, string temporaryPassword, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireAdministrator(actor);
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<NtmcDbContext>();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var user = await userManager.FindByIdAsync(userId.ToString()) ?? throw new DomainValidationException("找不到使用者。");
         if (Revision(user) != revisionToken) throw new ConcurrencyConflictException("帳號已被其他人修改，請重新整理。");
@@ -62,13 +70,17 @@ public sealed class UserAdministrationService(
         ServiceSupport.RequireAdministrator(actor);
         if (userId == actor.UserId && (isDisabled || !isAdministrator))
             throw new DomainValidationException("不可停用自己或移除自己的管理者權限。");
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<NtmcDbContext>();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var user = await db.Users.Include(x => x.WorkspacePermissions).SingleOrDefaultAsync(x => x.Id == userId, cancellationToken)
             ?? throw new DomainValidationException("找不到使用者。");
         if (Revision(user) != revisionToken) throw new ConcurrencyConflictException("帳號已被其他人修改，請重新整理。");
         var before = new { user.UserName, user.IsDisabled, IsAdministrator = await userManager.IsInRoleAsync(user, "Administrator"), Workspaces = user.WorkspacePermissions.Select(x => x.Workspace).ToArray() };
         user.IsDisabled = isDisabled;
-        await EnsureAdministratorRoleAsync();
+        await EnsureAdministratorRoleAsync(roleManager);
         var currentlyAdministrator = await userManager.IsInRoleAsync(user, "Administrator");
         if (isAdministrator && !currentlyAdministrator) await userManager.AddToRoleAsync(user, "Administrator");
         if (!isAdministrator && currentlyAdministrator) await userManager.RemoveFromRoleAsync(user, "Administrator");
@@ -81,7 +93,7 @@ public sealed class UserAdministrationService(
         await transaction.CommitAsync(cancellationToken);
     }
 
-    private async Task EnsureAdministratorRoleAsync()
+    private static async Task EnsureAdministratorRoleAsync(RoleManager<IdentityRole<Guid>> roleManager)
     {
         if (!await roleManager.RoleExistsAsync("Administrator"))
         {

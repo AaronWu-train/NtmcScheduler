@@ -6,7 +6,7 @@ using NtmcScheduler.Solvers;
 
 namespace NtmcScheduler.Infrastructure.Services;
 
-public sealed class ScheduleValidationService(NtmcDbContext db) : IScheduleValidationService
+public sealed class ScheduleValidationService(IDbContextFactory<NtmcDbContext> dbFactory) : IScheduleValidationService
 {
     private static readonly TimeSpan TaipeiOffset = TimeSpan.FromHours(8);
     private static readonly string[] MStations =
@@ -21,6 +21,15 @@ public sealed class ScheduleValidationService(NtmcDbContext db) : IScheduleValid
         CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireViewer(actor);
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        return await ValidateAsync(db, versionId, cancellationToken);
+    }
+
+    internal async Task<(IReadOnlyList<ValidationIssue> Issues, IReadOnlyList<ScheduleEmployeeStats> Stats)> ValidateAsync(
+        NtmcDbContext db,
+        Guid versionId,
+        CancellationToken cancellationToken)
+    {
         var version = await db.ScheduleVersions
             .AsSplitQuery()
             .Include(x => x.ConfigurationRevision).ThenInclude(x => x.RestIntervals).ThenInclude(x => x.NationalHolidays)
@@ -29,7 +38,7 @@ public sealed class ScheduleValidationService(NtmcDbContext db) : IScheduleValid
             .Include(x => x.ExternalAssignments)
             .SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
             ?? throw new DomainValidationException("找不到班表版本。");
-        var previous = await PreviousAssignmentsAsync(version, cancellationToken);
+        var previous = await PreviousAssignmentsAsync(db, version, cancellationToken);
         var shiftTimes = SolverScheduleMapper.ToStandardShiftTimes(version.ConfigurationRevision);
         var issues = new List<ValidationIssue>();
         ValidateResolvedDailyAssignments(version, issues);
@@ -41,7 +50,8 @@ public sealed class ScheduleValidationService(NtmcDbContext db) : IScheduleValid
         return (issues, CalculateStats(version));
     }
 
-    private async Task<Dictionary<string, Dictionary<DateOnly, ScheduleAssignment>>> PreviousAssignmentsAsync(
+    private static async Task<Dictionary<string, Dictionary<DateOnly, ScheduleAssignment>>> PreviousAssignmentsAsync(
+        NtmcDbContext db,
         ScheduleVersion version,
         CancellationToken cancellationToken)
     {

@@ -57,7 +57,7 @@ public sealed class WebInfrastructureTests
     public async Task ConfigurationRevision_IsImmutableAndAudited()
     {
         await using var database = await TestDatabase.CreateAsync();
-        var service = new CommonConfigurationService(database.Context);
+        var service = new CommonConfigurationService(database);
         var actor = Editor(WorkspaceCode.M);
         var start = new DateOnly(2026, 8, 3);
         var first = await service.CreateRevisionAsync(
@@ -86,7 +86,7 @@ public sealed class WebInfrastructureTests
     public async Task ConfigurationRevision_RejectsNonFiftySixDayInterval()
     {
         await using var database = await TestDatabase.CreateAsync();
-        var service = new CommonConfigurationService(database.Context);
+        var service = new CommonConfigurationService(database);
         var start = new DateOnly(2026, 8, 3);
 
         await Assert.ThrowsExactlyAsync<DomainValidationException>(() => service.CreateRevisionAsync(
@@ -99,7 +99,7 @@ public sealed class WebInfrastructureTests
     public async Task ConfigurationCsv_ParsesIntervalsAndNonStandardShifts()
     {
         await using var database = await TestDatabase.CreateAsync();
-        var service = new CommonConfigurationService(database.Context);
+        var service = new CommonConfigurationService(database);
         var actor = Editor(WorkspaceCode.M);
 
         var intervals = await service.ParseRestIntervalsCsvAsync(
@@ -117,7 +117,7 @@ public sealed class WebInfrastructureTests
     public async Task EmployeeWrite_EnforcesWorkspaceAndRevisionToken()
     {
         await using var database = await TestDatabase.CreateAsync();
-        var service = new EmployeeService(database.Context);
+        var service = new EmployeeService(database);
         var viewer = new ActorContext(Guid.NewGuid(), "viewer", false, new HashSet<WorkspaceCode>(), "viewer-test");
         var create = new SaveEmployeeCommand(null, WorkspaceCode.M, "M001", "王小明", "LB01", null, null, null);
 
@@ -131,10 +131,34 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
+    public async Task EmployeeService_AllowsConcurrentReadsOnSeparateContexts()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"ntmc-concurrent-{Guid.NewGuid():N}.db");
+        try
+        {
+            var options = new DbContextOptionsBuilder<NtmcDbContext>().UseSqlite($"Data Source={path}").Options;
+            await using (var setup = new NtmcDbContext(options))
+                await setup.Database.EnsureCreatedAsync();
+            var service = new EmployeeService(new OptionsDbContextFactory(options));
+            var actor = Editor(WorkspaceCode.M);
+            await service.SaveAsync(new(null, WorkspaceCode.M, "M001", "王小明", "LB01", null, null, null), actor);
+            await Task.WhenAll(
+                service.ListAsync(WorkspaceCode.M, actor),
+                service.ListAsync(WorkspaceCode.M, actor),
+                service.ListAsync(WorkspaceCode.M, actor));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
     public async Task TAbility_IsOnlyReturnedToTEditors()
     {
         await using var database = await TestDatabase.CreateAsync();
-        var service = new EmployeeService(database.Context);
+        var service = new EmployeeService(database);
         var tEditor = Editor(WorkspaceCode.T);
         var viewer = new ActorContext(Guid.NewGuid(), "viewer", false, new HashSet<WorkspaceCode>(), "viewer-test");
         await service.SaveAsync(new(null, WorkspaceCode.T, "T001", "王小明", "號誌", null, 5, null), tEditor);
@@ -149,7 +173,7 @@ public sealed class WebInfrastructureTests
     {
         await using var database = await TestDatabase.CreateAsync();
         var demands = DemandService(database);
-        var runs = new ScheduleRunService(database.Context, new ScheduleRunQueue());
+        var runs = new ScheduleRunService(database, new ScheduleRunQueue());
         var month = new DateOnly(2026, 8, 1);
         var viewer = new ActorContext(Guid.NewGuid(), "viewer", false, new HashSet<WorkspaceCode>(), "viewer-test");
 
@@ -171,14 +195,14 @@ public sealed class WebInfrastructureTests
     public async Task EmployeeDemandSubmission_ViewerCanFillEditorCanReimport()
     {
         await using var database = await TestDatabase.CreateAsync();
-        var employees = new EmployeeService(database.Context);
+        var employees = new EmployeeService(database);
         var demands = DemandService(database);
         var submissions = SubmissionService(database);
         var editor = Editor(WorkspaceCode.M);
         var viewer = new ActorContext(Guid.NewGuid(), "viewer", false, new HashSet<WorkspaceCode>(), "viewer-test");
         var month = new DateOnly(2026, 9, 1);
         var intervalStart = new DateOnly(2026, 8, 3);
-        await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+        await new CommonConfigurationService(database).CreateRevisionAsync(
             [new RestIntervalDto(intervalStart, intervalStart.AddDays(55), [])], [], null, editor);
         await employees.SaveAsync(new SaveEmployeeCommand(null, WorkspaceCode.M, "M001", "王小明", "LB01", null, null, null), editor);
         var demand = await demands.CreateAsync(WorkspaceCode.M, month, editor);
@@ -224,12 +248,12 @@ public sealed class WebInfrastructureTests
     public async Task EmployeeDelete_PreservesAuditAndAllowsSameCodeToReturn()
     {
         await using var database = await TestDatabase.CreateAsync();
-        var service = new EmployeeService(database.Context);
+        var service = new EmployeeService(database);
         var actor = Editor(WorkspaceCode.M);
         var command = new SaveEmployeeCommand(null, WorkspaceCode.M, "M001", "王小明", "LB01", null, null, null);
         var original = await service.SaveAsync(command, actor);
         var intervalStart = new DateOnly(2026, 8, 3);
-        await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+        await new CommonConfigurationService(database).CreateRevisionAsync(
             [new RestIntervalDto(intervalStart, intervalStart.AddDays(55), [])], [], null, actor);
         var demandService = DemandService(database);
         var demand = await demandService.CreateAsync(WorkspaceCode.M, new DateOnly(2026, 10, 1), actor);
@@ -257,9 +281,9 @@ public sealed class WebInfrastructureTests
         {
             ["P1"] = Enumerable.Repeat<ScheduleCell?>(null, 56).ToArray()
         });
-        await new MPerpetualScheduleService(database.Context).UploadAsync("global.csv",
+        await new MPerpetualScheduleService(database).UploadAsync("global.csv",
             new MemoryStream(ScheduleCsv.WriteMPerpetualSchedule(globalSchedule)), actor);
-        var runService = new ScheduleRunService(database.Context, new ScheduleRunQueue());
+        var runService = new ScheduleRunService(database, new ScheduleRunQueue());
         foreach (var rejected in new[]
                  {
                      new ScheduleRunOptions(ScheduleRunOptions.MaxTimeLimitSeconds + 1, 4, 1),
@@ -305,7 +329,7 @@ public sealed class WebInfrastructureTests
     public async Task EmployeeCsvImport_PreviewsThenCommitsAllRows()
     {
         await using var database = await TestDatabase.CreateAsync();
-        var service = new EmployeeService(database.Context);
+        var service = new EmployeeService(database);
         var actor = Editor(WorkspaceCode.M);
         var csv = "ID,姓名,所屬車站,到職日期,,\nM001,王小明,LB01,,,\n,,,\nM002,陳小華,LB02,2026-08-02,,\n"u8.ToArray();
 
@@ -324,7 +348,7 @@ public sealed class WebInfrastructureTests
     public async Task EmployeeCsvImport_InvalidRowDoesNotPartiallyWrite()
     {
         await using var database = await TestDatabase.CreateAsync();
-        var service = new EmployeeService(database.Context);
+        var service = new EmployeeService(database);
         var csv = "ID,姓名,專業分組,到職日期,能力\nT001,王小明,號誌,2026-08-01,5\nT002,陳小華,電力,2026-08-02,9\n"u8.ToArray();
 
         var preview = await service.PreviewImportAsync(WorkspaceCode.T, new MemoryStream(csv), Editor(WorkspaceCode.T));
@@ -338,7 +362,7 @@ public sealed class WebInfrastructureTests
     public async Task EmployeeCsvImport_TAcceptsAffiliationHeader()
     {
         await using var database = await TestDatabase.CreateAsync();
-        var service = new EmployeeService(database.Context);
+        var service = new EmployeeService(database);
         var csv = "ID,姓名,所屬,到職日期,能力\nT001,王小明,號誌,2026-08-01,5\n"u8.ToArray();
 
         var preview = await service.PreviewImportAsync(WorkspaceCode.T, new MemoryStream(csv), Editor(WorkspaceCode.T));
@@ -351,9 +375,9 @@ public sealed class WebInfrastructureTests
     {
         await using var database = await TestDatabase.CreateAsync();
         var actor = Editor(WorkspaceCode.M);
-        await new EmployeeService(database.Context).SaveAsync(
+        await new EmployeeService(database).SaveAsync(
             new(null, WorkspaceCode.M, "M001", "王小明", "LB01", null, null, null), actor);
-        await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+        await new CommonConfigurationService(database).CreateRevisionAsync(
             [new(new(2026, 7, 20), new(2026, 9, 13), []), new(new(2026, 9, 14), new(2026, 11, 8), [])], [], null, actor);
         var service = DemandService(database);
         var demand = await service.CreateAsync(WorkspaceCode.M, new(2026, 9, 1), actor);
@@ -389,9 +413,9 @@ public sealed class WebInfrastructureTests
         var actor = Editor(WorkspaceCode.M);
         var input = MSolverTests.ValidInput();
         var previousEmployee = input.DemandMonth.Employees[0];
-        await new EmployeeService(database.Context).SaveAsync(new(null, WorkspaceCode.M, previousEmployee.EmployeeId,
+        await new EmployeeService(database).SaveAsync(new(null, WorkspaceCode.M, previousEmployee.EmployeeId,
             previousEmployee.Name, previousEmployee.Affiliation, null, null, null), actor);
-        var configuration = await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+        var configuration = await new CommonConfigurationService(database).CreateRevisionAsync(
             input.RestIntervals.Select(x => new RestIntervalDto(x.Start, x.End, x.NationalHolidays.ToArray())).ToArray(), [], null, actor);
         var revision = await database.Context.ConfigurationRevisions.SingleAsync(x => x.Id == configuration.Id);
         var adoptedVersion = Version(revision, input.PreviousMonth.MonthStart, "上月採用班表");
@@ -447,9 +471,9 @@ public sealed class WebInfrastructureTests
         var actor = Editor(WorkspaceCode.M);
         var input = MSolverTests.ValidInput();
         var seedEmployee = input.DemandMonth.Employees.First(x => x.Affiliation == "LB01");
-        await new EmployeeService(database.Context).SaveAsync(
+        await new EmployeeService(database).SaveAsync(
             new(null, WorkspaceCode.M, seedEmployee.EmployeeId, seedEmployee.Name, seedEmployee.Affiliation, null, null, null), actor);
-        await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+        await new CommonConfigurationService(database).CreateRevisionAsync(
             input.RestIntervals.Select(x => new RestIntervalDto(x.Start, x.End, x.NationalHolidays.ToArray())).ToArray(), [], null, actor);
         var service = DemandService(database);
         var demand = await service.CreateAsync(WorkspaceCode.M, input.DemandMonth.MonthStart, actor);
@@ -469,7 +493,7 @@ public sealed class WebInfrastructureTests
         demand = await service.UpdateAssignmentAsync(demand.Id, employee.EmployeeCode, demand.Month, "Work", false,
             "LB11", "Early", null, null, null, demand.RevisionToken, actor);
 
-        var queued = await new ScheduleRunService(database.Context, new ScheduleRunQueue()).QueueAsync(
+        var queued = await new ScheduleRunService(database, new ScheduleRunQueue()).QueueAsync(
             demand.Id, demand.RevisionToken, new ScheduleRunOptions(300, 4, 1), actor);
         var snapshot = await database.Context.ScheduleRuns.Where(x => x.Id == queued.Id).Select(x => x.InputSnapshotJson).SingleAsync();
         var solverInput = System.Text.Json.JsonSerializer.Deserialize<ScheduleInput>(snapshot, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
@@ -488,9 +512,9 @@ public sealed class WebInfrastructureTests
     {
         await using var database = await TestDatabase.CreateAsync();
         var actor = Editor(WorkspaceCode.M);
-        await new EmployeeService(database.Context).SaveAsync(
+        await new EmployeeService(database).SaveAsync(
             new(null, WorkspaceCode.M, "M001", "王小明", "LB01", null, null, null), actor);
-        await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+        await new CommonConfigurationService(database).CreateRevisionAsync(
             [new(new(2026, 8, 3), new(2026, 9, 27), [])], [], null, actor);
         var service = DemandService(database);
         var demand = await service.CreateAsync(WorkspaceCode.M, new(2026, 9, 1), actor);
@@ -517,9 +541,9 @@ public sealed class WebInfrastructureTests
         var actor = Editor(WorkspaceCode.M);
         var input = MSolverTests.ValidInput();
         var previousEmployee = input.PreviousMonth.Employees[0];
-        await new EmployeeService(database.Context).SaveAsync(new(null, WorkspaceCode.M, previousEmployee.EmployeeId,
+        await new EmployeeService(database).SaveAsync(new(null, WorkspaceCode.M, previousEmployee.EmployeeId,
             previousEmployee.Name, previousEmployee.Affiliation, null, null, null), actor);
-        var configuration = await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+        var configuration = await new CommonConfigurationService(database).CreateRevisionAsync(
             input.RestIntervals.Select(x => new RestIntervalDto(x.Start, x.End, x.NationalHolidays.ToArray())).ToArray(), [], null, actor);
         var revision = await database.Context.ConfigurationRevisions.SingleAsync(x => x.Id == configuration.Id);
         var adoptedVersion = Version(revision, input.PreviousMonth.MonthStart, "上月採用班表");
@@ -549,7 +573,7 @@ public sealed class WebInfrastructureTests
         Assert.AreEqual(2, employee.OpeningSpecialRest);
         Assert.AreEqual("P-ADOPTED", employee.PerpetualScheduleId);
 
-        var queued = await new ScheduleRunService(database.Context, new ScheduleRunQueue()).QueueAsync(
+        var queued = await new ScheduleRunService(database, new ScheduleRunQueue()).QueueAsync(
             demand.Id, demand.RevisionToken, new ScheduleRunOptions(300, 4, 1), actor);
         var savedRun = await database.Context.ScheduleRuns.SingleAsync(x => x.Id == queued.Id);
         using (var snapshot = System.Text.Json.JsonDocument.Parse(savedRun.InputSnapshotJson))
@@ -595,9 +619,9 @@ public sealed class WebInfrastructureTests
         var actor = Editor(WorkspaceCode.M);
         var input = MSolverTests.ValidInput();
         var previousEmployee = input.PreviousMonth.Employees[0];
-        await new EmployeeService(database.Context).SaveAsync(new(null, WorkspaceCode.M, previousEmployee.EmployeeId,
+        await new EmployeeService(database).SaveAsync(new(null, WorkspaceCode.M, previousEmployee.EmployeeId,
             previousEmployee.Name, previousEmployee.Affiliation, null, null, null), actor);
-        var configuration = await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+        var configuration = await new CommonConfigurationService(database).CreateRevisionAsync(
             input.RestIntervals.Select(x => new RestIntervalDto(x.Start, x.End, x.NationalHolidays.ToArray())).ToArray(), [], null, actor);
         var revision = await database.Context.ConfigurationRevisions.SingleAsync(x => x.Id == configuration.Id);
         var adoptedVersion = Version(revision, input.PreviousMonth.MonthStart, "上月採用班表");
@@ -642,9 +666,9 @@ public sealed class WebInfrastructureTests
     {
         await using var database = await TestDatabase.CreateAsync();
         var actor = Editor(WorkspaceCode.M);
-        await new EmployeeService(database.Context).SaveAsync(
+        await new EmployeeService(database).SaveAsync(
             new(null, WorkspaceCode.M, "M001", "王小明", "LB01", null, null, null), actor);
-        await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+        await new CommonConfigurationService(database).CreateRevisionAsync(
             [new(new(2026, 8, 3), new(2026, 9, 27), [])], [], null, actor);
         var service = DemandService(database);
         var demand = await service.CreateAsync(WorkspaceCode.M, new(2026, 9, 1), actor);
@@ -670,7 +694,7 @@ public sealed class WebInfrastructureTests
     {
         await using var database = await TestDatabase.CreateAsync();
         var actor = Editor(WorkspaceCode.M);
-        var service = new MPerpetualScheduleService(database.Context);
+        var service = new MPerpetualScheduleService(database);
         ScheduleCell?[] cells =
         [
             new() { Kind = AssignmentKind.Work, Station = "LB01", Shift = Shift.Early },
@@ -703,14 +727,14 @@ public sealed class WebInfrastructureTests
         await using var database = await TestDatabase.CreateAsync();
         var actor = Editor(WorkspaceCode.M);
         var input = MSolverTests.ValidInput();
-        await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+        await new CommonConfigurationService(database).CreateRevisionAsync(
             input.RestIntervals.Select(x => new RestIntervalDto(x.Start, x.End, x.NationalHolidays.ToArray())).ToArray(), [], null, actor);
         var path = Path.GetTempFileName();
         try
         {
             ScheduleCsv.WriteMonthly(path, input.PreviousMonth);
             await using var csv = File.OpenRead(path);
-            var imported = await new ScheduleService(database.Context, new ScheduleValidationService(database.Context))
+            var imported = await new ScheduleService(database, new ScheduleValidationService(database))
                 .ImportAsync(WorkspaceCode.M, input.PreviousMonth.MonthStart, "history.csv", csv, actor);
             Assert.AreEqual(input.PreviousMonth.MonthStart, imported.Month);
             Assert.AreEqual(ScheduleRunStatus.Imported, imported.SourceStatus);
@@ -725,10 +749,10 @@ public sealed class WebInfrastructureTests
         await using var database = await TestDatabase.CreateAsync();
         var actor = Editor(WorkspaceCode.M);
         var input = MSolverTests.ValidInput();
-        var employeeService = new EmployeeService(database.Context);
+        var employeeService = new EmployeeService(database);
         foreach (var employee in input.DemandMonth.Employees)
             await employeeService.SaveAsync(new(null, WorkspaceCode.M, employee.EmployeeId, employee.Name, employee.Affiliation, employee.EmploymentStartDate, null, null), actor);
-        await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+        await new CommonConfigurationService(database).CreateRevisionAsync(
             input.RestIntervals.Select(x => new RestIntervalDto(x.Start, x.End, x.NationalHolidays.ToArray())).ToArray(),
             [new NonStandardShiftDto("日一", "0837", new TimeOnly(8, 30), new TimeOnly(17, 30))],
             null,
@@ -753,7 +777,7 @@ public sealed class WebInfrastructureTests
             Assert.AreEqual("日一", assignment.EventDescription);
             Assert.AreEqual("X[08:30-17:30|日一]", importedEmployee.MonthlyCsvValues[8]);
 
-            var scheduleService = new ScheduleService(database.Context, new ScheduleValidationService(database.Context));
+            var scheduleService = new ScheduleService(database, new ScheduleValidationService(database));
             await using var stream = File.OpenRead(schedulePath);
             var importedVersion = await scheduleService.ImportAsync(WorkspaceCode.M, demand.Month, "annotated.csv", stream, actor);
             var importedDetail = await scheduleService.GetAsync(importedVersion.Id, actor);
@@ -799,7 +823,7 @@ public sealed class WebInfrastructureTests
         database.Context.AddRange(revision, version);
         await database.Context.SaveChangesAsync();
 
-        var result = await new ScheduleValidationService(database.Context).ValidateAsync(version.Id, actor);
+        var result = await new ScheduleValidationService(database).ValidateAsync(version.Id, actor);
 
         Assert.IsFalse(result.Issues.Any(x => x.RuleName == "班組出勤不足"));
     }
@@ -809,9 +833,9 @@ public sealed class WebInfrastructureTests
     {
         await using var database = await TestDatabase.CreateAsync();
         var actor = Editor(WorkspaceCode.T);
-        await new EmployeeService(database.Context).SaveAsync(
+        await new EmployeeService(database).SaveAsync(
             new(null, WorkspaceCode.T, "T001", "王小明", "號誌", null, 5, null), actor);
-        await new CommonConfigurationService(database.Context).CreateRevisionAsync(
+        await new CommonConfigurationService(database).CreateRevisionAsync(
             [new(new(2026, 7, 20), new(2026, 9, 13), [])], [], null, actor);
         var demandService = DemandService(database);
         var demand = await demandService.CreateAsync(WorkspaceCode.T, new(2026, 9, 1), actor);
@@ -858,7 +882,7 @@ public sealed class WebInfrastructureTests
     {
         await using var database = await TestDatabase.CreateAsync();
         var queue = new ScheduleRunQueue();
-        var service = new ScheduleRunService(database.Context, queue);
+        var service = new ScheduleRunService(database, queue);
         var run = QueuedRun(WorkspaceCode.M);
         database.Context.ScheduleRuns.Add(run);
         var finished = QueuedRun(WorkspaceCode.M);
@@ -892,7 +916,7 @@ public sealed class WebInfrastructureTests
         database.Context.ScheduleRuns.Add(run);
         await database.Context.SaveChangesAsync();
         await queue.QueueAsync(run.Id);
-        await new ScheduleRunService(database.Context, queue).CancelAsync(run.Id, Editor(WorkspaceCode.M));
+        await new ScheduleRunService(database, queue).CancelAsync(run.Id, Editor(WorkspaceCode.M));
 
         var services = new ServiceCollection();
         services.AddScoped(_ => database.NewContext());
@@ -1015,7 +1039,7 @@ public sealed class WebInfrastructureTests
         await database.Context.SaveChangesAsync();
 
         var actor = new ActorContext(Guid.NewGuid(), "admin", true, new HashSet<WorkspaceCode>(), "audit-test");
-        var result = await new AuditQueryService(database.Context).QueryAsync(
+        var result = await new AuditQueryService(database).QueryAsync(
             new DateOnly(2026, 8, 13), new DateOnly(2026, 8, 13), null, null, null, null, null, actor);
 
         Assert.HasCount(1, result);
@@ -1039,7 +1063,7 @@ public sealed class WebInfrastructureTests
         database.Context.AddRange(revision, version);
         await database.Context.SaveChangesAsync();
 
-        var service = new ScheduleService(database.Context, new ScheduleValidationService(database.Context));
+        var service = new ScheduleService(database, new ScheduleValidationService(database));
         var bytes = await service.ExportExternalCsvAsync(version.Id, Editor(WorkspaceCode.M));
 
         CollectionAssert.AreEqual(new byte[] { 0xEF, 0xBB, 0xBF }, bytes[..3]);
@@ -1063,13 +1087,18 @@ public sealed class WebInfrastructureTests
         });
         await database.Context.SaveChangesAsync();
 
-        var service = new ScheduleService(database.Context, new ScheduleValidationService(database.Context));
+        var service = new ScheduleService(database, new ScheduleValidationService(database));
         await service.UnadoptAsync(version.Id, version.RevisionToken, actor);
         Assert.IsFalse(await database.Context.AdoptedSchedules.AnyAsync(x => x.ScheduleVersionId == version.Id));
         Assert.AreEqual(1, await database.Context.AuditLogs.CountAsync(x => x.Action == "ScheduleUnadopted"));
 
-        await service.RenameAsync(version.Id, "  新班表名稱  ", version.RevisionToken, actor);
-        Assert.AreEqual("新班表名稱", (await database.Context.ScheduleVersions.SingleAsync(x => x.Id == version.Id)).Name);
+        await using var afterUnadopt = database.NewContext();
+        var token = await afterUnadopt.ScheduleVersions.AsNoTracking()
+            .Where(x => x.Id == version.Id).Select(x => x.RevisionToken).SingleAsync();
+        await service.RenameAsync(version.Id, "  新班表名稱  ", token, actor);
+        await using var afterRename = database.NewContext();
+        Assert.AreEqual("新班表名稱", await afterRename.ScheduleVersions.AsNoTracking()
+            .Where(x => x.Id == version.Id).Select(x => x.Name).SingleAsync());
         Assert.AreEqual(1, await database.Context.AuditLogs.CountAsync(x => x.Action == "ScheduleRenamed"));
     }
 
@@ -1103,7 +1132,7 @@ public sealed class WebInfrastructureTests
         database.Context.AddRange(revision, version);
         await database.Context.SaveChangesAsync();
 
-        var service = new ScheduleService(database.Context, new ScheduleValidationService(database.Context));
+        var service = new ScheduleService(database, new ScheduleValidationService(database));
         var detail = await service.GetAsync(version.Id, Editor(WorkspaceCode.M));
 
         Assert.AreEqual(version.Id, detail.Version.Id);
@@ -1135,7 +1164,7 @@ public sealed class WebInfrastructureTests
         });
         database.Context.AddRange(revision, version);
         await database.Context.SaveChangesAsync();
-        var service = new ScheduleService(database.Context, new ScheduleValidationService(database.Context));
+        var service = new ScheduleService(database, new ScheduleValidationService(database));
         var viewer = new ActorContext(Guid.NewGuid(), "viewer", false, new HashSet<WorkspaceCode>(), "viewer-test");
 
         var viewerDetail = await service.GetAsync(version.Id, viewer);
@@ -1167,7 +1196,7 @@ public sealed class WebInfrastructureTests
         database.Context.AddRange(revision, version);
         await database.Context.SaveChangesAsync();
 
-        var service = new ScheduleService(database.Context, new ScheduleValidationService(database.Context));
+        var service = new ScheduleService(database, new ScheduleValidationService(database));
         var detail = await service.UpdateAssignmentAsync(version.Id, assignment.Id, "LeaveRest", false,
             null, null, null, null, null, version.RevisionToken, actor);
 
@@ -1197,11 +1226,13 @@ public sealed class WebInfrastructureTests
         database.Context.AddRange(revision, version);
         await database.Context.SaveChangesAsync();
 
-        var service = new ScheduleService(database.Context, new ScheduleValidationService(database.Context));
+        var service = new ScheduleService(database, new ScheduleValidationService(database));
         var detail = await service.UpdateMonthlyShiftAsync(version.Id, employee.Id, "Night", version.RevisionToken, actor);
 
         Assert.AreEqual("Night", detail.Employees.Single().MonthlyShift);
-        Assert.AreEqual("Night", (await database.Context.ScheduleEmployeeSnapshots.SingleAsync(x => x.Id == employee.Id)).MonthlyShift);
+        await using var persisted = database.NewContext();
+        Assert.AreEqual("Night", await persisted.ScheduleEmployeeSnapshots.AsNoTracking()
+            .Where(x => x.Id == employee.Id).Select(x => x.MonthlyShift).SingleAsync());
         Assert.AreEqual(1, await database.Context.AuditLogs.CountAsync(x => x.Action == "ScheduleEmployeeMonthlyShiftUpdated"));
     }
 
@@ -1269,7 +1300,7 @@ public sealed class WebInfrastructureTests
         database.Context.AddRange(revision, run, version);
         await database.Context.SaveChangesAsync();
 
-        var result = await new ScheduleValidationService(database.Context).ValidateAsync(version.Id, actor);
+        var result = await new ScheduleValidationService(database).ValidateAsync(version.Id, actor);
 
         Assert.IsFalse(result.Issues.Any(x => x.RuleName == "連續七日至少一日一般 R" &&
             x.EmployeeCode == "M001" && x.Date is { Day: 1 or 2 }));
@@ -1286,12 +1317,12 @@ public sealed class WebInfrastructureTests
             new HashSet<WorkspaceCode> { WorkspaceCode.M, WorkspaceCode.T }, "anonymous-test");
         var month = new DateOnly(2026, 8, 1);
 
-        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => new CommonConfigurationService(database.Context).GetCurrentAsync(anonymous));
-        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => new EmployeeService(database.Context).ListAsync(WorkspaceCode.M, anonymous));
+        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => new CommonConfigurationService(database).GetCurrentAsync(anonymous));
+        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => new EmployeeService(database).ListAsync(WorkspaceCode.M, anonymous));
         await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => DemandService(database).GetAsync(WorkspaceCode.M, month, anonymous));
-        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => new ScheduleRunService(database.Context, new ScheduleRunQueue()).ListAsync(WorkspaceCode.M, month, anonymous));
-        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => new ScheduleValidationService(database.Context).ValidateAsync(Guid.NewGuid(), anonymous));
-        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => new AuditQueryService(database.Context).QueryAsync(null, null, null, null, null, null, null, anonymous));
+        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => new ScheduleRunService(database, new ScheduleRunQueue()).ListAsync(WorkspaceCode.M, month, anonymous));
+        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => new ScheduleValidationService(database).ValidateAsync(Guid.NewGuid(), anonymous));
+        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => new AuditQueryService(database).QueryAsync(null, null, null, null, null, null, null, anonymous));
     }
 
     [TestMethod]
@@ -1372,7 +1403,7 @@ public sealed class WebInfrastructureTests
         await database.Context.SaveChangesAsync();
 
         var actor = new ActorContext(Guid.NewGuid(), "admin", true, new HashSet<WorkspaceCode>(), "audit-test");
-        var result = await new AuditQueryService(database.Context).QueryAsync(null, null, null, null, null, sessionId, null, actor);
+        var result = await new AuditQueryService(database).QueryAsync(null, null, null, null, null, sessionId, null, actor);
 
         Assert.HasCount(2, result);
         Assert.IsTrue(result.All(x => x.SessionId == sessionId));
@@ -1384,7 +1415,7 @@ public sealed class WebInfrastructureTests
         await using var database = await TestDatabase.CreateAsync();
         var sessionId = Guid.NewGuid();
         var actor = Editor(WorkspaceCode.M, sessionId);
-        var service = new EmployeeService(database.Context);
+        var service = new EmployeeService(database);
         await service.SaveAsync(new SaveEmployeeCommand(null, WorkspaceCode.M, "M001", "王小明", "LB01", null, null, null), actor);
 
         var audit = await database.Context.AuditLogs.SingleAsync();
@@ -1472,5 +1503,13 @@ public sealed class WebInfrastructureTests
             await Context.DisposeAsync();
             await connection.DisposeAsync();
         }
+    }
+
+    private sealed class OptionsDbContextFactory(DbContextOptions<NtmcDbContext> options) : IDbContextFactory<NtmcDbContext>
+    {
+        public NtmcDbContext CreateDbContext() => new(options);
+
+        public ValueTask<NtmcDbContext> CreateDbContextAsync(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(CreateDbContext());
     }
 }

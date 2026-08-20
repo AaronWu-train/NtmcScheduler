@@ -615,3 +615,11 @@
 - 取代「單一 provider-neutral migration」設計；SQLite 與 SQL Server 分別使用 `NtmcScheduler.Migrations.Sqlite` 與 `NtmcScheduler.Migrations.SqlServer` assembly，避免 provider metadata 差異造成 pending model changes。
 - 既有 migration 歷史與 snapshot 原樣移至 SQLite project；SQL Server 以目前完整 model 的 `InitialCreate` 起始，適用於尚無 NtmcScheduler schema 的正式資料庫。
 - 每次 model 變更都必須對兩個 provider 各新增 migration；Web runtime 與 design-time factory 依 provider 指定對應 migration assembly，不停用 `PendingModelChangesWarning`。
+
+## 2026-08-20：Blazor Server 以 IDbContextFactory 避免共用 NtmcDbContext
+
+- 取代 Blazor Interactive Server circuit 內長期注入 scoped `NtmcDbContext` 的用法。Circuit scope 存活期間長，且 `WorkspaceNav` 與頁面元件可同時查詢，會觸發 `A second operation was started on this context instance` 與 `Cannot access a disposed context instance`。
+- Application service 與 `CurrentActorService` 改為注入 `IDbContextFactory<NtmcDbContext>`，每個操作 `CreateDbContextAsync()` 後 `await using` 釋放。班表驗證若在同一交易內執行，由 `ScheduleService` 把同一個 context 傳入 `ScheduleValidationService`，避免未提交變更對另一個 context 不可見。
+- 啟動 `MigrateAsync`、HTTP 下載端點、登入／改密碼靜態表單，以及 `ScheduleRunWorker` 自行建立的短生命週期 scope 仍直接解析 `NtmcDbContext`。`AddEntityFrameworkStores<NtmcDbContext>()` 仍需要 scoped context。
+- `UserAdministrationService` 因 Identity `UserManager` 必須與 EF 共用同一 context 與交易，改為每個操作建立短生命週期 scope，不在 circuit 上長期持有 context。
+- 不用 lock／`SemaphoreSlim` 把共用 context 排隊。

@@ -4,7 +4,7 @@ using NtmcScheduler.Infrastructure.Data;
 
 namespace NtmcScheduler.Infrastructure.Services;
 
-public sealed class AuditQueryService(NtmcDbContext db) : IAuditQueryService
+public sealed class AuditQueryService(IDbContextFactory<NtmcDbContext> dbFactory) : IAuditQueryService
 {
     public async Task<IReadOnlyList<AuditLogDto>> QueryAsync(
         DateOnly? from,
@@ -18,6 +18,7 @@ public sealed class AuditQueryService(NtmcDbContext db) : IAuditQueryService
         CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireAdministrator(actor);
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var query = db.AuditLogs.AsNoTracking().AsQueryable();
         if (from is not null)
         {
@@ -35,11 +36,12 @@ public sealed class AuditQueryService(NtmcDbContext db) : IAuditQueryService
         if (sessionId is not null) query = query.Where(x => x.SessionId == sessionId);
         if (!string.IsNullOrWhiteSpace(ipAddress)) query = query.Where(x => x.IpAddress == ipAddress);
         var rows = await query.OrderByDescending(x => x.AtUtcTicks).Take(1000).ToListAsync(cancellationToken);
-        var assignmentContexts = await LoadAssignmentContextsAsync(rows, cancellationToken);
+        var assignmentContexts = await LoadAssignmentContextsAsync(db, rows, cancellationToken);
         return rows.Select(row => AuditPresentation.Format(row, assignmentContexts)).ToArray();
     }
 
-    private async Task<IReadOnlyDictionary<Guid, AuditAssignmentContext>> LoadAssignmentContextsAsync(
+    private static async Task<IReadOnlyDictionary<Guid, AuditAssignmentContext>> LoadAssignmentContextsAsync(
+        NtmcDbContext db,
         IReadOnlyList<AuditLog> rows,
         CancellationToken cancellationToken)
     {

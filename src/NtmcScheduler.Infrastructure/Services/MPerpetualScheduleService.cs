@@ -7,11 +7,12 @@ using NtmcScheduler.Solvers;
 
 namespace NtmcScheduler.Infrastructure.Services;
 
-public sealed class MPerpetualScheduleService(NtmcDbContext db) : IMPerpetualScheduleService
+public sealed class MPerpetualScheduleService(IDbContextFactory<NtmcDbContext> dbFactory) : IMPerpetualScheduleService
 {
     public async Task<MPerpetualScheduleDto?> GetAsync(ActorContext actor, CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireViewer(actor);
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var entity = await db.MPerpetualScheduleTemplates.AsNoTracking().SingleOrDefaultAsync(x => x.Id == 1, cancellationToken);
         return entity is null ? null : ToDto(entity);
     }
@@ -20,6 +21,7 @@ public sealed class MPerpetualScheduleService(NtmcDbContext db) : IMPerpetualSch
     {
         ServiceSupport.RequireEditor(actor, WorkspaceCode.M);
         var schedule = await UploadFile.ParseAsync(csv, ScheduleCsv.ReadMPerpetualSchedule, cancellationToken);
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var entity = await db.MPerpetualScheduleTemplates.SingleOrDefaultAsync(x => x.Id == 1, cancellationToken);
         var before = entity is null ? null : new { entity.FileName, PatternCount = Read(entity).Patterns.Count };
         if (entity is null)
@@ -49,6 +51,7 @@ public sealed class MPerpetualScheduleService(NtmcDbContext db) : IMPerpetualSch
         if (id.Length == 0) throw new DomainValidationException("萬年班表代號不可空白。");
         if (days.Count != 56) throw new DomainValidationException("萬年班表必須包含 56 天。");
         var parsed = days.Select((value, index) => ScheduleCsv.ParseMPerpetualCell(value.Trim(), $"第 {index + 1} 天")).ToArray();
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var entity = await db.MPerpetualScheduleTemplates.SingleOrDefaultAsync(x => x.Id == 1, cancellationToken)
             ?? throw new DomainValidationException("請先上傳或建立全域萬年班表。");
         if (entity.RevisionToken != revisionToken) throw new ConcurrencyConflictException("萬年班表已被其他人修改，請重新整理。");
@@ -74,6 +77,7 @@ public sealed class MPerpetualScheduleService(NtmcDbContext db) : IMPerpetualSch
     public async Task<MPerpetualScheduleDto?> DeletePatternAsync(string id, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireEditor(actor, WorkspaceCode.M);
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var entity = await db.MPerpetualScheduleTemplates.SingleOrDefaultAsync(x => x.Id == 1, cancellationToken)
             ?? throw new DomainValidationException("找不到全域萬年班表。");
         if (entity.RevisionToken != revisionToken) throw new ConcurrencyConflictException("萬年班表已被其他人修改，請重新整理。");
@@ -89,6 +93,7 @@ public sealed class MPerpetualScheduleService(NtmcDbContext db) : IMPerpetualSch
     public async Task<PerpetualScheduleFileDto> ExportAsync(ActorContext actor, CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireViewer(actor);
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var entity = await db.MPerpetualScheduleTemplates.AsNoTracking().SingleOrDefaultAsync(x => x.Id == 1, cancellationToken)
             ?? throw new DomainValidationException("找不到全域萬年班表。");
         return new(entity.FileName, ScheduleCsv.WriteMPerpetualSchedule(Read(entity)));

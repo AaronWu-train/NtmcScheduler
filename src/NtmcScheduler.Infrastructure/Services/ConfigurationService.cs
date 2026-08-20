@@ -6,11 +6,12 @@ using NtmcScheduler.Solvers;
 
 namespace NtmcScheduler.Infrastructure.Services;
 
-public sealed class CommonConfigurationService(NtmcDbContext db) : ICommonConfigurationService
+public sealed class CommonConfigurationService(IDbContextFactory<NtmcDbContext> dbFactory) : ICommonConfigurationService
 {
     public async Task<ConfigurationRevisionDto?> GetCurrentAsync(ActorContext actor, CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireViewer(actor);
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var current = await db.CurrentConfigurations.AsNoTracking().AsSplitQuery()
             .Include(x => x.ConfigurationRevision).ThenInclude(x => x.RestIntervals).ThenInclude(x => x.NationalHolidays)
             .Include(x => x.ConfigurationRevision).ThenInclude(x => x.NonStandardShifts)
@@ -22,6 +23,7 @@ public sealed class CommonConfigurationService(NtmcDbContext db) : ICommonConfig
     public async Task<ConfigurationRevisionDto?> GetRevisionAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireViewer(actor);
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var revision = await db.ConfigurationRevisions.AsNoTracking().AsSplitQuery()
             .Include(x => x.RestIntervals).ThenInclude(x => x.NationalHolidays)
             .Include(x => x.NonStandardShifts)
@@ -53,6 +55,7 @@ public sealed class CommonConfigurationService(NtmcDbContext db) : ICommonConfig
     {
         RequireEditor(actor);
         Validate(intervals, shifts);
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var current = await db.CurrentConfigurations.SingleOrDefaultAsync(x => x.Id == 1, cancellationToken);
         if (current is null && currentRevisionToken is not null || current is not null && current.RevisionToken != currentRevisionToken)
@@ -72,7 +75,7 @@ public sealed class CommonConfigurationService(NtmcDbContext db) : ICommonConfig
             StartTime = shift.StartTime,
             EndTime = shift.EndTime
         }));
-        var currentRevision = current is null ? null : await LoadRevisionAsync(current.ConfigurationRevisionId, cancellationToken);
+        var currentRevision = current is null ? null : await LoadRevisionAsync(db, current.ConfigurationRevisionId, cancellationToken);
         AddStandardShiftTimes(revision, currentRevision);
         db.ConfigurationRevisions.Add(revision);
         if (current is null) db.CurrentConfigurations.Add(new() { ConfigurationRevision = revision });
@@ -125,12 +128,13 @@ public sealed class CommonConfigurationService(NtmcDbContext db) : ICommonConfig
         if (!actor.CanEdit(workspace))
             throw new ForbiddenOperationException($"只有 {workspace} 工作區編輯者可修改班別時間。");
         ValidateShiftTimes(times);
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var current = await db.CurrentConfigurations.SingleOrDefaultAsync(x => x.Id == 1, cancellationToken)
             ?? throw new DomainValidationException("尚未建立共同設定，請先儲存八週區間。");
         if (current.RevisionToken != currentRevisionToken)
             throw new ConcurrencyConflictException("共同設定已被其他人修改，請重新整理。");
-        var previousRevision = await LoadRevisionAsync(current.ConfigurationRevisionId, cancellationToken);
+        var previousRevision = await LoadRevisionAsync(db, current.ConfigurationRevisionId, cancellationToken);
         var version = (await db.ConfigurationRevisions.MaxAsync(x => (int?)x.Version, cancellationToken) ?? 0) + 1;
         var revision = new ConfigurationRevision { Version = version, CreatedByUserId = actor.UserId };
         revision.RestIntervals.AddRange(previousRevision.RestIntervals.Select(x => new RestIntervalEntity
@@ -170,7 +174,7 @@ public sealed class CommonConfigurationService(NtmcDbContext db) : ICommonConfig
         return ServiceSupport.ToDto(revision, savedCurrent.RevisionToken);
     }
 
-    private async Task<ConfigurationRevision> LoadRevisionAsync(Guid id, CancellationToken cancellationToken) =>
+    private static async Task<ConfigurationRevision> LoadRevisionAsync(NtmcDbContext db, Guid id, CancellationToken cancellationToken) =>
         await db.ConfigurationRevisions.AsNoTracking().AsSplitQuery()
             .Include(x => x.RestIntervals).ThenInclude(x => x.NationalHolidays)
             .Include(x => x.NonStandardShifts)

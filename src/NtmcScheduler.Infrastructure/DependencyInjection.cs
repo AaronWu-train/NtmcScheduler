@@ -21,7 +21,8 @@ public static class DependencyInjection
         services.AddScoped<IDemandService, DemandService>();
         services.AddScoped<IEmployeeDemandSubmissionService, EmployeeDemandSubmissionService>();
         services.AddScoped<IScheduleRunService, ScheduleRunService>();
-        services.AddScoped<IScheduleValidationService, ScheduleValidationService>();
+        services.AddScoped<ScheduleValidationService>();
+        services.AddScoped<IScheduleValidationService>(provider => provider.GetRequiredService<ScheduleValidationService>());
         services.AddScoped<IScheduleService, ScheduleService>();
         services.AddScoped<IMPerpetualScheduleService, MPerpetualScheduleService>();
         services.AddScoped<IAuditQueryService, AuditQueryService>();

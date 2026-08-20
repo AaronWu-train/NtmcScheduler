@@ -10,10 +10,11 @@ using NtmcScheduler.Solvers;
 
 namespace NtmcScheduler.Infrastructure.Services;
 
-public sealed class ScheduleRunService(NtmcDbContext db, ScheduleRunQueue queue, IScheduleRunNotifier? notifier = null) : IScheduleRunService
+public sealed class ScheduleRunService(IDbContextFactory<NtmcDbContext> dbFactory, ScheduleRunQueue queue, IScheduleRunNotifier? notifier = null) : IScheduleRunService
 {
     public async Task<ScheduleRunDto> QueueAsync(Guid demandId, Guid revisionToken, ScheduleRunOptions options, ActorContext actor, CancellationToken cancellationToken = default)
     {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var demand = await db.DemandDrafts.AsSplitQuery()
             .Include(x => x.ConfigurationRevision).ThenInclude(x => x.RestIntervals).ThenInclude(x => x.NationalHolidays)
             .Include(x => x.ConfigurationRevision).ThenInclude(x => x.NonStandardShifts)
@@ -34,7 +35,7 @@ public sealed class ScheduleRunService(NtmcDbContext db, ScheduleRunQueue queue,
             throw new DomainValidationException($"求解時限最多 {ScheduleRunOptions.MaxTimeLimitSeconds} 秒、worker 數最多 {ScheduleRunOptions.MaxWorkerCount}、seed 數最多 {ScheduleRunOptions.MaxSeedCount}。");
         if (demand.Workspace == WorkspaceCode.T && options.SeedCount != 1)
             throw new DomainValidationException("T 只支援一個 seed。");
-        var previous = await ResolvePreviousAsync(demand, cancellationToken);
+        var previous = await ResolvePreviousAsync(db, demand, cancellationToken);
         var input = new ScheduleInput(
             previous,
             SolverScheduleMapper.ToMonthlySchedule(demand),
@@ -87,6 +88,7 @@ public sealed class ScheduleRunService(NtmcDbContext db, ScheduleRunQueue queue,
     {
         ServiceSupport.RequireEditor(actor, workspace);
         month = new(month.Year, month.Month, 1);
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var runs = await db.ScheduleRuns.AsNoTracking().Where(x => x.Workspace == workspace && x.Month == month)
             .ToListAsync(cancellationToken);
         return runs.OrderByDescending(x => x.CreatedAtUtc).Select(ToDto).ToArray();
@@ -95,6 +97,7 @@ public sealed class ScheduleRunService(NtmcDbContext db, ScheduleRunQueue queue,
     public async Task<IReadOnlyList<ScheduleRunDto>> ListActiveAsync(ActorContext actor, CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireViewer(actor);
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var active = await db.ScheduleRuns.AsNoTracking()
             .Where(x => x.Status == ScheduleRunStatus.Queued || x.Status == ScheduleRunStatus.Running)
             .ToListAsync(cancellationToken);
@@ -105,12 +108,14 @@ public sealed class ScheduleRunService(NtmcDbContext db, ScheduleRunQueue queue,
     {
         ServiceSupport.RequireViewer(actor);
         if (count is < 1 or > 100) throw new DomainValidationException("查詢筆數必須介於 1 到 100。");
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var runs = await db.ScheduleRuns.AsNoTracking().ToListAsync(cancellationToken);
         return runs.OrderByDescending(x => x.CreatedAtUtc).Take(count).Select(ToDto).ToArray();
     }
 
     public async Task CancelAsync(Guid runId, ActorContext actor, CancellationToken cancellationToken = default)
     {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var run = await db.ScheduleRuns.SingleOrDefaultAsync(x => x.Id == runId, cancellationToken)
             ?? throw new DomainValidationException("找不到求解工作。");
         ServiceSupport.RequireEditor(actor, run.Workspace);
@@ -125,7 +130,7 @@ public sealed class ScheduleRunService(NtmcDbContext db, ScheduleRunQueue queue,
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task<MonthlySchedule> ResolvePreviousAsync(DemandDraft demand, CancellationToken cancellationToken)
+    private static async Task<MonthlySchedule> ResolvePreviousAsync(NtmcDbContext db, DemandDraft demand, CancellationToken cancellationToken)
     {
         if (demand.PreviousSource == PreviousScheduleSource.Upload)
         {

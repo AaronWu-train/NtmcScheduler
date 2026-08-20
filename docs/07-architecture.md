@@ -61,6 +61,7 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 - EF Core。開發環境用 **SQLite**；正式環境使用 **SQL Server**。
 - 不使用 provider 專屬查詢；SQLite 與 SQL Server 各自使用獨立 migration project、歷史與 model snapshot。每次 model 變更必須為兩個 provider 分別新增 migration。
 - SQLite 啟動後使用 WAL journal，避免背景求解保存班表時阻塞 UI 讀取；載入完整班表的多集合查詢使用 EF Core split query，避免集合笛卡兒積。
+- Blazor Interactive Server 的 circuit scope 存活期間長，且同一 scope 內多個元件可以並行查詢。Application service 與 `CurrentActorService` 透過 `IDbContextFactory<NtmcDbContext>` 為每次資料庫操作建立並釋放獨立 context。啟動 migration、HTTP 下載端點、登入／改密碼靜態表單，以及背景工作自行建立的短生命週期 scope 仍可直接解析 scoped `NtmcDbContext`。帳號管理因 Identity `UserManager` 必須與 `NtmcDbContext` 共用同一 context 與交易，改為每個操作建立短生命週期 scope。
 
 ## 6. 登入與授權（第一版）
 

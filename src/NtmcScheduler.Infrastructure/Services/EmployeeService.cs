@@ -8,11 +8,12 @@ using NtmcScheduler.Infrastructure.Data;
 
 namespace NtmcScheduler.Infrastructure.Services;
 
-public sealed class EmployeeService(NtmcDbContext db) : IEmployeeService
+public sealed class EmployeeService(IDbContextFactory<NtmcDbContext> dbFactory) : IEmployeeService
 {
     public async Task<IReadOnlyList<EmployeeDto>> ListAsync(WorkspaceCode workspace, ActorContext actor, CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireViewer(actor);
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var canViewAbility = actor.CanEdit(WorkspaceCode.T);
         return await db.Employees.AsNoTracking()
             .Where(x => x.Workspace == workspace)
@@ -26,6 +27,7 @@ public sealed class EmployeeService(NtmcDbContext db) : IEmployeeService
     {
         ServiceSupport.RequireEditor(actor, command.Workspace);
         Validate(command);
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         Employee employee;
         object? before = null;
@@ -57,6 +59,7 @@ public sealed class EmployeeService(NtmcDbContext db) : IEmployeeService
 
     public async Task DeleteAsync(Guid id, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
     {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var employee = await db.Employees.SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw new DomainValidationException("找不到員工。");
         ServiceSupport.RequireEditor(actor, employee.Workspace);
@@ -91,6 +94,7 @@ public sealed class EmployeeService(NtmcDbContext db) : IEmployeeService
         try
         {
             var records = await UploadFile.ParseAsync(csv, path => ParseImport(path, workspace), cancellationToken);
+            await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
             var existing = await db.Employees.AsNoTracking().Where(x => x.Workspace == workspace).OrderBy(x => x.EmployeeCode).ToListAsync(cancellationToken);
             var existingByCode = existing.ToDictionary(x => x.EmployeeCode, StringComparer.Ordinal);
             var differences = records.Select(record => existingByCode.TryGetValue(record.EmployeeCode, out var employee)
@@ -113,6 +117,7 @@ public sealed class EmployeeService(NtmcDbContext db) : IEmployeeService
     {
         ServiceSupport.RequireEditor(actor, workspace);
         var records = await UploadFile.ParseAsync(csv, path => ParseImport(path, workspace), cancellationToken);
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var existing = await db.Employees.Where(x => x.Workspace == workspace).OrderBy(x => x.EmployeeCode).ToListAsync(cancellationToken);
         if (revisionToken != SnapshotToken(existing))

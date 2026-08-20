@@ -10,12 +10,13 @@ using NtmcScheduler.Solvers;
 namespace NtmcScheduler.Infrastructure.Services;
 
 public sealed class ScheduleService(
-    NtmcDbContext db,
-    IScheduleValidationService validation) : IScheduleService
+    IDbContextFactory<NtmcDbContext> dbFactory,
+    ScheduleValidationService validation) : IScheduleService
 {
     public async Task<IReadOnlyList<ScheduleMonthDto>> ListMonthsAsync(WorkspaceCode workspace, ActorContext actor, CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireViewer(actor);
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var versions = await db.ScheduleVersions.AsNoTracking().Include(x => x.SourceRun).Where(x => x.Workspace == workspace && !x.IsArchived).ToListAsync(cancellationToken);
         var adopted = await db.AdoptedSchedules.AsNoTracking().Include(x => x.ScheduleVersion).ThenInclude(x => x.SourceRun).Where(x => x.Workspace == workspace).ToDictionaryAsync(x => x.Month, cancellationToken);
         return versions.GroupBy(x => x.Month).OrderByDescending(x => x.Key).Select(group => new ScheduleMonthDto(
@@ -29,6 +30,7 @@ public sealed class ScheduleService(
     {
         ServiceSupport.RequireViewer(actor);
         month = new(month.Year, month.Month, 1);
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var adoptedId = await db.AdoptedSchedules.AsNoTracking().Where(x => x.Workspace == workspace && x.Month == month)
             .Select(x => (Guid?)x.ScheduleVersionId).SingleOrDefaultAsync(cancellationToken);
         var versions = await db.ScheduleVersions.AsNoTracking().Include(x => x.SourceRun)
@@ -40,10 +42,11 @@ public sealed class ScheduleService(
     public async Task<ScheduleDetailDto> GetAsync(Guid versionId, ActorContext actor, CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireViewer(actor);
-        var version = await VersionQuery().AsNoTracking().SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        var version = await VersionQuery(db).AsNoTracking().SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
             ?? throw new DomainValidationException("找不到班表版本。");
         var adopted = await db.AdoptedSchedules.AsNoTracking().AnyAsync(x => x.ScheduleVersionId == versionId, cancellationToken);
-        var result = await validation.ValidateAsync(versionId, actor, cancellationToken);
+        var result = await validation.ValidateAsync(db, versionId, cancellationToken);
         return ToDetail(version, adopted, result.Issues, result.Stats, actor.CanEdit(WorkspaceCode.T));
     }
 
@@ -61,7 +64,8 @@ public sealed class ScheduleService(
         ActorContext actor,
         CancellationToken cancellationToken = default)
     {
-        var version = await VersionQuery().SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        var version = await VersionQuery(db).SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
             ?? throw new DomainValidationException("找不到班表版本。");
         ServiceSupport.RequireEditor(actor, version.Workspace);
         if (version.IsArchived) throw new DomainValidationException("封存班表不可修改。");
@@ -81,7 +85,7 @@ public sealed class ScheduleService(
         assignment.EventDescription = kind == "WorkEvent" && !string.IsNullOrWhiteSpace(eventDescription) ? eventDescription.Trim() : null;
         Touch(version, actor.UserId);
         await db.SaveChangesAsync(cancellationToken);
-        var checkedSchedule = await validation.ValidateAsync(version.Id, actor, cancellationToken);
+        var checkedSchedule = await validation.ValidateAsync(db, version.Id, cancellationToken);
         version.HasErrors = checkedSchedule.Issues.Any(x => x.Severity == ValidationSeverity.Error);
         version.WarningCount = checkedSchedule.Issues.Count(x => x.Severity == ValidationSeverity.Warning);
         ServiceSupport.AddAudit(db, actor, "ScheduleAssignmentUpdated", version.Workspace, "ScheduleAssignment", assignment.Id,
@@ -100,7 +104,8 @@ public sealed class ScheduleService(
         ActorContext actor,
         CancellationToken cancellationToken = default)
     {
-        var version = await VersionQuery().SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        var version = await VersionQuery(db).SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
             ?? throw new DomainValidationException("找不到班表版本。");
         ServiceSupport.RequireEditor(actor, version.Workspace);
         if (version.IsArchived) throw new DomainValidationException("封存班表不可修改。");
@@ -116,7 +121,7 @@ public sealed class ScheduleService(
         employee.MonthlyShift = shift.ToString();
         Touch(version, actor.UserId);
         await db.SaveChangesAsync(cancellationToken);
-        var checkedSchedule = await validation.ValidateAsync(version.Id, actor, cancellationToken);
+        var checkedSchedule = await validation.ValidateAsync(db, version.Id, cancellationToken);
         version.HasErrors = checkedSchedule.Issues.Any(x => x.Severity == ValidationSeverity.Error);
         version.WarningCount = checkedSchedule.Issues.Count(x => x.Severity == ValidationSeverity.Warning);
         ServiceSupport.AddAudit(db, actor, "ScheduleEmployeeMonthlyShiftUpdated", version.Workspace, "ScheduleEmployeeSnapshot", employee.Id,
@@ -129,12 +134,13 @@ public sealed class ScheduleService(
 
     public async Task AdoptAsync(Guid versionId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
     {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var version = await db.ScheduleVersions.SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
             ?? throw new DomainValidationException("找不到班表版本。");
         ServiceSupport.RequireEditor(actor, version.Workspace);
         if (version.IsArchived) throw new DomainValidationException("封存班表不可採用。");
         if (version.RevisionToken != revisionToken) throw new ConcurrencyConflictException("班表已被其他人修改，請重新整理。");
-        var checkedSchedule = await validation.ValidateAsync(version.Id, actor, cancellationToken);
+        var checkedSchedule = await validation.ValidateAsync(db, version.Id, cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         version.HasErrors = false;
         version.WarningCount = checkedSchedule.Issues.Count;
@@ -158,6 +164,7 @@ public sealed class ScheduleService(
 
     public async Task ArchiveAsync(Guid versionId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
     {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var version = await db.ScheduleVersions.SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
             ?? throw new DomainValidationException("找不到班表版本。");
         ServiceSupport.RequireEditor(actor, version.Workspace);
@@ -175,6 +182,7 @@ public sealed class ScheduleService(
 
     public async Task UnadoptAsync(Guid versionId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
     {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var version = await db.ScheduleVersions.SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
             ?? throw new DomainValidationException("找不到班表版本。");
         ServiceSupport.RequireEditor(actor, version.Workspace);
@@ -192,6 +200,7 @@ public sealed class ScheduleService(
 
     public async Task RenameAsync(Guid versionId, string name, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
     {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var version = await db.ScheduleVersions.SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
             ?? throw new DomainValidationException("找不到班表版本。");
         ServiceSupport.RequireEditor(actor, version.Workspace);
@@ -213,7 +222,8 @@ public sealed class ScheduleService(
     public async Task<byte[]> ExportCsvAsync(Guid versionId, ActorContext actor, CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireViewer(actor);
-        var version = await VersionQuery().AsNoTracking().SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        var version = await VersionQuery(db).AsNoTracking().SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
             ?? throw new DomainValidationException("找不到班表版本。");
         var bytes = ScheduleCsv.WriteMonthlyDownload(SolverScheduleMapper.ToMonthlySchedule(version), version.Workspace);
         ServiceSupport.AddAudit(db, actor, "ScheduleCsvDownloaded", version.Workspace, "ScheduleVersion", version.Id, null,
@@ -225,6 +235,7 @@ public sealed class ScheduleService(
     public async Task<byte[]> ExportExternalCsvAsync(Guid versionId, ActorContext actor, CancellationToken cancellationToken = default)
     {
         ServiceSupport.RequireViewer(actor);
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var version = await db.ScheduleVersions.AsNoTracking().Include(x => x.ExternalAssignments)
             .SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
             ?? throw new DomainValidationException("找不到班表版本。");
@@ -259,6 +270,7 @@ public sealed class ScheduleService(
     {
         ServiceSupport.RequireEditor(actor, workspace);
         month = new DateOnly(month.Year, month.Month, 1);
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var configurationId = await db.CurrentConfigurations.AsNoTracking().Where(x => x.Id == 1)
             .Select(x => (Guid?)x.ConfigurationRevisionId).SingleOrDefaultAsync(cancellationToken)
             ?? throw new DomainValidationException("請先建立共同設定。");
@@ -275,7 +287,7 @@ public sealed class ScheduleService(
         ServiceSupport.AddAudit(db, actor, "ScheduleVersionImported", workspace, "ScheduleVersion", version.Id, null,
             new { version.Month, version.Name, FileName = Path.GetFileName(fileName), EmployeeCount = schedule.Employees.Count });
         await db.SaveChangesAsync(cancellationToken);
-        var checkedSchedule = await validation.ValidateAsync(version.Id, actor, cancellationToken);
+        var checkedSchedule = await validation.ValidateAsync(db, version.Id, cancellationToken);
         version.HasErrors = false;
         version.WarningCount = checkedSchedule.Issues.Count;
         await db.SaveChangesAsync(cancellationToken);
@@ -283,7 +295,7 @@ public sealed class ScheduleService(
         return ToDto(version, false);
     }
 
-    private IQueryable<ScheduleVersion> VersionQuery() => db.ScheduleVersions
+    private static IQueryable<ScheduleVersion> VersionQuery(NtmcDbContext db) => db.ScheduleVersions
         .AsSplitQuery()
         .Include(x => x.SourceRun)
         .Include(x => x.ConfigurationRevision).ThenInclude(x => x.RestIntervals).ThenInclude(x => x.NationalHolidays)
