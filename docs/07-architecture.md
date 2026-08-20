@@ -65,7 +65,7 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 ## 6. 登入與授權（第一版）
 
 - 使用 ASP.NET Core Identity 本機帳號；不開放自助註冊、忘記密碼或電子郵件重設。
-- Administrator 建立帳號、設定一次性密碼、停用帳號及配置 M/T 工作區編輯權；首次登入必須改密碼。
+- Administrator 建立帳號、設定一次性密碼、停用帳號及配置 M/T 工作區編輯權；首次登入或重設後必須改密碼。已登入者可從頁首隨時自行修改密碼，須驗證目前密碼。
 - 所有已登入者可檢視；只有對應工作區 Editor 或 Administrator 可寫入。共同設定可由任一 Editor 修改。
 - 路由、元件與後端 application service 都執行授權檢查，不能只依 UI 隱藏按鈕。
 - 互動中的驗證狀態失效時，強制重新載入根頁，由 Cookie middleware 回到登入首頁，不保留失效的互動頁面。

@@ -10,6 +10,9 @@
         <Authorized Context="auth">
             <NavMenu />
             <span class="user-name">@auth.User.Identity?.Name</span>
+            <form action="/Account/ChangePassword" method="get">
+                <button type="submit" class="link-button">修改密碼</button>
+            </form>
             <form action="/Account/Logout" method="post">
                 <AntiforgeryToken />
                 <button type="submit" class="link-button">登出</button>

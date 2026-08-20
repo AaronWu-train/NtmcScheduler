@@ -22,7 +22,7 @@ button.danger { color: #9e1c1c; border-color: #c45a5a; }
 
 .app-header { min-height: 3.5rem; display: flex; align-items: center; gap: 1rem; padding: .65rem 1rem; background: #132238; color: #fff; position: sticky; top: 0; z-index: 20; }
 .app-header a { color: #fff; text-decoration: none; }
-.brand { font-weight: 750; white-space: nowrap; }
+.brand { font-weight: 600; white-space: nowrap; }
 .app-version { font-weight: 500; font-size: .75rem; opacity: .65; margin-left: .35rem; }
 .app-header nav { display: flex; flex-wrap: wrap; gap: .8rem; flex: 1; }
 .app-header nav > a, .nav-more > summary { padding: .25rem .4rem; border-radius: .3rem; }

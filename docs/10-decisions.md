@@ -603,3 +603,9 @@
 - 組件 `Version`／`InformationalVersion` 為 `1.0.2`；Web 頁首與 `ScheduleRun.ProgramVersion` 沿用同一字串。
 - 本版新增 `docs/12-deployment.md`（Ubuntu 24.04＋SQL Server 部署指南），程式行為未變更。
 - 上線前密碼政策強化與部署環境驗收仍未完成，範圍與 v1.0.1 相同。
+
+## 2026-08-20：已登入者可自行修改密碼
+
+- 既有 `/Account/ChangePassword` 原本只在首次登入或管理者重設後強制導向；頁首新增「修改密碼」，任何已登入者可隨時開啟同一頁。
+- 自行修改仍須驗證目前密碼，寫入 AuditLog `PasswordChanged`，並保留同一 SessionId；不開放忘記密碼或郵件重設。
+- 首次登入／重設後強制改密碼的攔截不變，該狀態下不可返回其他頁面。
