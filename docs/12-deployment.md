@@ -12,8 +12,9 @@
 |---|---|---|
 | `<APP_IP>` | VM 對使用者的 IP | `10.20.30.40` |
 | `<SQL_HOST>` | SQL Server 主機名或 IP | `10.20.30.50` |
-| `<DB_NAME>` | 資料庫名稱 | `NtmcScheduler` |
-| `<DB_PASSWORD>` | 資料庫帳號密碼 | — |
+| `<DB_NAME>` | 公司已建立的資料庫名稱 | `NtmcScheduler` |
+| `<DB_USER>` | 公司提供的 SQL Server Login | `App_SYSchedule` |
+| `<DB_PASSWORD>` | 公司提供的資料庫帳號密碼 | — |
 | `<PFX_PASSWORD>` | 伺服器憑證密碼 | — |
 | `<DPKEY_PASSWORD>` | Data Protection 憑證密碼 | — |
 
@@ -78,25 +79,23 @@ sudo chmod 750 /etc/ntmsy-schedule
 | `/var/lib/ntmsy-schedule/*.pfx` | 憑證 |
 | `/etc/ntmsy-schedule/ntmsy-schedule.env` | 環境變數，含密碼，權限 640 |
 
-## 3. 準備 SQL Server 資料庫
+## 3. 確認公司提供的 SQL Server 資料庫與帳號
 
-在 SQL Server 上（用 SSMS 或 `sqlcmd`）執行：
+資料庫與 SQL Server Login 已由公司／DBA 建立，**部署時不要自行執行 `CREATE DATABASE`、`CREATE LOGIN` 或修改伺服器層級帳號設定**。
 
-```sql
-CREATE DATABASE <DB_NAME>;
-GO
-CREATE LOGIN App_SYSchedule WITH PASSWORD = '<DB_PASSWORD>';
-GO
-USE <DB_NAME>;
-CREATE USER App_SYSchedule FOR LOGIN App_SYSchedule;
-ALTER ROLE db_owner ADD MEMBER App_SYSchedule;
-GO
-```
+部署前向 DBA 確認以下資訊：
 
-應用程式啟動時會自動執行 EF Core migration 建立資料表，所以帳號需要建表權限。
-若公司政策不允許應用程式帳號長期持有 `db_owner`，改用第 10 節的手動套用 schema 流程。
+- SQL Server 主機名或 IP：`<SQL_HOST>`
+- 資料庫名稱：`<DB_NAME>`
+- Login：`<DB_USER>`
+- 密碼：`<DB_PASSWORD>`
+- `<DB_USER>` 已映射到 `<DB_NAME>`，且可正常登入及讀寫該資料庫。
 
-從 VM 確認網路可通：
+應用程式目前在啟動時會自動執行 EF Core migration，因此若採用自動 migration，DBA 還必須提供建立／修改資料表等 schema 變更所需權限。**不要由部署人員自行提升資料庫權限**；實際權限由公司 DBA 依政策設定。
+
+若公司不允許應用程式帳號具有 schema 變更權限，改用第 10 節「由 DBA 手動套用 schema」流程，應用程式帳號只保留正式執行所需的資料讀寫權限。
+
+從 VM 先確認 SQL Server 網路可通：
 
 ```bash
 sudo apt install -y netcat-openbsd
@@ -183,7 +182,7 @@ ASPNETCORE_HTTPS_PORTS=443
 AllowedHosts=<APP_IP>
 
 DatabaseProvider=SqlServer
-ConnectionStrings__Default=Server=<SQL_HOST>,1433;Database=<DB_NAME>;User Id=App_SYSchedule;Password=<DB_PASSWORD>;Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=False
+ConnectionStrings__Default=Server=<SQL_HOST>,1433;Database=<DB_NAME>;User Id=<DB_USER>;Password=<DB_PASSWORD>;Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=False
 
 Kestrel__Certificates__Default__Path=/var/lib/ntmsy-schedule/server.pfx
 Kestrel__Certificates__Default__Password=<PFX_PASSWORD>
@@ -312,7 +311,7 @@ NTMC_MIGRATION_PROVIDER=SqlServer dotnet ef migrations script --idempotent \
   -p src/NtmcScheduler.Infrastructure -s src/NtmcScheduler.Web -o ntmc.sql
 ```
 
-script 為 idempotent，可重複套用。套用後把 `App_SYSchedule` 權限降為
+script 為 idempotent，可重複套用。套用後可由 DBA 把 `<DB_USER>` 權限降為
 `db_datareader`、`db_datawriter` 與必要的 `EXECUTE`，但仍需保留讀取 `__EFMigrationsHistory` 的權限，
 因為應用程式啟動時仍會呼叫 migration 檢查。
 
