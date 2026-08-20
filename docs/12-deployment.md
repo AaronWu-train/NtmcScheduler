@@ -65,18 +65,18 @@ sudo timedatectl set-timezone Asia/Taipei
 不要用 root 執行應用程式。
 
 ```bash
-sudo useradd --system --create-home --home-dir /var/lib/ntmc --shell /usr/sbin/nologin ntmc
-sudo mkdir -p /opt/ntmc /var/lib/ntmc/keys /etc/ntmc
-sudo chown -R ntmc:ntmc /opt/ntmc /var/lib/ntmc
-sudo chmod 700 /var/lib/ntmc/keys
+sudo useradd --system --create-home --home-dir /var/lib/ntmsy-schedule --shell /usr/sbin/nologin ntmsy-schedule
+sudo mkdir -p /opt/ntmsy-schedule /var/lib/ntmsy-schedule/keys /etc/ntmsy-schedule
+sudo chown -R ntmsy-schedule:ntmsy-schedule /opt/ntmsy-schedule /var/lib/ntmsy-schedule
+sudo chmod 700 /var/lib/ntmsy-schedule/keys
 ```
 
 | 路徑 | 用途 |
 |---|---|
-| `/opt/ntmc` | publish 出來的應用程式檔案 |
-| `/var/lib/ntmc/keys` | Data Protection key ring，**必須持久保存** |
-| `/var/lib/ntmc/*.pfx` | 憑證 |
-| `/etc/ntmc/ntmc.env` | 環境變數，含密碼，權限 600 |
+| `/opt/ntmsy-schedule` | publish 出來的應用程式檔案 |
+| `/var/lib/ntmsy-schedule/keys` | Data Protection key ring，**必須持久保存** |
+| `/var/lib/ntmsy-schedule/*.pfx` | 憑證 |
+| `/etc/ntmsy-schedule/ntmsy-schedule.env` | 環境變數，含密碼，權限 600 |
 
 ## 3. 準備 SQL Server 資料庫
 
@@ -85,11 +85,11 @@ sudo chmod 700 /var/lib/ntmc/keys
 ```sql
 CREATE DATABASE <DB_NAME>;
 GO
-CREATE LOGIN ntmc_app WITH PASSWORD = '<DB_PASSWORD>';
+CREATE LOGIN App_SYSchedule WITH PASSWORD = '<DB_PASSWORD>';
 GO
 USE <DB_NAME>;
-CREATE USER ntmc_app FOR LOGIN ntmc_app;
-ALTER ROLE db_owner ADD MEMBER ntmc_app;
+CREATE USER App_SYSchedule FOR LOGIN App_SYSchedule;
+ALTER ROLE db_owner ADD MEMBER App_SYSchedule;
 GO
 ```
 
@@ -113,7 +113,7 @@ nc -zv <SQL_HOST> 1433
 
 ```bash
 sudo openssl req -new -newkey rsa:2048 -nodes \
-  -keyout /var/lib/ntmc/server.key -out /var/lib/ntmc/server.csr \
+  -keyout /var/lib/ntmsy-schedule/server.key -out /var/lib/ntmsy-schedule/server.csr \
   -subj "/CN=<APP_IP>" \
   -addext "subjectAltName=IP:<APP_IP>" \
   -addext "extendedKeyUsage=serverAuth"
@@ -123,8 +123,8 @@ sudo openssl req -new -newkey rsa:2048 -nodes \
 
 ```bash
 sudo openssl pkcs12 -export \
-  -inkey /var/lib/ntmc/server.key -in /var/lib/ntmc/server.crt \
-  -out /var/lib/ntmc/server.pfx -passout pass:<PFX_PASSWORD>
+  -inkey /var/lib/ntmsy-schedule/server.key -in /var/lib/ntmsy-schedule/server.crt \
+  -out /var/lib/ntmsy-schedule/server.pfx -passout pass:<PFX_PASSWORD>
 ```
 
 `subjectAltName` 必須是 `IP:`，不是 `DNS:`；只有 CN 而沒有 SAN 的憑證現代瀏覽器一律拒絕。
@@ -138,18 +138,18 @@ sudo openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
   -subj "/CN=NtmcScheduler Data Protection" \
   -keyout /tmp/dp.key -out /tmp/dp.crt
 sudo openssl pkcs12 -export -inkey /tmp/dp.key -in /tmp/dp.crt \
-  -out /var/lib/ntmc/dp.pfx -passout pass:<DPKEY_PASSWORD>
+  -out /var/lib/ntmsy-schedule/dp.pfx -passout pass:<DPKEY_PASSWORD>
 sudo rm /tmp/dp.key /tmp/dp.crt
 ```
 
 設定權限：
 
 ```bash
-sudo chown ntmc:ntmc /var/lib/ntmc/*.pfx /var/lib/ntmc/server.key
-sudo chmod 600 /var/lib/ntmc/*.pfx /var/lib/ntmc/server.key
+sudo chown ntmsy-schedule:ntmsy-schedule /var/lib/ntmsy-schedule/*.pfx /var/lib/ntmsy-schedule/server.key
+sudo chmod 600 /var/lib/ntmsy-schedule/*.pfx /var/lib/ntmsy-schedule/server.key
 ```
 
-`dp.pfx` 與 `/var/lib/ntmc/keys` 一定要納入備份。遺失的後果是所有使用者的登入 cookie 立即失效，
+`dp.pfx` 與 `/var/lib/ntmsy-schedule/keys` 一定要納入備份。遺失的後果是所有使用者的登入 cookie 立即失效，
 必須全部重新登入。
 
 ## 5. 建置與發行
@@ -157,10 +157,10 @@ sudo chmod 600 /var/lib/ntmc/*.pfx /var/lib/ntmc/server.key
 在專案原始碼目錄執行：
 
 ```bash
-dotnet publish src/NtmcScheduler.Web -c Release -r linux-x64 --self-contained false -o /tmp/ntmc-publish
-sudo cp -r /tmp/ntmc-publish/. /opt/ntmc/
-sudo chown -R ntmc:ntmc /opt/ntmc
-sudo chmod 500 /opt/ntmc/NtmcScheduler.Web
+dotnet publish src/NtmcScheduler.Web -c Release -r linux-x64 --self-contained false -o /tmp/ntmsy-schedule-publish
+sudo cp -r /tmp/ntmsy-schedule-publish/. /opt/ntmsy-schedule/
+sudo chown -R ntmsy-schedule:ntmsy-schedule /opt/ntmsy-schedule
+sudo chmod 500 /opt/ntmsy-schedule/NtmcScheduler.Web
 ```
 
 指定 `-r linux-x64` 可確保 OR-Tools 的 Linux native library 被正確複製，在非 Linux 機器上建置時尤其重要。
@@ -168,7 +168,7 @@ sudo chmod 500 /opt/ntmc/NtmcScheduler.Web
 
 ## 6. 環境變數設定檔
 
-建立 `/etc/ntmc/ntmc.env`：
+建立 `/etc/ntmsy-schedule/ntmsy-schedule.env`：
 
 ```ini
 ASPNETCORE_ENVIRONMENT=Production
@@ -177,19 +177,19 @@ ASPNETCORE_HTTPS_PORTS=443
 AllowedHosts=<APP_IP>
 
 DatabaseProvider=SqlServer
-ConnectionStrings__Default=Server=<SQL_HOST>,1433;Database=<DB_NAME>;User Id=ntmc_app;Password=<DB_PASSWORD>;Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=False
+ConnectionStrings__Default=Server=<SQL_HOST>,1433;Database=<DB_NAME>;User Id=App_SYSchedule;Password=<DB_PASSWORD>;Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=False
 
-Kestrel__Certificates__Default__Path=/var/lib/ntmc/server.pfx
+Kestrel__Certificates__Default__Path=/var/lib/ntmsy-schedule/server.pfx
 Kestrel__Certificates__Default__Password=<PFX_PASSWORD>
 
-DataProtection__KeyPath=/var/lib/ntmc/keys
-DataProtection__CertificatePath=/var/lib/ntmc/dp.pfx
+DataProtection__KeyPath=/var/lib/ntmsy-schedule/keys
+DataProtection__CertificatePath=/var/lib/ntmsy-schedule/dp.pfx
 DataProtection__CertificatePassword=<DPKEY_PASSWORD>
 ```
 
 ```bash
-sudo chown root:ntmc /etc/ntmc/ntmc.env
-sudo chmod 640 /etc/ntmc/ntmc.env
+sudo chown root:ntmsy-schedule /etc/ntmsy-schedule/ntmsy-schedule.env
+sudo chmod 640 /etc/ntmsy-schedule/ntmsy-schedule.env
 ```
 
 幾個容易踩到的點：
@@ -203,11 +203,11 @@ sudo chmod 640 /etc/ntmc/ntmc.env
 
 ## 7. 初始化資料庫與第一位管理者
 
-以 `ntmc` 身分手動執行一次。這個指令會先跑 migration 建好所有資料表，再建立管理者，然後結束程序：
+以 `ntmsy-schedule` 身分手動執行一次。這個指令會先跑 migration 建好所有資料表，再建立管理者，然後結束程序：
 
 ```bash
-sudo -u ntmc env $(grep -v '^#' /etc/ntmc/ntmc.env | xargs -d '\n') \
-  /opt/ntmc/NtmcScheduler.Web --init-admin admin
+sudo -u ntmsy-schedule env $(grep -v '^#' /etc/ntmsy-schedule/ntmsy-schedule.env | xargs -d '\n') \
+  /opt/ntmsy-schedule/NtmcScheduler.Web --init-admin admin
 ```
 
 終端機會提示 `Temporary password:`，輸入不會回顯。密碼規則為至少 8 字元、至少 2 種不同字元且含數字。
@@ -215,7 +215,7 @@ sudo -u ntmc env $(grep -v '^#' /etc/ntmc/ntmc.env | xargs -d '\n') \
 
 ## 8. systemd 服務
 
-建立 `/etc/systemd/system/ntmc.service`：
+建立 `/etc/systemd/system/ntmsy-schedule.service`：
 
 ```ini
 [Unit]
@@ -225,23 +225,23 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=ntmc
-Group=ntmc
-WorkingDirectory=/opt/ntmc
-ExecStart=/opt/ntmc/NtmcScheduler.Web
-EnvironmentFile=/etc/ntmc/ntmc.env
+User=ntmsy-schedule
+Group=ntmsy-schedule
+WorkingDirectory=/opt/ntmsy-schedule
+ExecStart=/opt/ntmsy-schedule/NtmcScheduler.Web
+EnvironmentFile=/etc/ntmsy-schedule/ntmsy-schedule.env
 Restart=always
 RestartSec=5
 KillSignal=SIGTERM
 TimeoutStopSec=120
-SyslogIdentifier=ntmc
+SyslogIdentifier=ntmsy-schedule
 
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/ntmc
+ReadWritePaths=/var/lib/ntmsy-schedule
 
 [Install]
 WantedBy=multi-user.target
@@ -251,12 +251,12 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now ntmc
-sudo systemctl status ntmc
-sudo journalctl -u ntmc -f
+sudo systemctl enable --now ntmsy-schedule
+sudo systemctl status ntmsy-schedule
+sudo journalctl -u ntmsy-schedule -f
 ```
 
-`AmbientCapabilities=CAP_NET_BIND_SERVICE` 讓非 root 的 `ntmc` 能綁定 443。
+`AmbientCapabilities=CAP_NET_BIND_SERVICE` 讓非 root 的 `ntmsy-schedule` 能綁定 443。
 `TimeoutStopSec=120` **不是**等待求解跑完的時間。收到 SIGTERM 時，背景 worker 會把 host 的 stopping token
 傳給 solver 觸發 `CpSolver.StopSearch()`，CP-SAT 數秒內就會中止，未完成的求解在下次啟動時由 `RecoverAsync`
 重新排入佇列（該次求解需從頭重跑）。實際的等待上限是 .NET Generic Host 的 `ShutdownTimeout`，預設 30 秒；
@@ -300,18 +300,18 @@ NTMC_MIGRATION_PROVIDER=SqlServer dotnet ef migrations script --idempotent \
   -p src/NtmcScheduler.Infrastructure -s src/NtmcScheduler.Web -o ntmc.sql
 ```
 
-script 為 idempotent，可重複套用。套用後把 `ntmc_app` 權限降為
+script 為 idempotent，可重複套用。套用後把 `App_SYSchedule` 權限降為
 `db_datareader`、`db_datawriter` 與必要的 `EXECUTE`，但仍需保留讀取 `__EFMigrationsHistory` 的權限，
 因為應用程式啟動時仍會呼叫 migration 檢查。
 
 ## 11. 升級既有部署
 
 ```bash
-sudo systemctl stop ntmc
-sudo cp -r /tmp/ntmc-publish/. /opt/ntmc/
-sudo chown -R ntmc:ntmc /opt/ntmc
-sudo systemctl start ntmc
-sudo journalctl -u ntmc -n 100
+sudo systemctl stop ntmsy-schedule
+sudo cp -r /tmp/ntmsy-schedule-publish/. /opt/ntmsy-schedule/
+sudo chown -R ntmsy-schedule:ntmsy-schedule /opt/ntmsy-schedule
+sudo systemctl start ntmsy-schedule
+sudo journalctl -u ntmsy-schedule -n 100
 ```
 
 新版若含 migration，啟動時會自動套用。**升級前務必先備份資料庫**，migration 沒有自動回滾機制。
@@ -323,8 +323,8 @@ sudo journalctl -u ntmc -n 100
 | 對象 | 方式 | 頻率 |
 |---|---|---|
 | SQL Server 資料庫 | `BACKUP DATABASE <DB_NAME> TO DISK = ...`，建議由 SQL Server Agent 排程 | 每日 |
-| `/var/lib/ntmc/keys` | 檔案備份 | 變更時 |
-| `/var/lib/ntmc/dp.pfx`、`server.pfx` | 離線保管 | 一次 |
+| `/var/lib/ntmsy-schedule/keys` | 檔案備份 | 變更時 |
+| `/var/lib/ntmsy-schedule/dp.pfx`、`server.pfx` | 離線保管 | 一次 |
 
 還原演練必須實際做過一次才算通過驗收：還原資料庫、還原 key ring，確認既有使用者不需重設密碼即可登入。
 
