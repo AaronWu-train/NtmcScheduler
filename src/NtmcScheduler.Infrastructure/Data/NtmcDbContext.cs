@@ -67,6 +67,7 @@ public sealed class NtmcDbContext(DbContextOptions<NtmcDbContext> options)
         modelBuilder.Entity<CurrentConfiguration>(entity =>
         {
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).ValueGeneratedNever();
             entity.Property(x => x.RevisionToken).IsConcurrencyToken();
             entity.HasOne(x => x.ConfigurationRevision).WithMany().HasForeignKey(x => x.ConfigurationRevisionId).OnDelete(DeleteBehavior.Restrict);
         });

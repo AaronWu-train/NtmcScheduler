@@ -343,7 +343,6 @@ namespace NtmcScheduler.Infrastructure.Data.Migrations
             modelBuilder.Entity("NtmcScheduler.Infrastructure.Data.CurrentConfiguration", b =>
                 {
                     b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
                     b.Property<Guid>("ConfigurationRevisionId")

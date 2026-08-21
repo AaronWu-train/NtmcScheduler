@@ -54,6 +54,20 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
+    public void CurrentConfiguration_KeyIsNeverDatabaseGenerated()
+    {
+        var options = new DbContextOptionsBuilder<NtmcDbContext>()
+            .UseSqlite("Data Source=:memory:")
+            .Options;
+        using var db = new NtmcDbContext(options);
+
+        var id = db.Model.FindEntityType(typeof(CurrentConfiguration))!
+            .FindProperty(nameof(CurrentConfiguration.Id))!;
+
+        Assert.AreEqual(Microsoft.EntityFrameworkCore.Metadata.ValueGenerated.Never, id.ValueGenerated);
+    }
+
+    [TestMethod]
     public async Task ConfigurationRevision_IsImmutableAndAudited()
     {
         await using var database = await TestDatabase.CreateAsync();
