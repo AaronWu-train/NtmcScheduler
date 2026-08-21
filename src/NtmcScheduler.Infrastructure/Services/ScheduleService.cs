@@ -78,7 +78,7 @@ public sealed class ScheduleService(
         var before = AssignmentSnapshot(version, employee, assignment);
         assignment.Kind = kind;
         assignment.RequestedRest = requestedRest;
-        assignment.Station = kind == "Work" && version.Workspace == WorkspaceCode.M ? station : null;
+        assignment.Station = kind == "Work" && version.Workspace.IsStation() ? station : null;
         assignment.Shift = kind == "Work" ? SolverScheduleMapper.ParseShift(shift).ToString() : null;
         assignment.EventStart = kind == "WorkEvent" ? eventStart : null;
         assignment.EventEnd = kind == "WorkEvent" ? eventEnd : null;
@@ -239,8 +239,8 @@ public sealed class ScheduleService(
         var version = await db.ScheduleVersions.AsNoTracking().Include(x => x.ExternalAssignments)
             .SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
             ?? throw new DomainValidationException("找不到班表版本。");
-        if (version.Workspace != WorkspaceCode.M || version.ExternalAssignments.Count == 0)
-            throw new DomainValidationException("這份班表沒有 M 外派資料。");
+        if (!version.Workspace.IsStation() || version.ExternalAssignments.Count == 0)
+            throw new DomainValidationException("這份班表沒有站務外派資料。");
         var lines = new List<string> { "日期,車站,班別,人數" };
         lines.AddRange(version.ExternalAssignments.OrderBy(x => x.Date).ThenBy(x => x.Station).ThenBy(x => x.Shift).Select(x =>
             string.Join(',', x.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), x.Station, ShiftText(x.Shift), x.Count.ToString(CultureInfo.InvariantCulture))));
@@ -277,9 +277,9 @@ public sealed class ScheduleService(
         var configuration = await db.ConfigurationRevisions.AsNoTracking().Include(x => x.NonStandardShifts)
             .SingleAsync(x => x.Id == configurationId, cancellationToken);
         var shifts = SolverScheduleMapper.ToNonStandardShifts(configuration);
-        var schedule = await UploadFile.ParseAsync(csv, path => ScheduleCsv.ReadMonthly(path, month, shifts, true), cancellationToken);
+        var schedule = await UploadFile.ParseAsync(csv, path => ScheduleCsv.ReadMonthly(path, month, shifts, true, workspace), cancellationToken);
         var isT = schedule.Employees.Any(x => x.Ability is not null || x.MonthlyShift is not null);
-        if (isT != (workspace == WorkspaceCode.T)) throw new DomainValidationException("CSV 的 M/T 欄位與目前工作區不符。");
+        if (isT != (workspace == WorkspaceCode.T)) throw new DomainValidationException("CSV 的站務／檢修欄位與目前工作區不符。");
         var version = SolverScheduleMapper.ToImportedVersion(schedule, workspace, configurationId, actor.UserId);
         var demand = await db.DemandDrafts.AsNoTracking().AsSplitQuery()
             .Include(x => x.ConfigurationRevision).ThenInclude(x => x.RestIntervals).ThenInclude(x => x.NationalHolidays)
@@ -357,12 +357,12 @@ public sealed class ScheduleService(
 
     private static IReadOnlyList<ScheduleCoverageDto> Coverage(ScheduleVersion version)
     {
-        if (version.Workspace != WorkspaceCode.M) return [];
+        if (!version.Workspace.IsStation()) return [];
         var monthEnd = version.Month.AddMonths(1).AddDays(-1);
         var settings = string.IsNullOrWhiteSpace(version.MonthlySettingsJson)
-            ? MonthlySchedulingDefaults.Create(version.Month, SolverScheduleMapper.ToRestIntervals(version.ConfigurationRevision), version.Employees.Count)
+            ? SolverScheduleMapper.DefaultMonthlySettings(version.Workspace, version.Month, SolverScheduleMapper.ToRestIntervals(version.ConfigurationRevision), version.Employees.Count)
             : JsonSerializer.Deserialize<MonthlySchedulingSettings>(version.MonthlySettingsJson, ServiceSupport.JsonOptions)
-                ?? MonthlySchedulingDefaults.Create(version.Month, SolverScheduleMapper.ToRestIntervals(version.ConfigurationRevision), version.Employees.Count);
+                ?? SolverScheduleMapper.DefaultMonthlySettings(version.Workspace, version.Month, SolverScheduleMapper.ToRestIntervals(version.ConfigurationRevision), version.Employees.Count);
         string[] shifts = ["Early", "Afternoon", "Night"];
         var result = new List<ScheduleCoverageDto>();
         for (var date = version.Month; date <= monthEnd; date = date.AddDays(1))
@@ -383,7 +383,7 @@ public sealed class ScheduleService(
         if (!string.IsNullOrWhiteSpace(version.MonthlySettingsJson))
             settings = JsonSerializer.Deserialize<MonthlySchedulingSettings>(version.MonthlySettingsJson, ServiceSupport.JsonOptions);
         else if (version.ConfigurationRevision is not null)
-            settings = MonthlySchedulingDefaults.Create(version.Month, SolverScheduleMapper.ToRestIntervals(version.ConfigurationRevision), version.Employees.Count);
+            settings = SolverScheduleMapper.DefaultMonthlySettings(version.Workspace, version.Month, SolverScheduleMapper.ToRestIntervals(version.ConfigurationRevision), version.Employees.Count);
         return new(
             version.Id, version.Workspace, version.Month, version.Name, version.SourceStatus, adopted, version.IsArchived,
             version.HasErrors, version.WarningCount, version.CreatedAtUtc, version.UpdatedAtUtc, version.RevisionToken, version.ConfigurationRevisionId,
@@ -391,9 +391,9 @@ public sealed class ScheduleService(
     }
 
     private static MonthlySchedulingSettings VersionSettings(ScheduleVersion version) => string.IsNullOrWhiteSpace(version.MonthlySettingsJson)
-        ? MonthlySchedulingDefaults.Create(version.Month, SolverScheduleMapper.ToRestIntervals(version.ConfigurationRevision), version.Employees.Count)
+        ? SolverScheduleMapper.DefaultMonthlySettings(version.Workspace, version.Month, SolverScheduleMapper.ToRestIntervals(version.ConfigurationRevision), version.Employees.Count)
         : JsonSerializer.Deserialize<MonthlySchedulingSettings>(version.MonthlySettingsJson, ServiceSupport.JsonOptions)
-            ?? MonthlySchedulingDefaults.Create(version.Month, SolverScheduleMapper.ToRestIntervals(version.ConfigurationRevision), version.Employees.Count);
+            ?? SolverScheduleMapper.DefaultMonthlySettings(version.Workspace, version.Month, SolverScheduleMapper.ToRestIntervals(version.ConfigurationRevision), version.Employees.Count);
 
     private static IReadOnlyList<ObjectiveScoreDto> Objectives(ScheduleVersion version)
     {
@@ -425,7 +425,7 @@ public sealed class ScheduleService(
     {
         WorkspaceCode.T => name is not "MonthBoundaryRestBalance" and not "UnusedLeaveRest" and not "MonthlyRest"
             and not "SpecialRestBalance" and not "WeekdayRestFairness" and not "HolidayRestFairness",
-        WorkspaceCode.M => name is not "ExternalStaffing" and not "MixedShiftWorkStreak" and not "NightRestEarly"
+        WorkspaceCode.M or WorkspaceCode.YM => name is not "ExternalStaffing" and not "MixedShiftWorkStreak" and not "NightRestEarly"
             and not "NightRestAfternoon" and not "ShiftChangeWithoutRest" and not "HolidayRestFairness"
             and not "EarlyAfternoonImbalance" and not "NightShiftTarget",
         _ => false
@@ -510,7 +510,7 @@ public sealed class ScheduleService(
         }
     }
 
-    private static int WorkStreakPenalty(WorkspaceCode workspace, int length) => workspace == WorkspaceCode.M
+    private static int WorkStreakPenalty(WorkspaceCode workspace, int length) => workspace.IsStation()
         ? length switch { 1 => 4, 2 or 3 or 4 or 5 => 0, >= 6 => 2 * (length - 4), _ => 0 }
         : length switch { 1 => 4, 2 => 1, 3 or 4 => 0, 5 => 1, >= 6 => 2 * (length - 4), _ => 0 };
 
@@ -555,7 +555,7 @@ public sealed class ScheduleService(
         if (kind == "Work")
         {
             if (SolverScheduleMapper.ParseShift(shift) is null) throw new DomainValidationException("正常班必須指定班別。");
-            if (version.Workspace == WorkspaceCode.M && (station is null || !VersionSettings(version).MStations.Any(x => x.Code == station))) throw new DomainValidationException("M 正常班車站必須存在於本月車站設定。");
+            if (version.Workspace.IsStation() && (station is null || !VersionSettings(version).MStations.Any(x => x.Code == station))) throw new DomainValidationException("站務正常班車站必須存在於本月車站設定。");
             if (version.Workspace == WorkspaceCode.T && !string.IsNullOrWhiteSpace(station)) throw new DomainValidationException("T 正常班不可指定車站。");
         }
         if (kind == "WorkEvent")

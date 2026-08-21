@@ -24,7 +24,7 @@ internal static class DemandCellValidator
         if (kind == "Work")
         {
             if (SolverScheduleMapper.ParseShift(shift) is null) throw new DomainValidationException("正常班必須指定班別。");
-            if (workspace == WorkspaceCode.M && (station is null || mStations is not null && !mStations.Contains(station))) throw new DomainValidationException("M 正常班車站必須存在於本月車站設定。");
+            if (workspace.IsStation() && (station is null || mStations is not null && !mStations.Contains(station))) throw new DomainValidationException("站務正常班車站必須存在於本月車站設定。");
             if (workspace == WorkspaceCode.T && !string.IsNullOrWhiteSpace(station)) throw new DomainValidationException("T 正常班不可指定車站。");
         }
         if (kind == "WorkEvent" && (eventStart is null || eventEnd is null || eventEnd <= eventStart || eventEnd - eventStart > TimeSpan.FromHours(24) || eventStart.Value.Offset != TimeSpan.FromHours(8) || eventEnd.Value.Offset != TimeSpan.FromHours(8)))

@@ -3,7 +3,33 @@ namespace NtmcScheduler.Contracts;
 public enum WorkspaceCode
 {
     M,
-    T
+    T,
+    YM
+}
+
+public static class WorkspaceCodes
+{
+    public static readonly IReadOnlyList<string> MStations = Enumerable.Range(1, 12).Select(x => $"LB{x:D2}").ToArray();
+    public static readonly IReadOnlyList<string> YmStations = Enumerable.Range(6, 14).Select(x => $"Y{x:D2}").ToArray();
+
+    public static bool IsStation(this WorkspaceCode workspace) => workspace is WorkspaceCode.M or WorkspaceCode.YM;
+
+    public static string DisplayName(this WorkspaceCode workspace) => workspace switch
+    {
+        WorkspaceCode.M => "三鷹站務 M",
+        WorkspaceCode.T => "三鷹檢修 T",
+        WorkspaceCode.YM => "環狀站務 M",
+        _ => workspace.ToString()
+    };
+
+    public static string Route(this WorkspaceCode workspace) => workspace.ToString().ToLowerInvariant();
+
+    public static IReadOnlyList<string> Stations(this WorkspaceCode workspace) => workspace switch
+    {
+        WorkspaceCode.M => MStations,
+        WorkspaceCode.YM => YmStations,
+        _ => []
+    };
 }
 
 public enum PreviousScheduleSource
@@ -89,7 +115,8 @@ public sealed record ConfigurationRevisionDto(
     IReadOnlyList<RestIntervalDto> RestIntervals,
     IReadOnlyList<NonStandardShiftDto> NonStandardShifts,
     WorkspaceShiftTimesDto MShiftTimes,
-    WorkspaceShiftTimesDto TShiftTimes);
+    WorkspaceShiftTimesDto TShiftTimes,
+    WorkspaceShiftTimesDto YmShiftTimes);
 
 public sealed record StaffingRangeDto(int Minimum, int Maximum);
 public sealed record MStationSettingDto(

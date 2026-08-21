@@ -343,6 +343,8 @@ public sealed class TSolverTests
     [TestMethod]
     public void MonthlyDownloadHeaders_AreWorkspaceSpecific()
     {
+        Assert.IsTrue(ScheduleCsv.MonthlyHeaders.Contains("月中開始排班日"));
+        Assert.IsFalse(ScheduleCsv.MonthlyHeaders.Contains("到職日期"));
         CollectionAssert.AreEquivalent(
             new[] { "能力", "T月班別" },
             ScheduleCsv.MonthlyHeaders.Except(ScheduleCsv.MonthlyDownloadHeaders(WorkspaceCode.M)).ToArray());

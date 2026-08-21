@@ -88,7 +88,7 @@ public sealed class ScheduleRunWorker(
         };
         try
         {
-            if (run.Workspace == WorkspaceCode.M)
+            if (run.Workspace.IsStation())
             {
                 var result = SolveMPortfolio(input, run, options, solving.Token);
                 await StoreMResultAsync(db, run, input.DemandMonth, input.MonthlySettings, result, stoppingToken);
@@ -125,7 +125,7 @@ public sealed class ScheduleRunWorker(
         for (var index = 0; index < result.Candidates.Count; index++)
         {
             var candidate = result.Candidates[index];
-            var version = SolverScheduleMapper.ToVersion(candidate.Schedule, WorkspaceCode.M, run.Id, index, run.Status,
+            var version = SolverScheduleMapper.ToVersion(candidate.Schedule, run.Workspace, run.Id, index, run.Status,
                 ConfigurationId(run), run.RequestedByUserId, demand, candidate.ExternalAssignments, settings);
             version.RuleWeightsJson = run.RuleWeightsJson;
             version.WarningCount = candidate.Objectives.SelectMany(x => x.Components).Count(x => x.Value > 0);

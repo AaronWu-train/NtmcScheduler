@@ -1,5 +1,6 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using NtmcScheduler.Cli;
+using NtmcScheduler.Contracts;
 using NtmcScheduler.Infrastructure.Csv;
 
 [assembly: DoNotParallelize]
@@ -178,6 +179,38 @@ public sealed class MSolverTests
             cells[0] = "R1";
             File.WriteAllText(path, header + Environment.NewLine + string.Join(',', new[] { "LB01-1" }.Concat(cells)) + Environment.NewLine);
             Assert.ThrowsExactly<ScheduleCsvException>(() => ScheduleCsv.ReadMPerpetualSchedule(path));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public void Csv_YmPerpetualScheduleAcceptsShortAndFullStationCodes()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"ntmc-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var path = Path.Combine(root, "ym-perpetual.csv");
+            var header = string.Join(',', new[] { "萬年班表" }.Concat(Enumerable.Range(1, 56).Select(value => value.ToString())));
+            var cells = Enumerable.Repeat("R", 56).ToArray();
+            cells[0] = "6早";
+            cells[1] = "Y07小";
+            cells[2] = "Y19夜";
+            File.WriteAllText(path, header + Environment.NewLine + string.Join(',', new[] { "Y-P1" }.Concat(cells)) + Environment.NewLine);
+
+            var schedule = ScheduleCsv.ReadMPerpetualSchedule(path, WorkspaceCode.YM);
+
+            Assert.AreEqual(("Y06", Shift.Early), (schedule.Patterns["Y-P1"][0]!.Station, schedule.Patterns["Y-P1"][0]!.Shift));
+            Assert.AreEqual(("Y07", Shift.Afternoon), (schedule.Patterns["Y-P1"][1]!.Station, schedule.Patterns["Y-P1"][1]!.Shift));
+            Assert.AreEqual(("Y19", Shift.Night), (schedule.Patterns["Y-P1"][2]!.Station, schedule.Patterns["Y-P1"][2]!.Shift));
+            StringAssert.Contains(System.Text.Encoding.UTF8.GetString(ScheduleCsv.WriteMPerpetualSchedule(schedule, WorkspaceCode.YM)), "6早,7小,19夜");
+
+            cells[0] = "LB01早";
+            File.WriteAllText(path, header + Environment.NewLine + string.Join(',', new[] { "Y-P1" }.Concat(cells)) + Environment.NewLine);
+            Assert.ThrowsExactly<ScheduleCsvException>(() => ScheduleCsv.ReadMPerpetualSchedule(path, WorkspaceCode.YM));
         }
         finally
         {

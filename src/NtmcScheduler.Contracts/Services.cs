@@ -94,11 +94,11 @@ public interface IScheduleService
 
 public interface IMPerpetualScheduleService
 {
-    Task<MPerpetualScheduleDto?> GetAsync(ActorContext actor, CancellationToken cancellationToken = default);
-    Task<MPerpetualScheduleDto> UploadAsync(string fileName, Stream csv, ActorContext actor, CancellationToken cancellationToken = default);
-    Task<MPerpetualScheduleDto> SavePatternAsync(string? originalId, string id, IReadOnlyList<string> days, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
-    Task<MPerpetualScheduleDto?> DeletePatternAsync(string id, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
-    Task<PerpetualScheduleFileDto> ExportAsync(ActorContext actor, CancellationToken cancellationToken = default);
+    Task<MPerpetualScheduleDto?> GetAsync(WorkspaceCode workspace, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<MPerpetualScheduleDto> UploadAsync(WorkspaceCode workspace, string fileName, Stream csv, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<MPerpetualScheduleDto> SavePatternAsync(WorkspaceCode workspace, string? originalId, string id, IReadOnlyList<string> days, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<MPerpetualScheduleDto?> DeletePatternAsync(WorkspaceCode workspace, string id, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<PerpetualScheduleFileDto> ExportAsync(WorkspaceCode workspace, ActorContext actor, CancellationToken cancellationToken = default);
 }
 
 public interface IScheduleValidationService

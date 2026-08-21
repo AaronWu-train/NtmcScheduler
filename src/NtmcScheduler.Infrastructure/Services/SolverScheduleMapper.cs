@@ -12,14 +12,34 @@ internal static class SolverScheduleMapper
     public static MonthlySchedulingSettings ToMonthlySettings(DemandDraft demand)
     {
         var intervals = ToRestIntervals(demand.ConfigurationRevision);
-        var defaults = MonthlySchedulingDefaults.Create(demand.Month, intervals, demand.Employees.Count);
+        var defaults = DefaultMonthlySettings(demand.Workspace, demand.Month, intervals, demand.Employees.Count);
+        var defaultStations = defaults.MStations;
         var stations = string.IsNullOrWhiteSpace(demand.MStationSettingsJson)
-            ? defaults.MStations
-            : JsonSerializer.Deserialize<MStationSetting[]>(demand.MStationSettingsJson, ServiceSupport.JsonOptions) ?? defaults.MStations;
+            ? defaultStations
+            : JsonSerializer.Deserialize<MStationSetting[]>(demand.MStationSettingsJson, ServiceSupport.JsonOptions) ?? defaultStations;
         return new MonthlySchedulingSettings(
             demand.GeneralRestTarget ?? defaults.GeneralRestTarget,
             demand.SpecialRestTarget ?? defaults.SpecialRestTarget,
             stations);
+    }
+
+    public static MonthlySchedulingSettings DefaultMonthlySettings(
+        WorkspaceCode workspace,
+        DateOnly month,
+        IReadOnlyList<RestInterval> intervals,
+        int employeeCount)
+    {
+        var defaults = MonthlySchedulingDefaults.Create(month, intervals, employeeCount);
+        return workspace == WorkspaceCode.YM
+            ? defaults with
+            {
+                MStations = WorkspaceCodes.YmStations.Select((code, index) => new MStationSetting(
+                    code,
+                    $"G{index switch { <= 2 => 1, <= 5 => 2, <= 8 => 3, 9 => 4, <= 11 => 5, _ => 6 }}",
+                    ExternalSupportLevel.Disallowed,
+                    new(1, 1), new(1, 1), new(1, 1))).ToArray()
+            }
+            : defaults;
     }
 
     public static MonthlySchedulingSettingsDto ToDto(DemandDraft demand)
@@ -118,8 +138,8 @@ internal static class SolverScheduleMapper
     public static NonStandardShiftTable ToNonStandardShifts(ConfigurationRevision revision) => new(
         revision.NonStandardShifts.Select(x => new NonStandardShift(x.Name, x.StartTime, x.EndTime, x.Code)).ToArray());
 
-    public static StandardShiftTimes ToStandardShiftTimes(ConfigurationRevision revision) => new(
-        ToWorkspaceShiftTimes(revision, "M", WorkspaceShiftTimes.DefaultM),
+    public static StandardShiftTimes ToStandardShiftTimes(ConfigurationRevision revision, WorkspaceCode workspace) => new(
+        ToWorkspaceShiftTimes(revision, workspace.IsStation() ? workspace.ToString() : "M", WorkspaceShiftTimes.DefaultM),
         ToWorkspaceShiftTimes(revision, "T", WorkspaceShiftTimes.DefaultT));
 
     private static WorkspaceShiftTimes ToWorkspaceShiftTimes(ConfigurationRevision revision, string workspace, WorkspaceShiftTimes defaults)

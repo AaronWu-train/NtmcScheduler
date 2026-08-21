@@ -34,13 +34,13 @@ public sealed class ScheduleValidationService(IDbContextFactory<NtmcDbContext> d
             .SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken)
             ?? throw new DomainValidationException("找不到班表版本。");
         var previous = await PreviousAssignmentsAsync(db, version, cancellationToken);
-        var shiftTimes = SolverScheduleMapper.ToStandardShiftTimes(version.ConfigurationRevision);
+        var shiftTimes = SolverScheduleMapper.ToStandardShiftTimes(version.ConfigurationRevision, version.Workspace);
         var issues = new List<ValidationIssue>();
         ValidateResolvedDailyAssignments(version, issues);
         ValidateMinimumRestGap(version, previous, shiftTimes, issues);
         ValidateGeneralRestInEverySevenDays(version, previous, issues);
         ValidateEightWeekBalances(version, issues);
-        if (version.Workspace == WorkspaceCode.M) ValidateM(version, MonthlySettings(version), issues);
+        if (version.Workspace.IsStation()) ValidateM(version, MonthlySettings(version), issues);
         else ValidateT(version, issues);
         return (issues, CalculateStats(version));
     }
@@ -178,7 +178,7 @@ public sealed class ScheduleValidationService(IDbContextFactory<NtmcDbContext> d
                     issues.Add(new(ValidationSeverity.Error, "M 合法站群", "正常班必須同時指定合法車站與班別，且車站須位於員工所屬群組。", employee.EmployeeCode, cell.Date, cell.Station, cell.Shift));
             }
         foreach (var external in version.ExternalAssignments.Where(x => settings.MStations.All(station => station.Code != x.Station)))
-            issues.Add(new(ValidationSeverity.Error, "M 外援站碼", "外援車站必須為 LB01–LB12。", null, external.Date, external.Station, external.Shift));
+            issues.Add(new(ValidationSeverity.Error, "站務外援站碼", $"外援車站必須為 {settings.MStations.First().Code}–{settings.MStations.Last().Code}。", null, external.Date, external.Station, external.Shift));
         for (var date = version.Month; date <= monthEnd; date = date.AddDays(1))
             foreach (var station in settings.MStations)
                 foreach (var shift in new[] { "Early", "Afternoon", "Night" })
@@ -262,16 +262,16 @@ public sealed class ScheduleValidationService(IDbContextFactory<NtmcDbContext> d
         if (cell.Kind != "Work" || cell.Shift is null) return null;
         if (!Enum.TryParse<Shift>(cell.Shift, out var shift))
             throw new DomainValidationException("班表含有不支援的班別。");
-        var times = workspace == WorkspaceCode.M ? shiftTimes.M : shiftTimes.T;
+        var times = workspace.IsStation() ? shiftTimes.M : shiftTimes.T;
         var (start, end) = times.Resolve(cell.Date, shift);
         return (cell.Date, start, end);
     }
 
     private static MonthlySchedulingSettings MonthlySettings(ScheduleVersion version) =>
         string.IsNullOrWhiteSpace(version.MonthlySettingsJson)
-            ? MonthlySchedulingDefaults.Create(version.Month, SolverScheduleMapper.ToRestIntervals(version.ConfigurationRevision), version.Employees.Count)
+            ? SolverScheduleMapper.DefaultMonthlySettings(version.Workspace, version.Month, SolverScheduleMapper.ToRestIntervals(version.ConfigurationRevision), version.Employees.Count)
             : JsonSerializer.Deserialize<MonthlySchedulingSettings>(version.MonthlySettingsJson, ServiceSupport.JsonOptions)
-                ?? MonthlySchedulingDefaults.Create(version.Month, SolverScheduleMapper.ToRestIntervals(version.ConfigurationRevision), version.Employees.Count);
+                ?? SolverScheduleMapper.DefaultMonthlySettings(version.Workspace, version.Month, SolverScheduleMapper.ToRestIntervals(version.ConfigurationRevision), version.Employees.Count);
 
     private static string[] StationsInSameGroup(MonthlySchedulingSettings settings, string homeStation)
     {

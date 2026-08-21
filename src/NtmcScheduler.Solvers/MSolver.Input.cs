@@ -82,11 +82,11 @@ public static partial class MSolver
         if (monthStart.Day != 1) return errors;
 
         var stations = input.MonthlySettings?.MStations ?? MonthlySchedulingDefaults.Create(monthStart, input.RestIntervals, input.DemandMonth.Employees.Count).MStations;
-        var expectedStations = Enumerable.Range(1, 12).Select(x => $"LB{x:D2}").ToArray();
-        if (stations.Length != expectedStations.Length || !stations.Select(x => x.Code).SequenceEqual(expectedStations, StringComparer.Ordinal) ||
+        if (stations.Length == 0 || stations.Any(x => string.IsNullOrWhiteSpace(x.Code)) ||
+            stations.Select(x => x.Code).Distinct(StringComparer.Ordinal).Count() != stations.Length ||
             stations.Any(x => string.IsNullOrWhiteSpace(x.Group)) ||
             stations.SelectMany(x => new[] { x.Early, x.Afternoon, x.Night }).Any(x => x.Minimum < 0 || x.Maximum < x.Minimum))
-            errors.Add(new("MonthlySettings.MStations", "M stations must be LB01 through LB12 in order, with non-empty groups and 0 <= minimum <= maximum."));
+            errors.Add(new("MonthlySettings.MStations", "Station codes must be non-empty and unique, groups must be non-empty, and staffing must satisfy 0 <= minimum <= maximum."));
 
         var beforeIntervals = errors.Count;
         ValidateIntervals(input, errors);

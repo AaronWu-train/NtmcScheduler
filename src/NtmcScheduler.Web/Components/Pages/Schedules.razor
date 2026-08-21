@@ -4,11 +4,11 @@
 @inject IScheduleService Service
 @inject CurrentActorService CurrentActor
 
-<PageTitle>@workspaceCode 班表列表</PageTitle>
+<PageTitle>@workspaceCode.DisplayName() 班表列表</PageTitle>
 <WorkspaceNav Workspace="@Workspace.ToLowerInvariant()"/>
 <div class="page-title">
     <div>
-        <h1>@workspaceCode 班表列表</h1>
+        <h1>@workspaceCode.DisplayName() 班表列表</h1>
         <p>開啟、改名、採用或封存每個月份的班表。</p>
     </div>
     <PageHelp Title="班表列表說明">
@@ -37,7 +37,7 @@
         </div>
     </section>
 }
-@if (workspaceCode == WorkspaceCode.M)
+@if (workspaceCode.IsStation())
 {
     <section class="card">
         <div class="section-heading">
@@ -46,7 +46,7 @@
                 <p>指定月份後，上傳為一份可編輯的一般班表；不會自動採用或覆蓋既有版本。</p>
             </div>
             <div class="toolbar">
-                <label>歷史月份<input type="month" value="@historyMonthText" @onchange="args => historyMonthText = args.Value?.ToString() ?? historyMonthText"/></label><a class="button-link" href="/download/templates/m/previous.csv">下載範本</a>
+                <label>歷史月份<input type="month" value="@historyMonthText" @onchange="args => historyMonthText = args.Value?.ToString() ?? historyMonthText"/></label><a class="button-link" href="@($"/download/templates/{Workspace}/previous.csv")">下載範本</a>
                 @if (canEdit)
                 {
                     <label class="button-link primary file-upload-button">上傳歷史班表<InputFile OnChange="ImportHistoryAsync" accept=".csv,text/csv" disabled="@isBusy"/></label>
@@ -158,7 +158,8 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        if (!Enum.TryParse<WorkspaceCode>(Workspace, true, out workspaceCode)) throw new DomainValidationException("工作區只支援 M 或 T。");
+        if (!Enum.TryParse<WorkspaceCode>(Workspace, true, out workspaceCode)) throw new DomainValidationException("不支援此工作區。");
+        Workspace = workspaceCode.Route();
         var actor = await CurrentActor.GetAsync();
         canEdit = actor.CanEdit(workspaceCode) && !actor.MustChangePassword;
         await ReloadAsync();
@@ -206,27 +207,13 @@
     private Task ImportHistoryAsync(InputFileChangeEventArgs args) => RunAsync(async () =>
     {
         if (!DateOnly.TryParse(historyMonthText + "-01", out var month)) throw new DomainValidationException("請選擇歷史月份。");
-        if (workspaceCode == WorkspaceCode.M)
-        {
-            var bytes = await ReadFileAsync(args.File);
-            await Service.ImportAsync(WorkspaceCode.M, month, args.File.Name, new MemoryStream(bytes), await CurrentActor.GetAsync());
-            selectedMonth = month;
-            await ReloadAsync();
-        }
-        else if (workspaceCode == WorkspaceCode.T)
-        {
-            var bytes = await ReadFileAsync(args.File);
-            await Service.ImportAsync(WorkspaceCode.T, month, args.File.Name, new MemoryStream(bytes), await CurrentActor.GetAsync());
-            selectedMonth = month;
-            await ReloadAsync();
-        }
-        else
-        {
-            throw new DomainValidationException("工作區只支援 M 或 T。");
-        }
+        var bytes = await ReadFileAsync(args.File);
+        await Service.ImportAsync(workspaceCode, month, args.File.Name, new MemoryStream(bytes), await CurrentActor.GetAsync());
+        selectedMonth = month;
+        await ReloadAsync();
     }, "歷史班表已匯入。");
 
-    private static IEnumerable<ObjectiveScoreDto> DisplayObjectives(ScheduleVersionDto version) => (version.Objectives ?? []).Where(score => version.Workspace == WorkspaceCode.M ? score.Priority is 1 or 2 or 4 : score.Priority is >= 1 and <= 5).OrderBy(score => score.Priority);
+    private static IEnumerable<ObjectiveScoreDto> DisplayObjectives(ScheduleVersionDto version) => (version.Objectives ?? []).Where(score => version.Workspace.IsStation() ? score.Priority is 1 or 2 or 4 : score.Priority is >= 1 and <= 5).OrderBy(score => score.Priority);
 
     private async Task RunAsync(Func<Task> action, string success)
     {

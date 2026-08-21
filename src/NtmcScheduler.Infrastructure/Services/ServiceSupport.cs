@@ -110,11 +110,12 @@ internal static class ServiceSupport
         revision.NonStandardShifts.OrderBy(x => x.Code).Select(x => new NonStandardShiftDto(
             x.Name, x.Code, x.StartTime, x.EndTime)).ToArray(),
         ToWorkspaceShiftTimesDto(revision, "M"),
-        ToWorkspaceShiftTimesDto(revision, "T"));
+        ToWorkspaceShiftTimesDto(revision, "T"),
+        ToWorkspaceShiftTimesDto(revision, "YM"));
 
     private static WorkspaceShiftTimesDto ToWorkspaceShiftTimesDto(ConfigurationRevision revision, string workspace)
     {
-        var defaults = workspace == "M" ? WorkspaceShiftTimes.DefaultM : WorkspaceShiftTimes.DefaultT;
+        var defaults = workspace == "T" ? WorkspaceShiftTimes.DefaultT : WorkspaceShiftTimes.DefaultM;
         ShiftTimePairDto Pair(string shift, ShiftTimePair fallback)
         {
             var e = revision.StandardShiftTimes.FirstOrDefault(x => x.Workspace == workspace && x.Shift == shift);

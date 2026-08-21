@@ -149,10 +149,10 @@ public sealed class EmployeeService(IDbContextFactory<NtmcDbContext> dbFactory) 
             string.IsNullOrWhiteSpace(command.Name) || command.Name.Trim().Length > 100 ||
             string.IsNullOrWhiteSpace(command.Affiliation) || command.Affiliation.Trim().Length > 64)
             throw new DomainValidationException("員工 ID、姓名與所屬必填，且長度不得超過限制。");
-        if (command.Workspace == WorkspaceCode.M)
+        if (command.Workspace.IsStation())
         {
-            if (command.Ability is not null || command.Affiliation is not ("LB01" or "LB02" or "LB03" or "LB04" or "LB05" or "LB06" or "LB07" or "LB08" or "LB09" or "LB10" or "LB11" or "LB12"))
-                throw new DomainValidationException("M 員工所屬必須為 LB01–LB12，能力必須留空。");
+            if (command.Ability is not null || !command.Workspace.Stations().Contains(command.Affiliation, StringComparer.Ordinal))
+                throw new DomainValidationException($"{command.Workspace.DisplayName()}員工所屬必須為 {command.Workspace.Stations()[0]}–{command.Workspace.Stations()[command.Workspace.Stations().Count - 1]}，能力必須留空。");
         }
         else if (command.Ability is < 1 or > 5)
             throw new DomainValidationException("T 員工能力必須為 1–5。");
@@ -160,13 +160,14 @@ public sealed class EmployeeService(IDbContextFactory<NtmcDbContext> dbFactory) 
 
     private static IReadOnlyList<EmployeeImportRecord> ParseImport(string path, WorkspaceCode workspace)
     {
-        var expected = workspace == WorkspaceCode.M
-            ? new[] { "ID", "姓名", "所屬車站", "到職日期" }
-            : new[] { "ID", "姓名", "所屬", "到職日期", "能力" };
+        var expected = workspace.IsStation()
+            ? new[] { "ID", "姓名", "所屬車站", "月中開始排班日" }
+            : new[] { "ID", "姓名", "所屬", "月中開始排班日", "能力" };
         using var parser = new TextFieldParser(path, Encoding.UTF8, true) { TextFieldType = FieldType.Delimited, HasFieldsEnclosedInQuotes = true, TrimWhiteSpace = false };
         parser.SetDelimiters(",");
         var header = IgnoreTrailingEmptyFields(parser.ReadFields() ?? [], expected.Length);
-        var validHeader = header.SequenceEqual(expected) || workspace == WorkspaceCode.T && header.SequenceEqual(["ID", "姓名", "專業分組", "到職日期", "能力"]);
+        if (header.Length > 3 && header[3] == "到職日期") header[3] = "月中開始排班日";
+        var validHeader = header.SequenceEqual(expected) || workspace == WorkspaceCode.T && header.SequenceEqual(["ID", "姓名", "專業分組", "月中開始排班日", "能力"]);
         if (!validHeader) throw new DomainValidationException($"員工 CSV 表頭必須為：{string.Join(',', expected)}");
         var records = new List<EmployeeImportRecord>();
         var codes = new HashSet<string>(StringComparer.Ordinal);
@@ -184,7 +185,7 @@ public sealed class EmployeeService(IDbContextFactory<NtmcDbContext> dbFactory) 
             if (employmentStartText.Length > 0)
             {
                 if (!DateOnly.TryParseExact(employmentStartText, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedEmploymentStart))
-                    throw new DomainValidationException($"員工 {code} 的到職日期必須使用 yyyy-MM-dd。");
+                    throw new DomainValidationException($"員工 {code} 的月中開始排班日必須使用 yyyy-MM-dd。");
                 employmentStart = parsedEmploymentStart;
             }
             int? ability = null;

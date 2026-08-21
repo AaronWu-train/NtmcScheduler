@@ -16,10 +16,13 @@
 <section>
     <div class="workspace-grid">
         <a class="workspace-card" href="/m/schedules">
-            <strong>M</strong><span>站務班表專區</span>
+            <strong>M</strong><span>三鷹站務 M</span>
         </a>
         <a class="workspace-card" href="/t/schedules">
-            <strong>T</strong><span>檢修班表專區</span>
+            <strong>T</strong><span>三鷹檢修 T</span>
+        </a>
+        <a class="workspace-card" href="/ym/schedules">
+            <strong>YM</strong><span>環狀站務 M</span>
         </a>
     </div>
 </section>
@@ -45,7 +48,7 @@
     }
     @if (runs.Count == 0)
     {
-        <p class="empty-state">還沒有求解紀錄。請先進入 M 或 T 建立班表。</p>
+        <p class="empty-state">還沒有求解紀錄。請先進入 M、T 或 YM 建立班表。</p>
     }
     else
     {
@@ -93,7 +96,7 @@
                             }
                         </td>
                         <td>
-                            @Taipei(run.CreatedAtUtc)<small>@run.TimeLimitSeconds 秒／@run.WorkerCount worker@(run.Workspace == WorkspaceCode.M ? $"／{run.SeedCount} 次嘗試" : "")</small>
+                            @Taipei(run.CreatedAtUtc)<small>@run.TimeLimitSeconds 秒／@run.WorkerCount worker@(run.Workspace.IsStation() ? $"／{run.SeedCount} 次嘗試" : "")</small>
                         </td>
                         <td>
                             @if (CanCancel(run))

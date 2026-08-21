@@ -39,7 +39,7 @@ else
                     <span class="status">已封存</span>
                 }
             </div>
-            <p>@detail.Version.Workspace／@detail.Version.Month.ToString("yyyy 年 MM 月")｜直接點選日格即可修改</p>
+            <p>@detail.Version.Workspace.DisplayName()／@detail.Version.Month.ToString("yyyy 年 MM 月")｜直接點選日格即可修改</p>
         </div>
         <PageHelp Title="班表編輯器說明">
             <p>紅框只代表違反勞基法。右側可檢查 56 日區間與本月統計；M 班表底部可檢查各站每日人數及外派。</p>
@@ -71,7 +71,7 @@ else
     </div>
 
     <div class="schedule-legend" aria-label="班表文字圖例">
-        <span class="rest-text">R 休假</span><span>早班</span><span class="afternoon-text">@(detail.Version.Workspace == WorkspaceCode.M ? "小班" : "午班")</span><strong>夜班</strong><span class="event-text">X 非常態班型</span><span class="labor-mark">! 勞基法違規</span>
+        <span class="rest-text">R 休假</span><span>早班</span><span class="afternoon-text">@(detail.Version.Workspace.IsStation() ? "小班" : "午班")</span><strong>夜班</strong><span class="event-text">X 非常態班型</span><span class="labor-mark">! 勞基法違規</span>
     </div>
     <div class="table-scroll schedule-grid compact-schedule">
         <table>
@@ -114,7 +114,7 @@ else
                     <th>R</th>
                     <th>R1</th>
                 }
-                <th>R</th><th>R1</th><th>R休</th><th>早</th><th>@(detail.Version.Workspace == WorkspaceCode.M ? "小" : "午")</th><th>夜</th><th>X</th><th>班數</th>
+                <th>R</th><th>R1</th><th>R休</th><th>早</th><th>@(detail.Version.Workspace.IsStation() ? "小" : "午")</th><th>夜</th><th>X</th><th>班數</th>
             </tr>
             </thead>
             <tbody>
@@ -167,10 +167,10 @@ else
                         <td class="@TargetHeatClass(value.Rest, restTarget)" title="實際 @value.Rest／本月目標 @restTarget（完整區間目標 16）">@value.Rest/16</td>
                         <td class="@TargetHeatClass(value.SpecialRest, specialRestTarget)" title="實際 @value.SpecialRest／本月目標 @specialRestTarget（完整區間目標 @value.RequiredSpecialRest）">@value.SpecialRest/@value.RequiredSpecialRest</td>
                     }
-                    <td>@stats.Rest</td><td>@stats.SpecialRest</td><td>@stats.LeaveRest</td><td class="@ShiftHeatClass(stats.Early, x => x.Early)" title="早班：同欄最大值為綠、最小值為紅">@stats.Early</td><td class="@ShiftHeatClass(stats.Afternoon, x => x.Afternoon)" title="@(detail.Version.Workspace == WorkspaceCode.M ? "小班" : "午班")：同欄最大值為綠、最小值為紅">@stats.Afternoon</td><td class="@ShiftHeatClass(stats.Night, x => x.Night)" title="夜班：同欄最大值為綠、最小值為紅">@stats.Night</td><td>@stats.Other</td><td>@(stats.Early + stats.Afternoon + stats.Night + stats.Other)</td>
+                    <td>@stats.Rest</td><td>@stats.SpecialRest</td><td>@stats.LeaveRest</td><td class="@ShiftHeatClass(stats.Early, x => x.Early)" title="早班：同欄最大值為綠、最小值為紅">@stats.Early</td><td class="@ShiftHeatClass(stats.Afternoon, x => x.Afternoon)" title="@(detail.Version.Workspace.IsStation() ? "小班" : "午班")：同欄最大值為綠、最小值為紅">@stats.Afternoon</td><td class="@ShiftHeatClass(stats.Night, x => x.Night)" title="夜班：同欄最大值為綠、最小值為紅">@stats.Night</td><td>@stats.Other</td><td>@(stats.Early + stats.Afternoon + stats.Night + stats.Other)</td>
                 </tr>
             }
-    @if (detail.Version.Workspace == WorkspaceCode.M)
+    @if (detail.Version.Workspace.IsStation())
     {
         @foreach (var station in MStations)
         {
@@ -249,10 +249,10 @@ else
         <label>
             班別或休假
             <select @bind="cellEdit.Value">
-                <option value="Rest">R</option><option value="SpecialRest">R1</option><option value="LeaveRest">R休</option><option value="RequestedRest">R*</option><option value="RequestedSpecialRest">R1*</option><option value="RequestedLeaveRest">R休*</option><option value="WorkEarly">早班</option><option value="WorkAfternoon">@(detail!.Version.Workspace == WorkspaceCode.M ? "小班" : "午班")</option><option value="WorkNight">夜班</option><option value="WorkEvent">X／非常態班型</option>
+                <option value="Rest">R</option><option value="SpecialRest">R1</option><option value="LeaveRest">R休</option><option value="RequestedRest">R*</option><option value="RequestedSpecialRest">R1*</option><option value="RequestedLeaveRest">R休*</option><option value="WorkEarly">早班</option><option value="WorkAfternoon">@(detail!.Version.Workspace.IsStation() ? "小班" : "午班")</option><option value="WorkNight">夜班</option><option value="WorkEvent">X／非常態班型</option>
             </select>
         </label>
-        @if (cellEdit.Value.StartsWith("Work", StringComparison.Ordinal) && cellEdit.Value != "WorkEvent" && detail!.Version.Workspace == WorkspaceCode.M)
+        @if (cellEdit.Value.StartsWith("Work", StringComparison.Ordinal) && cellEdit.Value != "WorkEvent" && detail!.Version.Workspace.IsStation())
         {
             <label>
                 車站
@@ -303,7 +303,7 @@ else
     protected override async Task OnParametersSetAsync()
     {
         await LoadAsync();
-        sortColumn = detail!.Version.Workspace == WorkspaceCode.M ? "affiliation" : "id";
+        sortColumn = detail!.Version.Workspace.IsStation() ? "affiliation" : "id";
         sortDescending = false;
     }
 
@@ -372,7 +372,7 @@ else
     {
         WorkspaceCode.T => name is not "MonthBoundaryRestBalance" and not "UnusedLeaveRest" and not "MonthlyRest"
             and not "SpecialRestBalance" and not "WeekdayRestFairness" and not "HolidayRestFairness",
-        WorkspaceCode.M => name is not "ExternalStaffing" and not "MixedShiftWorkStreak" and not "NightRestEarly"
+        WorkspaceCode.M or WorkspaceCode.YM => name is not "ExternalStaffing" and not "MixedShiftWorkStreak" and not "NightRestEarly"
             and not "NightRestAfternoon" and not "ShiftChangeWithoutRest" and not "HolidayRestFairness"
             and not "EarlyAfternoonImbalance" and not "NightShiftTarget",
         _ => false
@@ -404,11 +404,12 @@ else
         _ => name
     };
     private static string CellClass(ScheduleAssignmentDto cell) => cell.Kind switch { "Rest" or "SpecialRest" or "LeaveRest" => "rest-text", "Work" when cell.Shift == "Afternoon" => "afternoon-text", "Work" when cell.Shift == "Night" => "night-text", "WorkEvent" => "event-text", _ => "" };
-    private string CellText(ScheduleAssignmentDto cell) => cell switch { { Kind: "Rest", RequestedRest: true } => "R*", { Kind: "SpecialRest", RequestedRest: true } => "R1*", { Kind: "LeaveRest", RequestedRest: true } => "R休*", { Kind: "Rest" } => "R", { Kind: "SpecialRest" } => "R1", { Kind: "LeaveRest" } => "R休", { Kind: "WorkEvent" } => string.IsNullOrWhiteSpace(cell.EventDescription) ? "X" : cell.EventDescription!, { Kind: "Work", Shift: "Early" } => WorkText(cell, "早"), { Kind: "Work", Shift: "Afternoon" } => WorkText(cell, detail!.Version.Workspace == WorkspaceCode.M ? "小" : "午"), { Kind: "Work", Shift: "Night" } => WorkText(cell, "夜"), _ => "?" };
+    private string CellText(ScheduleAssignmentDto cell) => cell switch { { Kind: "Rest", RequestedRest: true } => "R*", { Kind: "SpecialRest", RequestedRest: true } => "R1*", { Kind: "LeaveRest", RequestedRest: true } => "R休*", { Kind: "Rest" } => "R", { Kind: "SpecialRest" } => "R1", { Kind: "LeaveRest" } => "R休", { Kind: "WorkEvent" } => string.IsNullOrWhiteSpace(cell.EventDescription) ? "X" : cell.EventDescription!, { Kind: "Work", Shift: "Early" } => WorkText(cell, "早"), { Kind: "Work", Shift: "Afternoon" } => WorkText(cell, detail!.Version.Workspace.IsStation() ? "小" : "午"), { Kind: "Work", Shift: "Night" } => WorkText(cell, "夜"), _ => "?" };
     private string WorkText(ScheduleAssignmentDto cell, string shift)
     {
-        if (detail!.Version.Workspace != WorkspaceCode.M || cell.Station is null) return shift;
-        return cell.Station.Length == 4 && cell.Station.StartsWith("LB", StringComparison.Ordinal) && int.TryParse(cell.Station[2..], out var number)
+        if (!detail!.Version.Workspace.IsStation() || cell.Station is null) return shift;
+        var digits = cell.Station.StartsWith("LB", StringComparison.Ordinal) ? cell.Station[2..] : cell.Station.StartsWith('Y') ? cell.Station[1..] : "";
+        return int.TryParse(digits, out var number)
             ? $"{number}{shift}" : $"{cell.Station}{shift}";
     }
     private ScheduleIntervalStatsDto IntervalStat(string employee, RestIntervalDto interval) => detail!.IntervalStats.Single(x => x.EmployeeCode == employee && x.Start == interval.Start);
@@ -479,7 +480,7 @@ else
     private async Task SaveCellAsync() => await RunAsync(async () =>
     {
         var (kind, requested, shift) = cellEdit.Value switch { "RequestedRest" => ("Rest", true, (string?)null), "RequestedSpecialRest" => ("SpecialRest", true, null), "RequestedLeaveRest" => ("LeaveRest", true, null), "LeaveRest" => ("LeaveRest", false, null), "WorkEarly" => ("Work", false, "Early"), "WorkAfternoon" => ("Work", false, "Afternoon"), "WorkNight" => ("Work", false, "Night"), "WorkEvent" => ("WorkEvent", false, null), _ => (cellEdit.Value, false, null) };
-        detail = await Service.UpdateAssignmentAsync(VersionId, editingCell!.Id, kind, requested, detail!.Version.Workspace == WorkspaceCode.M ? cellEdit.Station : null, shift, Offset(cellEdit.Start), Offset(cellEdit.End), cellEdit.Description, detail.Version.RevisionToken, await CurrentActor.GetAsync());
+        detail = await Service.UpdateAssignmentAsync(VersionId, editingCell!.Id, kind, requested, detail!.Version.Workspace.IsStation() ? cellEdit.Station : null, shift, Offset(cellEdit.Start), Offset(cellEdit.End), cellEdit.Description, detail.Version.RevisionToken, await CurrentActor.GetAsync());
         CloseEditor();
     }, "日格已儲存並重新檢查整月班表。");
 

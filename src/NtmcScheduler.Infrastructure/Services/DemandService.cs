@@ -50,9 +50,9 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
             CreatedByUserId = actor.UserId,
             UpdatedByUserId = actor.UserId
         };
-        if (workspace == WorkspaceCode.M)
+        if (workspace.IsStation())
             demand.MStationSettingsJson = await db.DemandDrafts.AsNoTracking()
-                .Where(x => x.Workspace == WorkspaceCode.M && x.Month == previousMonth)
+                .Where(x => x.Workspace == workspace && x.Month == previousMonth)
                 .Select(x => x.MStationSettingsJson).SingleOrDefaultAsync(cancellationToken);
         demand.Employees.AddRange(employees.Select(employee => new DemandEmployee
         {
@@ -70,7 +70,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
                 if (!previousByCode.TryGetValue(employee.EmployeeCode, out var previous)) continue;
                 employee.OpeningRest = previous.ClosingRest;
                 employee.OpeningSpecialRest = previous.ClosingSpecialRest;
-                employee.PerpetualScheduleId = workspace == WorkspaceCode.M ? previous.PerpetualScheduleId : null;
+                employee.PerpetualScheduleId = workspace.IsStation() ? previous.PerpetualScheduleId : null;
             }
         }
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
@@ -102,17 +102,17 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
             throw new DomainValidationException($"R 目標必須介於 {bounds.GeneralRestMinimum}–{bounds.GeneralRestMaximum}，R1 目標必須介於 {bounds.SpecialRestMinimum}–{bounds.SpecialRestMaximum}。");
 
         MStationSetting[] mapped = [];
-        if (demand.Workspace == WorkspaceCode.M)
+        if (demand.Workspace.IsStation())
         {
-            var expectedCodes = Enumerable.Range(1, 12).Select(x => $"LB{x:D2}").ToArray();
-            if (stations.Count != expectedCodes.Length || !stations.Select(x => x.Code).SequenceEqual(expectedCodes, StringComparer.Ordinal))
-                throw new DomainValidationException("M 車站固定為 LB01–LB12，且順序不可變更。");
+            var expectedCodes = demand.Workspace.Stations();
+            if (stations.Count != expectedCodes.Count || !stations.Select(x => x.Code).SequenceEqual(expectedCodes, StringComparer.Ordinal))
+                throw new DomainValidationException($"{demand.Workspace.DisplayName()} 車站固定為 {expectedCodes[0]}–{expectedCodes[expectedCodes.Count - 1]}，且順序不可變更。");
             var codes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             mapped = stations.Select(row =>
             {
                 var code = row.Code.Trim();
                 var group = row.Group.Trim();
-                if (!codes.Add(code)) throw new DomainValidationException("M 車站代碼不可重複。");
+                if (!codes.Add(code)) throw new DomainValidationException("站務車站代碼不可重複。");
                 if (string.IsNullOrWhiteSpace(group) || group.Length > 64) throw new DomainValidationException($"車站 {code} 的群組必填且最多 64 字。");
                 static StaffingRange Range(StaffingRangeDto value, string label)
                 {
@@ -127,7 +127,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         var before = new { demand.GeneralRestTarget, demand.SpecialRestTarget, demand.MStationSettingsJson };
         demand.GeneralRestTarget = generalRestTarget;
         demand.SpecialRestTarget = specialRestTarget;
-        demand.MStationSettingsJson = demand.Workspace == WorkspaceCode.M ? JsonSerializer.Serialize(mapped, ServiceSupport.JsonOptions) : null;
+        demand.MStationSettingsJson = demand.Workspace.IsStation() ? JsonSerializer.Serialize(mapped, ServiceSupport.JsonOptions) : null;
         Touch(demand, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "DemandMonthlySettingsUpdated", demand.Workspace, "DemandDraft", demand.Id, before,
             new { demand.Month, demand.GeneralRestTarget, demand.SpecialRestTarget, Stations = mapped.Length });
@@ -176,8 +176,8 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
             throw new DomainValidationException("月初 R/R1 必須同時填寫且不可為負數；R休上限不可為負數。");
         if (demand.Workspace == WorkspaceCode.T && SolverScheduleMapper.ParseShift(monthlyShift) is null)
             throw new DomainValidationException("T 月班別必須為早、午或夜。");
-        if (demand.Workspace == WorkspaceCode.M && !string.IsNullOrWhiteSpace(monthlyShift))
-            throw new DomainValidationException("M 不可設定 T 月班別。");
+        if (demand.Workspace.IsStation() && !string.IsNullOrWhiteSpace(monthlyShift))
+            throw new DomainValidationException("站務工作區不可設定 T 月班別。");
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var before = new { demand.Month, employee.EmployeeCode, employee.Name, employee.EmploymentStartDate, employee.MonthlyShift, employee.OpeningRest, employee.OpeningSpecialRest, employee.RequestedLeaveRestCount, employee.PerpetualScheduleId };
         employee.EmploymentStartDate = employmentStartDate;
@@ -241,9 +241,9 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         ServiceSupport.RequireEditor(actor, demand.Workspace);
         if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
         if (date < demand.Month || date >= demand.Month.AddMonths(1)) throw new DomainValidationException("日格日期不在目前月份內。");
-        var mStations = demand.Workspace == WorkspaceCode.M
+        var mStations = demand.Workspace.IsStation()
             ? (string.IsNullOrWhiteSpace(demand.MStationSettingsJson)
-                ? Enumerable.Range(1, 12).Select(x => $"LB{x:D2}").ToHashSet(StringComparer.Ordinal)
+                ? demand.Workspace.Stations().ToHashSet(StringComparer.Ordinal)
                 : (JsonSerializer.Deserialize<MStationSetting[]>(demand.MStationSettingsJson, ServiceSupport.JsonOptions) ?? []).Select(x => x.Code).ToHashSet(StringComparer.Ordinal))
             : null;
         DemandCellValidator.Validate(demand.Workspace, date, kind, requestedRest, station, shift, eventStart, eventEnd, eventDescription, mStations);
@@ -263,7 +263,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
             }
             assignment.Kind = string.IsNullOrWhiteSpace(kind) || kind == "Unresolved" ? null : kind;
             assignment.RequestedRest = requestedRest;
-            assignment.Station = kind == "Work" && demand.Workspace == WorkspaceCode.M ? station : null;
+            assignment.Station = kind == "Work" && demand.Workspace.IsStation() ? station : null;
             assignment.Shift = kind == "Work" ? SolverScheduleMapper.ParseShift(shift).ToString() : null;
             assignment.EventStart = kind == "WorkEvent" ? eventStart : null;
             assignment.EventEnd = kind == "WorkEvent" ? eventEnd : null;
@@ -358,7 +358,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
             {
                 employee.OpeningRest = previous.ClosingRest;
                 employee.OpeningSpecialRest = previous.ClosingSpecialRest;
-                employee.PerpetualScheduleId = demand.Workspace == WorkspaceCode.M ? previous.PerpetualScheduleId : null;
+                employee.PerpetualScheduleId = demand.Workspace.IsStation() ? previous.PerpetualScheduleId : null;
             }
             else
             {
@@ -454,9 +454,9 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         var demand = await Query(db).SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
             ?? throw new DomainValidationException("找不到本月需求。");
         ServiceSupport.RequireEditor(actor, demand.Workspace);
-        if (demand.Workspace != WorkspaceCode.M) throw new DomainValidationException("只有 M 可上傳八週萬年班表。");
+        if (!demand.Workspace.IsStation()) throw new DomainValidationException("只有站務工作區可上傳八週萬年班表。");
         if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
-        var schedule = await UploadFile.ParseAsync(csv, ScheduleCsv.ReadMPerpetualSchedule, cancellationToken);
+        var schedule = await UploadFile.ParseAsync(csv, path => ScheduleCsv.ReadMPerpetualSchedule(path, demand.Workspace), cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         demand.PerpetualScheduleJson = JsonSerializer.Serialize(schedule, ServiceSupport.JsonOptions);
         demand.PerpetualScheduleFileName = Path.GetFileName(fileName);
@@ -474,11 +474,11 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         var demand = await db.DemandDrafts.AsNoTracking().SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
             ?? throw new DomainValidationException("找不到本月需求。");
         ServiceSupport.RequireEditor(actor, demand.Workspace);
-        if (demand.Workspace != WorkspaceCode.M || string.IsNullOrWhiteSpace(demand.PerpetualScheduleJson))
-            throw new DomainValidationException("找不到 M 八週萬年班表。");
+        if (!demand.Workspace.IsStation() || string.IsNullOrWhiteSpace(demand.PerpetualScheduleJson))
+            throw new DomainValidationException("找不到站務八週萬年班表。");
         var schedule = JsonSerializer.Deserialize<MPerpetualSchedule>(demand.PerpetualScheduleJson, ServiceSupport.JsonOptions)
-            ?? throw new DomainValidationException("M 八週萬年班表無法讀取。");
-        return new(demand.PerpetualScheduleFileName ?? "perpetual.csv", ScheduleCsv.WriteMPerpetualSchedule(schedule));
+            ?? throw new DomainValidationException("站務八週萬年班表無法讀取。");
+        return new(demand.PerpetualScheduleFileName ?? "perpetual.csv", ScheduleCsv.WriteMPerpetualSchedule(schedule, demand.Workspace));
     }
 
     public async Task ClearPerpetualScheduleAsync(Guid demandId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
@@ -487,14 +487,14 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         var demand = await db.DemandDrafts.SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
             ?? throw new DomainValidationException("找不到本月需求。");
         ServiceSupport.RequireEditor(actor, demand.Workspace);
-        if (demand.Workspace != WorkspaceCode.M) throw new DomainValidationException("只有 M 使用萬年班表。");
+        if (!demand.Workspace.IsStation()) throw new DomainValidationException("只有站務工作區使用萬年班表。");
         if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
         var before = new { demand.Month, demand.PerpetualScheduleFileName, demand.PerpetualScheduleUploadedAtUtc };
         demand.PerpetualScheduleJson = null;
         demand.PerpetualScheduleFileName = null;
         demand.PerpetualScheduleUploadedAtUtc = null;
         Touch(demand, actor.UserId);
-        ServiceSupport.AddAudit(db, actor, "DemandPerpetualScheduleCleared", WorkspaceCode.M, "DemandDraft", demand.Id, before, null);
+        ServiceSupport.AddAudit(db, actor, "DemandPerpetualScheduleCleared", demand.Workspace, "DemandDraft", demand.Id, before, null);
         await SaveDemandChangesAsync(db, cancellationToken);
     }
 
@@ -504,14 +504,14 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         var demand = await db.DemandDrafts.SingleOrDefaultAsync(x => x.Id == demandId, cancellationToken)
             ?? throw new DomainValidationException("找不到本月需求。");
         ServiceSupport.RequireEditor(actor, demand.Workspace);
-        if (demand.Workspace != WorkspaceCode.M) throw new DomainValidationException("只有 M 使用萬年班表。");
+        if (!demand.Workspace.IsStation()) throw new DomainValidationException("只有站務工作區使用萬年班表。");
         if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
         var before = new { demand.Month, demand.PerpetualScheduleFileName, demand.PerpetualScheduleUploadedAtUtc };
         demand.PerpetualScheduleJson = JsonSerializer.Serialize(new MPerpetualSchedule(new Dictionary<string, IReadOnlyList<ScheduleCell?>>()), ServiceSupport.JsonOptions);
         demand.PerpetualScheduleFileName = null;
         demand.PerpetualScheduleUploadedAtUtc = DateTimeOffset.UtcNow;
         Touch(demand, actor.UserId);
-        ServiceSupport.AddAudit(db, actor, "DemandEmptyPerpetualScheduleSelected", WorkspaceCode.M, "DemandDraft", demand.Id, before, new { demand.Month });
+        ServiceSupport.AddAudit(db, actor, "DemandEmptyPerpetualScheduleSelected", demand.Workspace, "DemandDraft", demand.Id, before, new { demand.Month });
         await SaveDemandChangesAsync(db, cancellationToken);
     }
 
@@ -601,7 +601,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
     {
         var shifts = SolverScheduleMapper.ToNonStandardShifts(demand.ConfigurationRevision);
         var month = historical ? demand.Month.AddMonths(-1) : demand.Month;
-        return await UploadFile.ParseAsync(csv, path => ScheduleCsv.ReadMonthly(path, month, shifts, historical), cancellationToken);
+        return await UploadFile.ParseAsync(csv, path => ScheduleCsv.ReadMonthly(path, month, shifts, historical, demand.Workspace), cancellationToken);
     }
 
     private static async Task<MonthlySchedule> GetPreviousScheduleAsync(NtmcDbContext db, DemandDraft demand, CancellationToken cancellationToken)
@@ -632,7 +632,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
     private static void ValidateWorkspace(MonthlySchedule schedule, WorkspaceCode workspace)
     {
         var isT = schedule.Employees.Any(x => x.Ability is not null || x.MonthlyShift is not null);
-        if (isT != (workspace == WorkspaceCode.T)) throw new DomainValidationException("CSV 的 M/T 欄位與目前工作區不符。");
+        if (isT != (workspace == WorkspaceCode.T)) throw new DomainValidationException("CSV 的站務／檢修欄位與目前工作區不符。");
     }
 
     private static void ApplyPreviousSchedule(DemandDraft demand, MonthlySchedule schedule)
@@ -644,7 +644,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
             {
                 employee.OpeningRest = previous.ClosingUsage?.Rest;
                 employee.OpeningSpecialRest = previous.ClosingUsage?.SpecialRest;
-                employee.PerpetualScheduleId = demand.Workspace == WorkspaceCode.M ? previous.PerpetualScheduleId : null;
+                employee.PerpetualScheduleId = demand.Workspace.IsStation() ? previous.PerpetualScheduleId : null;
             }
             else
             {
@@ -657,7 +657,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
 
     private static void InheritBlankPerpetualScheduleIds(DemandDraft demand, MonthlySchedule? previous)
     {
-        if (demand.Workspace != WorkspaceCode.M || previous is null) return;
+        if (!demand.Workspace.IsStation() || previous is null) return;
         var previousByCode = previous.Employees.ToDictionary(x => x.EmployeeId, StringComparer.Ordinal);
         foreach (var employee in demand.Employees)
         {

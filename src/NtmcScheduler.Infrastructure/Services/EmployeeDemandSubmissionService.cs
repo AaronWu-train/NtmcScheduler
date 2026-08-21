@@ -85,8 +85,8 @@ public sealed class EmployeeDemandSubmissionService(IDbContextFactory<NtmcDbCont
         ServiceSupport.RequireViewer(actor);
         month = MonthStart(month);
         if (date < month || date >= month.AddMonths(1)) throw new DomainValidationException("日格日期不在目前月份內。");
-        IReadOnlySet<string>? stationCodes = workspace == WorkspaceCode.M
-            ? Enumerable.Range(1, 12).Select(x => $"LB{x:D2}").ToHashSet(StringComparer.Ordinal)
+        IReadOnlySet<string>? stationCodes = workspace.IsStation()
+            ? workspace.Stations().ToHashSet(StringComparer.Ordinal)
             : null;
         DemandCellValidator.Validate(workspace, date, kind, requestedRest, station, shift, eventStart, eventEnd, eventDescription, stationCodes);
         var employee = await db.Employees.AsNoTracking()
@@ -125,7 +125,7 @@ public sealed class EmployeeDemandSubmissionService(IDbContextFactory<NtmcDbCont
             }
             assignment.Kind = string.IsNullOrWhiteSpace(kind) || kind == "Unresolved" ? null : kind;
             assignment.RequestedRest = requestedRest;
-            assignment.Station = kind == "Work" && workspace == WorkspaceCode.M ? station : null;
+            assignment.Station = kind == "Work" && workspace.IsStation() ? station : null;
             assignment.Shift = kind == "Work" ? SolverScheduleMapper.ParseShift(shift).ToString() : null;
             assignment.EventStart = kind == "WorkEvent" ? eventStart : null;
             assignment.EventEnd = kind == "WorkEvent" ? eventEnd : null;

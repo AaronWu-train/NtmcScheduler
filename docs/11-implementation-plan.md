@@ -32,21 +32,22 @@ src/
     └── Program.cs
 ```
 
-`NtmcScheduler.Contracts` 只有 provider-neutral domain DTO 與 application service contracts，不參考 EF 或 OR-Tools。`Infrastructure` 實作 Identity／EF、CSV adapter、快照轉換、直接 M/T 驗證器與單一背景佇列。`Web` 是 .NET 10 Blazor Interactive Server，元件只呼叫 application services。CSV 使用 .NET `TextFieldParser`，CLI 與 Web 共用同一 adapter。
+`NtmcScheduler.Contracts` 只有 provider-neutral domain DTO 與 application service contracts，不參考 EF 或 OR-Tools。`Infrastructure` 實作 Identity／EF、CSV adapter、快照轉換、直接工作區驗證器與單一背景佇列。`Web` 是 .NET 10 Blazor Interactive Server，元件只呼叫 application services。CSV 使用 .NET `TextFieldParser`，CLI 與 Web 共用同一 adapter。
 
 ## Web 頁面與服務
 
 - 共同頁：登入／修改密碼、Dashboard、需求填寫、共同設定版本、管理者帳號權限、只讀稽核紀錄。
 - M 頁：員工主檔、建立班表、班表列表、萬年班表、互動寬表班表編輯器。
 - T 頁：員工主檔、建立班表、班表列表、互動寬表班表編輯器。
+- YM 頁：與 M 相同功能的獨立工作區，使用 Y06–Y19、獨立資料與權限。
 - 每頁使用共用 `PageHelp` 顯示說明；編輯器固定人員欄、日期表頭、右側統計與底部 coverage 品質列。
 - 所有寫入 service command 接收 `ActorContext` 與資源 revision token；服務層再次驗證工作區權限，資料與 AuditLog 在同一 transaction。
 - Blazor circuit 內的 application service 不以 scoped `NtmcDbContext` 長期持有連線；每次操作經 `IDbContextFactory` 建立 context。帳號管理每個操作建立短生命週期 scope，讓 Identity 與 EF 共用同一 context。
-- `ScheduleRunWorker` 單一讀取者執行 M/T solver，從 immutable typed input JSON 重現；重啟恢復未完成工作且不重複處理終態 run。
+- `ScheduleRunWorker` 單一讀取者執行 M／YM 共用的 `MSolver` 或 T 的 `TSolver`，從 immutable typed input JSON 重現；重啟恢復未完成工作且不重複處理終態 run。若 M 與 YM 後續規則不同，再依新決策調整或拆分 solver。
 
 ## 資料庫與 migration
 
-- Identity、WorkspacePermission、Employee、不可變 ConfigurationRevision、DemandDraft／快照、EmployeeDemandSubmission、ScheduleRun、ScheduleVersion／assignments、AdoptedSchedule、全域 MPerpetualScheduleTemplate 與 append-only AuditLog（含 SessionId）。
+- Identity、WorkspacePermission、Employee、不可變 ConfigurationRevision、DemandDraft／快照、EmployeeDemandSubmission、ScheduleRun、ScheduleVersion／assignments、AdoptedSchedule、M／YM 各自的全域 MPerpetualScheduleTemplate 與 append-only AuditLog（含 SessionId）。
 - 所有 domain 主鍵與 revision token 使用應用程式產生 GUID；`AdoptedSchedule(Workspace, Month)` 主鍵保證每月唯一 `★`。
 - repository-local `dotnet-ef` 管理兩套 provider-specific migration：現有歷史保留在 `NtmcScheduler.Migrations.Sqlite`，SQL Server 由 `NtmcScheduler.Migrations.SqlServer` 的 `InitialCreate` 起始。每次 model 變更必須對兩個 project 各新增一份 migration：
 
@@ -67,12 +68,12 @@ NTMC_MIGRATION_PROVIDER=SqlServer dotnet ef migrations add <Name> \
 
 - `SolverContracts.cs`：共用的 `ScheduleInput`、月班表、日格、區間、選項、狀態與 Objective 輸出。無建模函數。
 - `MContracts.cs` / `TContracts.cs`：候選與求解結果；M 另有外派輸出。
-- `MSolver.cs` / `TSolver.cs`：公開 `Solve`、固定 Priority 群組的字典序 CP-SAT 呼叫、候選差異與結果讀取。
+- `MSolver.cs` / `TSolver.cs`：公開 `Solve`、固定 Priority 群組的字典序 CP-SAT 呼叫、候選差異與結果讀取。M 與 YM 目前共用 `MSolver`，由 Infrastructure 傳入各自固定站點與班別時間；不建立重複的 `YMSolver`。未來規則若分歧，須另案更新規格、決策、實作與測試。
 - `*.Input.cs`：快照複製、月份／人員／日格／區間驗證、歷史查詢與 R/R1 累積推導。
 - `*.HardRules.cs`：OR-Tools 變數與不可關閉的硬限制。
 - `*.SoftRules.cs`：軟違反量、固定群組及權重；M 為 J1 與直接加權合併的 `J4+J5`，T 為 J1–J5。
 
-M 與 T 不共用任何建模邏輯。每個 solver 只有一個 private `Variables` record 收納 OR-Tools 變數，不建 `Variables/Constraints/Objectives/Candidates` class 層。
+站務模型與 T 不共用任何建模邏輯。M 與 YM 因規則完全相同而共用站務模型；每個 solver 只有一個 private `Variables` record 收納 OR-Tools 變數，不建 `Variables/Constraints/Objectives/Candidates` class 層。
 
 ## CLI 責任
 

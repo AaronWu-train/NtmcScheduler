@@ -44,14 +44,14 @@ public sealed class NtmcDbContext(DbContextOptions<NtmcDbContext> options)
         modelBuilder.Entity<WorkspacePermission>(entity =>
         {
             entity.HasKey(x => new { x.UserId, x.Workspace });
-            entity.Property(x => x.Workspace).HasConversion<string>().HasMaxLength(1);
+            entity.Property(x => x.Workspace).HasConversion<string>().HasMaxLength(2);
             entity.HasOne(x => x.User).WithMany(x => x.WorkspacePermissions).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Employee>(entity =>
         {
             entity.HasKey(x => x.Id);
-            entity.Property(x => x.Workspace).HasConversion<string>().HasMaxLength(1);
+            entity.Property(x => x.Workspace).HasConversion<string>().HasMaxLength(2);
             entity.Property(x => x.EmployeeCode).HasMaxLength(32).IsRequired();
             entity.Property(x => x.Name).HasMaxLength(100).IsRequired();
             entity.Property(x => x.Affiliation).HasMaxLength(64).IsRequired();
@@ -94,7 +94,7 @@ public sealed class NtmcDbContext(DbContextOptions<NtmcDbContext> options)
         modelBuilder.Entity<StandardShiftTimeEntity>(entity =>
         {
             entity.HasKey(x => x.Id);
-            entity.Property(x => x.Workspace).HasMaxLength(1).IsRequired();
+            entity.Property(x => x.Workspace).HasMaxLength(2).IsRequired();
             entity.Property(x => x.Shift).HasMaxLength(16).IsRequired();
             entity.HasIndex(x => new { x.ConfigurationRevisionId, x.Workspace, x.Shift }).IsUnique();
             entity.HasOne(x => x.ConfigurationRevision).WithMany(x => x.StandardShiftTimes).HasForeignKey(x => x.ConfigurationRevisionId).OnDelete(DeleteBehavior.Cascade);
@@ -103,7 +103,7 @@ public sealed class NtmcDbContext(DbContextOptions<NtmcDbContext> options)
         modelBuilder.Entity<DemandDraft>(entity =>
         {
             entity.HasKey(x => x.Id);
-            entity.Property(x => x.Workspace).HasConversion<string>().HasMaxLength(1);
+            entity.Property(x => x.Workspace).HasConversion<string>().HasMaxLength(2);
             entity.Property(x => x.PreviousSource).HasConversion<string>().HasMaxLength(32);
             entity.Property(x => x.RevisionToken).IsConcurrencyToken();
             entity.HasIndex(x => new { x.Workspace, x.Month }).IsUnique();
@@ -114,8 +114,10 @@ public sealed class NtmcDbContext(DbContextOptions<NtmcDbContext> options)
         {
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Id).ValueGeneratedNever();
+            entity.Property(x => x.Workspace).HasConversion<string>().HasMaxLength(2);
             entity.Property(x => x.FileName).HasMaxLength(255).IsRequired();
             entity.Property(x => x.RevisionToken).IsConcurrencyToken();
+            entity.HasIndex(x => x.Workspace).IsUnique();
         });
         modelBuilder.Entity<DemandEmployee>(entity =>
         {
@@ -135,7 +137,7 @@ public sealed class NtmcDbContext(DbContextOptions<NtmcDbContext> options)
         modelBuilder.Entity<EmployeeDemandSubmission>(entity =>
         {
             entity.HasKey(x => x.Id);
-            entity.Property(x => x.Workspace).HasConversion<string>().HasMaxLength(1);
+            entity.Property(x => x.Workspace).HasConversion<string>().HasMaxLength(2);
             entity.Property(x => x.EmployeeCode).HasMaxLength(32).IsRequired();
             entity.Property(x => x.Name).HasMaxLength(100).IsRequired();
             entity.Property(x => x.Affiliation).HasMaxLength(64).IsRequired();
@@ -159,13 +161,13 @@ public sealed class NtmcDbContext(DbContextOptions<NtmcDbContext> options)
         modelBuilder.Entity<UploadedPreviousSchedule>(entity =>
         {
             entity.HasKey(x => x.Id);
-            entity.Property(x => x.Workspace).HasConversion<string>().HasMaxLength(1);
+            entity.Property(x => x.Workspace).HasConversion<string>().HasMaxLength(2);
         });
 
         modelBuilder.Entity<ScheduleRun>(entity =>
         {
             entity.HasKey(x => x.Id);
-            entity.Property(x => x.Workspace).HasConversion<string>().HasMaxLength(1);
+            entity.Property(x => x.Workspace).HasConversion<string>().HasMaxLength(2);
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(32);
             entity.Property(x => x.ProgramVersion).HasMaxLength(100);
             entity.Property(x => x.InputHash).HasMaxLength(128);
@@ -176,7 +178,7 @@ public sealed class NtmcDbContext(DbContextOptions<NtmcDbContext> options)
         modelBuilder.Entity<ScheduleVersion>(entity =>
         {
             entity.HasKey(x => x.Id);
-            entity.Property(x => x.Workspace).HasConversion<string>().HasMaxLength(1);
+            entity.Property(x => x.Workspace).HasConversion<string>().HasMaxLength(2);
             entity.Property(x => x.SourceStatus).HasConversion<string>().HasMaxLength(32);
             entity.Property(x => x.Name).HasMaxLength(100).IsRequired();
             entity.Property(x => x.RevisionToken).IsConcurrencyToken();
@@ -206,7 +208,7 @@ public sealed class NtmcDbContext(DbContextOptions<NtmcDbContext> options)
         modelBuilder.Entity<AdoptedSchedule>(entity =>
         {
             entity.HasKey(x => new { x.Workspace, x.Month });
-            entity.Property(x => x.Workspace).HasConversion<string>().HasMaxLength(1);
+            entity.Property(x => x.Workspace).HasConversion<string>().HasMaxLength(2);
             entity.HasIndex(x => x.ScheduleVersionId).IsUnique();
             entity.HasOne(x => x.ScheduleVersion).WithMany().HasForeignKey(x => x.ScheduleVersionId).OnDelete(DeleteBehavior.Restrict);
         });

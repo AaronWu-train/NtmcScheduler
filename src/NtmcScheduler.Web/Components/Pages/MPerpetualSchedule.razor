@@ -1,14 +1,14 @@
-@page "/m/perpetual"
+@page "/{Workspace}/perpetual"
 @rendermode InteractiveServer
 @attribute [Authorize]
 @inject IMPerpetualScheduleService PerpetualService
 @inject CurrentActorService CurrentActor
 
-<PageTitle>M 萬年班表</PageTitle>
-<WorkspaceNav Workspace="m"/>
+<PageTitle>@workspaceCode.DisplayName() 萬年班表</PageTitle>
+<WorkspaceNav Workspace="@Workspace"/>
 <div class="page-title">
     <div>
-        <h1>M 全域萬年班表</h1>
+        <h1>@workspaceCode.DisplayName() 全域萬年班表</h1>
         <p>管理固定 56 天週期；建立班表時仍可另行上傳該月份的暫用版本。</p>
     </div>
     <PageHelp Title="萬年班表說明">
@@ -26,7 +26,7 @@
             <p>固定 56 天週期。</p>
         </div>
         <div class="toolbar">
-            <a class="button-link" href="/download/templates/m/perpetual.csv">下載範本</a>
+            <a class="button-link" href="@($"/download/templates/{Workspace}/perpetual.csv")">下載範本</a>
             @if (canEdit)
             {
                 <label class="button-link primary file-upload-button">上傳並覆蓋<InputFile OnChange="UploadAsync" accept=".csv,text/csv" disabled="@isBusy"/></label>
@@ -41,7 +41,7 @@
     {
         <p>檔名：@perpetual.FileName　最後修改：@Taipei(perpetual.UpdatedAtUtc)</p>
         <div class="toolbar">
-            <a class="button-link" target="_blank" href="/m/perpetual.csv">預覽 CSV</a><a class="button-link" href="/download/m/perpetual.csv">下載 CSV</a>
+            <a class="button-link" target="_blank" href="@($"/{Workspace}/perpetual.csv")">預覽 CSV</a><a class="button-link" href="@($"/download/{Workspace}/perpetual.csv")">下載 CSV</a>
         </div>
         <div class="table-scroll schedule-grid">
             <table class="perpetual-table">
@@ -66,7 +66,7 @@
                             <td>
                                 <select class="cell-editor" value="@pattern.Days[index]" disabled="@(!canEdit || isBusy)" @onchange="args => ChangeDayAsync(pattern, index, args.Value?.ToString())">
                                     <option value=""></option><option value="R">R</option>
-                                    @foreach (var station in Stations)
+                                    @foreach (var station in workspaceCode.Stations())
                                     {
                                         <option value="@ShortStation(station)早">@ShortStation(station)早</option>
                                         <option value="@ShortStation(station)小">@ShortStation(station)小</option>
@@ -97,7 +97,8 @@
 </section>
 
 @code {
-    private static readonly string[] Stations = ["LB01", "LB02", "LB03", "LB04", "LB05", "LB06", "LB07", "LB08", "LB09", "LB10", "LB11", "LB12"];
+    [Parameter] public string Workspace { get; set; } = "m";
+    private WorkspaceCode workspaceCode;
     private MPerpetualScheduleDto? perpetual;
     private List<PatternEdit> patternEdits = [];
     private string newPatternId = "";
@@ -106,20 +107,26 @@
     private bool canEdit;
     private bool isBusy;
 
-    protected override async Task OnInitializedAsync() => await ReloadAsync();
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!Enum.TryParse<WorkspaceCode>(Workspace, true, out workspaceCode) || !workspaceCode.IsStation())
+            throw new DomainValidationException("工作區不支援萬年班表。");
+        Workspace = workspaceCode.Route();
+        await ReloadAsync();
+    }
 
     private async Task ReloadAsync()
     {
         var actor = await CurrentActor.GetAsync();
-        canEdit = actor.CanEdit(WorkspaceCode.M) && !actor.MustChangePassword;
-        perpetual = await PerpetualService.GetAsync(actor);
+        canEdit = actor.CanEdit(workspaceCode) && !actor.MustChangePassword;
+        perpetual = await PerpetualService.GetAsync(workspaceCode, actor);
         patternEdits = perpetual?.Patterns.Select(x => new PatternEdit(x.Id, x.Days.ToList())).ToList() ?? [];
     }
 
     private Task UploadAsync(InputFileChangeEventArgs args) => RunAsync(async () =>
     {
         await using var input = args.File.OpenReadStream(5 * 1024 * 1024);
-        perpetual = await PerpetualService.UploadAsync(args.File.Name, input, await CurrentActor.GetAsync());
+        perpetual = await PerpetualService.UploadAsync(workspaceCode, args.File.Name, input, await CurrentActor.GetAsync());
         await ReloadAsync();
     }, "全域萬年班表已覆蓋。");
 
@@ -133,20 +140,20 @@
 
     private Task SaveAsync(PatternEdit pattern, string id) => RunAsync(async () =>
     {
-        perpetual = await PerpetualService.SavePatternAsync(pattern.OriginalId, id, pattern.Days, perpetual!.RevisionToken, await CurrentActor.GetAsync());
+        perpetual = await PerpetualService.SavePatternAsync(workspaceCode, pattern.OriginalId, id, pattern.Days, perpetual!.RevisionToken, await CurrentActor.GetAsync());
         await ReloadAsync();
     }, "萬年班表已自動儲存。");
 
     private Task AddAsync() => RunAsync(async () =>
     {
-        perpetual = await PerpetualService.SavePatternAsync(null, newPatternId, Enumerable.Repeat("", 56).ToArray(), perpetual!.RevisionToken, await CurrentActor.GetAsync());
+        perpetual = await PerpetualService.SavePatternAsync(workspaceCode, null, newPatternId, Enumerable.Repeat("", 56).ToArray(), perpetual!.RevisionToken, await CurrentActor.GetAsync());
         newPatternId = "";
         await ReloadAsync();
     }, "已新增萬年班表代號。");
 
     private Task DeleteAsync(PatternEdit pattern) => RunAsync(async () =>
     {
-        perpetual = await PerpetualService.DeletePatternAsync(pattern.OriginalId, perpetual!.RevisionToken, await CurrentActor.GetAsync());
+        perpetual = await PerpetualService.DeletePatternAsync(workspaceCode, pattern.OriginalId, perpetual!.RevisionToken, await CurrentActor.GetAsync());
         await ReloadAsync();
     }, "已刪除萬年班表代號。");
 
@@ -173,7 +180,7 @@
     }
 
     private static int CountShift(PatternEdit pattern, string suffix) => pattern.Days.Count(x => x.EndsWith(suffix, StringComparison.Ordinal));
-    private static string ShortStation(string station) => int.Parse(station[2..], CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
+    private static string ShortStation(string station) => int.Parse(station[(station.StartsWith("LB", StringComparison.Ordinal) ? 2 : 1)..], CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
     private static string Taipei(DateTimeOffset value) => value.ToOffset(TimeSpan.FromHours(8)).ToString("yyyy-MM-dd HH:mm");
 
     private sealed class PatternEdit(string id, List<string> days)

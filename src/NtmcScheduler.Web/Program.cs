@@ -253,25 +253,29 @@ app.MapGet("/download/demands/{demandId:guid}/previous.csv", async (
     return Results.File(file.Content, "text/csv; charset=utf-8", file.FileName);
 }).RequireAuthorization();
 
-app.MapGet("/m/perpetual.csv", async (
+app.MapGet("/{workspace}/perpetual.csv", async (
+    string workspace,
     HttpContext context,
     NtmcDbContext db,
     IMPerpetualScheduleService perpetual,
     CancellationToken cancellationToken) =>
 {
+    if (!Enum.TryParse<WorkspaceCode>(workspace, true, out var workspaceCode) || !workspaceCode.IsStation()) return Results.NotFound();
     var actor = await CreateHttpActorAsync(context.User, context, db, cancellationToken);
-    var file = await perpetual.ExportAsync(actor, cancellationToken);
+    var file = await perpetual.ExportAsync(workspaceCode, actor, cancellationToken);
     return Results.Text(Encoding.UTF8.GetString(file.Content), "text/plain; charset=utf-8");
 }).RequireAuthorization();
 
-app.MapGet("/download/m/perpetual.csv", async (
+app.MapGet("/download/{workspace}/perpetual.csv", async (
+    string workspace,
     HttpContext context,
     NtmcDbContext db,
     IMPerpetualScheduleService perpetual,
     CancellationToken cancellationToken) =>
 {
+    if (!Enum.TryParse<WorkspaceCode>(workspace, true, out var workspaceCode) || !workspaceCode.IsStation()) return Results.NotFound();
     var actor = await CreateHttpActorAsync(context.User, context, db, cancellationToken);
-    var file = await perpetual.ExportAsync(actor, cancellationToken);
+    var file = await perpetual.ExportAsync(workspaceCode, actor, cancellationToken);
     return Results.File(file.Content, "text/csv; charset=utf-8", file.FileName);
 }).RequireAuthorization();
 
@@ -280,10 +284,10 @@ app.MapGet("/download/templates/{workspace}/{kind}.csv", (string workspace, stri
     if (!Enum.TryParse<WorkspaceCode>(workspace, true, out var workspaceCode)) return Results.NotFound();
     var header = kind.ToLowerInvariant() switch
     {
-        "employees" when workspaceCode == WorkspaceCode.M => "ID,姓名,所屬車站,到職日期",
-        "employees" when workspaceCode == WorkspaceCode.T => "ID,姓名,所屬,到職日期,能力",
+        "employees" when workspaceCode.IsStation() => "ID,姓名,所屬車站,月中開始排班日",
+        "employees" when workspaceCode == WorkspaceCode.T => "ID,姓名,所屬,月中開始排班日,能力",
         "demand" or "previous" => ScheduleCsv.MonthlyDownloadHeader(workspaceCode),
-        "perpetual" when workspaceCode == WorkspaceCode.M => ScheduleCsv.MPerpetualHeader,
+        "perpetual" when workspaceCode.IsStation() => ScheduleCsv.MPerpetualHeader,
         "rest-intervals" => "區間開始日期,區間結束日期,國定假日日期",
         "non-standard-shifts" => "班型,時間,代碼",
         _ => null

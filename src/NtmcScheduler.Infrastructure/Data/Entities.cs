@@ -84,7 +84,7 @@ public sealed class StandardShiftTimeEntity
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid ConfigurationRevisionId { get; set; }
-    public string Workspace { get; set; } = "";   // "M" or "T"
+    public string Workspace { get; set; } = "";   // "M", "T", or "YM"
     public string Shift { get; set; } = "";        // "Early", "Afternoon", "Night"
     public TimeOnly StartTime { get; set; }
     public TimeOnly EndTime { get; set; }
@@ -119,6 +119,7 @@ public sealed class DemandDraft
 public sealed class MPerpetualScheduleTemplate
 {
     public int Id { get; set; } = 1;
+    public WorkspaceCode Workspace { get; set; } = WorkspaceCode.M;
     public string FileName { get; set; } = "perpetual.csv";
     public string ScheduleJson { get; set; } = "";
     public Guid UpdatedByUserId { get; set; }

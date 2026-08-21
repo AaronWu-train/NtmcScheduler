@@ -1,14 +1,14 @@
 @inject CurrentActorService CurrentActor
 
-@if (Workspace is "m" or "t")
+@if (workspaceCode is not null)
 {
-    <aside class="workspace-nav" aria-label="@Workspace.ToUpperInvariant() 工作區功能">
-        <strong>@Workspace.ToUpperInvariant() 工作區</strong>
+    <aside class="workspace-nav" aria-label="@workspaceCode.Value.DisplayName() 工作區功能">
+        <strong>@workspaceCode.Value.DisplayName()</strong>
         <NavLink href="@($"/{Workspace}/employees")">編輯員工資料</NavLink>
         <NavLink href="@($"/{Workspace}/schedules")">班表列表</NavLink>
-        @if (Workspace == "m")
+        @if (workspaceCode.Value.IsStation())
         {
-            <NavLink href="/m/perpetual">萬年班表</NavLink>
+            <NavLink href="@($"/{Workspace}/perpetual")">萬年班表</NavLink>
         }
         @if (canCreateSchedule)
         {
@@ -20,11 +20,12 @@
 
 @code {
     [Parameter] public string Workspace { get; set; } = "";
+    private WorkspaceCode? workspaceCode;
     private bool canCreateSchedule;
 
     protected override async Task OnParametersSetAsync()
     {
-        canCreateSchedule = Enum.TryParse<WorkspaceCode>(Workspace, true, out var workspace)
-            && (await CurrentActor.GetAsync()).CanEdit(workspace);
+        workspaceCode = Enum.TryParse<WorkspaceCode>(Workspace, true, out var workspace) ? workspace : null;
+        canCreateSchedule = workspaceCode is { } code && (await CurrentActor.GetAsync()).CanEdit(code);
     }
 }

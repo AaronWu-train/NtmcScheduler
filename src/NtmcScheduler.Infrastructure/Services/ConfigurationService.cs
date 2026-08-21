@@ -184,9 +184,9 @@ public sealed class CommonConfigurationService(IDbContextFactory<NtmcDbContext> 
     private static void AddStandardShiftTimes(ConfigurationRevision revision, ConfigurationRevision? previous)
     {
         // Copy from previous if available; otherwise seed with hard-coded defaults.
-        foreach (var ws in new[] { "M", "T" })
+        foreach (var ws in new[] { "M", "T", "YM" })
         {
-            var defaults = ws == "M" ? WorkspaceShiftTimes.DefaultM : WorkspaceShiftTimes.DefaultT;
+            var defaults = ws == "T" ? WorkspaceShiftTimes.DefaultT : WorkspaceShiftTimes.DefaultM;
             foreach (var (shift, fallback) in new[] { ("Early", defaults.Early), ("Afternoon", defaults.Afternoon), ("Night", defaults.Night) })
             {
                 var existing = previous?.StandardShiftTimes.FirstOrDefault(x => x.Workspace == ws && x.Shift == shift);

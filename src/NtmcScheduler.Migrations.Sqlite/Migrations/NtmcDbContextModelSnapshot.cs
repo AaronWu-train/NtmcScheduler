@@ -146,7 +146,7 @@ namespace NtmcScheduler.Infrastructure.Data.Migrations
             modelBuilder.Entity("NtmcScheduler.Infrastructure.Data.AdoptedSchedule", b =>
                 {
                     b.Property<string>("Workspace")
-                        .HasMaxLength(1)
+                        .HasMaxLength(2)
                         .HasColumnType("TEXT");
 
                     b.Property<DateOnly>("Month")
@@ -459,7 +459,7 @@ namespace NtmcScheduler.Infrastructure.Data.Migrations
 
                     b.Property<string>("Workspace")
                         .IsRequired()
-                        .HasMaxLength(1)
+                        .HasMaxLength(2)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -594,7 +594,7 @@ namespace NtmcScheduler.Infrastructure.Data.Migrations
 
                     b.Property<string>("Workspace")
                         .IsRequired()
-                        .HasMaxLength(1)
+                        .HasMaxLength(2)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -652,7 +652,7 @@ namespace NtmcScheduler.Infrastructure.Data.Migrations
 
                     b.Property<string>("Workspace")
                         .IsRequired()
-                        .HasMaxLength(1)
+                        .HasMaxLength(2)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -758,7 +758,15 @@ namespace NtmcScheduler.Infrastructure.Data.Migrations
                     b.Property<Guid>("UpdatedByUserId")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Workspace")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("Workspace")
+                        .IsUnique();
 
                     b.ToTable("MPerpetualScheduleTemplates");
                 });
@@ -1032,7 +1040,7 @@ namespace NtmcScheduler.Infrastructure.Data.Migrations
 
                     b.Property<string>("Workspace")
                         .IsRequired()
-                        .HasMaxLength(1)
+                        .HasMaxLength(2)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -1103,7 +1111,7 @@ namespace NtmcScheduler.Infrastructure.Data.Migrations
 
                     b.Property<string>("Workspace")
                         .IsRequired()
-                        .HasMaxLength(1)
+                        .HasMaxLength(2)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -1139,7 +1147,7 @@ namespace NtmcScheduler.Infrastructure.Data.Migrations
 
                     b.Property<string>("Workspace")
                         .IsRequired()
-                        .HasMaxLength(1)
+                        .HasMaxLength(2)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -1172,7 +1180,7 @@ namespace NtmcScheduler.Infrastructure.Data.Migrations
 
                     b.Property<string>("Workspace")
                         .IsRequired()
-                        .HasMaxLength(1)
+                        .HasMaxLength(2)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -1186,7 +1194,7 @@ namespace NtmcScheduler.Infrastructure.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Workspace")
-                        .HasMaxLength(1)
+                        .HasMaxLength(2)
                         .HasColumnType("TEXT");
 
                     b.HasKey("UserId", "Workspace");

@@ -76,12 +76,16 @@
 
     private TimeOnly earlyStart, earlyEnd, afternoonStart, afternoonEnd, nightStart, nightEnd;
 
-    private string WorkspaceLabel => workspace == "m" ? "站務 M" : "檢修 T";
+    private string WorkspaceLabel => workspaceCode?.DisplayName() ?? "工作區";
+    private WorkspaceCode? workspaceCode;
 
     protected override async Task OnParametersSetAsync()
     {
         var actor = await CurrentActor.GetAsync();
-        canEdit = Enum.TryParse<WorkspaceCode>(workspace, true, out var ws) && actor.CanEdit(ws);
+        workspaceCode = Enum.TryParse<WorkspaceCode>(workspace, true, out var ws) ? ws : null;
+        if (workspaceCode is null) throw new DomainValidationException("不支援此工作區。");
+        workspace = workspaceCode.Value.Route();
+        canEdit = actor.CanEdit(workspaceCode.Value);
         await LoadAsync();
     }
 
@@ -90,7 +94,13 @@
         var actor = await CurrentActor.GetAsync();
         current = await Service.GetCurrentAsync(actor);
         if (current is null) return;
-        var times = workspace == "m" ? current.MShiftTimes : current.TShiftTimes;
+        var times = workspaceCode switch
+        {
+            WorkspaceCode.M => current.MShiftTimes,
+            WorkspaceCode.T => current.TShiftTimes,
+            WorkspaceCode.YM => current.YmShiftTimes,
+            _ => current.MShiftTimes
+        };
         earlyStart = times.Early.Start;
         earlyEnd = times.Early.End;
         afternoonStart = times.Afternoon.Start;

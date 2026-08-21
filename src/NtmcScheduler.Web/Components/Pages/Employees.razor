@@ -5,15 +5,15 @@
 @inject CurrentActorService CurrentActor
 @inject IJSRuntime JS
 
-<PageTitle>@workspaceCode 員工資料</PageTitle>
+<PageTitle>@workspaceCode.DisplayName() 員工資料</PageTitle>
 <WorkspaceNav Workspace="@Workspace.ToLowerInvariant()"/>
 <div class="page-title">
     <div>
-        <h1>@workspaceCode 員工資料</h1>
+        <h1>@workspaceCode.DisplayName() 員工資料</h1>
         <p>維護之後建立月份時會使用的人員名單。</p>
     </div>
     <PageHelp Title="員工資料說明">
-        <p>到職日期只供本月新進員工判斷何時開始排班。修改或刪除不會回寫既有需求或班表；回任時可使用相同 ID 重新建立。</p>
+        <p>月中開始排班日用來判斷本月何時開始排班。修改或刪除不會回寫既有需求或班表；回任時可使用相同 ID 重新建立。</p>
     </PageHelp>
 </div>
 @if (message is not null)
@@ -25,13 +25,13 @@
     @if (importPreview is null)
     {
         <section class="card">
-            <h2>@workspaceCode 員工 CSV 匯入</h2>
+            <h2>@workspaceCode.DisplayName() 員工 CSV 匯入</h2>
             <p class="format-help">
                 <strong>固定表頭：</strong>@EmployeeCsvColumns
             </p>
-            <p class="format-help">UTF-8（可含 BOM），最大 5 MB。到職日期可留空；有填寫時使用 yyyy-MM-dd。匯入會新增或更新員工，未出現的既有員工不會刪除。</p>
+            <p class="format-help">UTF-8（可含 BOM），最大 5 MB。既有人員的月中開始排班日可留空；有填寫時使用 yyyy-MM-dd。匯入會新增或更新員工，未出現的既有員工不會刪除。</p>
             <div class="toolbar">
-                <a class="button-link" href="/download/templates/@Workspace.ToLowerInvariant()/employees.csv">下載 @workspaceCode 範本</a>
+                <a class="button-link" href="/download/templates/@Workspace/employees.csv">下載 @workspaceCode.DisplayName() 範本</a>
                 <label class="button-link primary file-upload-button">匯入員工 CSV<InputFile OnChange="PreviewImportAsync" accept=".csv,text/csv" aria-label="匯入員工 CSV" disabled="@isBusy"/></label>
             </div>
         </section>
@@ -62,8 +62,8 @@
         <DataAnnotationsValidator/><ValidationSummary/>
         <label>員工 ID<InputText @bind-Value="form.EmployeeCode"/></label>
         <label>姓名<InputText @bind-Value="form.Name"/></label>
-        <label>所屬<InputText @bind-Value="form.Affiliation" placeholder="@(workspaceCode == WorkspaceCode.M ? "LB01" : "專業分組")"/></label>
-        <label>到職日期（新進員工）<InputDate @bind-Value="form.EmploymentStartDate"/></label>
+        <label>所屬<InputText @bind-Value="form.Affiliation" placeholder="@(workspaceCode.IsStation() ? workspaceCode.Stations()[0] : "專業分組")"/></label>
+        <label>月中開始排班日<InputDate @bind-Value="form.EmploymentStartDate"/></label>
         @if (workspaceCode == WorkspaceCode.T)
         {
             <label>能力<InputNumber @bind-Value="form.Ability" min="1" max="5"/></label>
@@ -96,7 +96,7 @@
             </th>
             <th class="sortable" aria-sort='@AriaSort("start")'>
                 <button class="sort-button" @onclick='() => SortBy("start")'>
-                    <span>到職日期</span><span class="sort-indicator" aria-hidden="true"></span>
+                    <span>月中開始排班日</span><span class="sort-indicator" aria-hidden="true"></span>
                 </button>
             </th>
             @if (workspaceCode == WorkspaceCode.T && canEdit)
@@ -147,14 +147,15 @@
     private byte[]? pendingImport;
     private EmployeeImportPreviewDto? importPreview;
 
-    private string EmployeeCsvColumns => workspaceCode == WorkspaceCode.M
-        ? "ID、姓名、所屬車站、到職日期"
-        : "ID、姓名、所屬、到職日期、能力";
+    private string EmployeeCsvColumns => workspaceCode.IsStation()
+        ? "ID、姓名、所屬車站、月中開始排班日"
+        : "ID、姓名、所屬、月中開始排班日、能力";
 
     protected override async Task OnParametersSetAsync()
     {
-        if (!Enum.TryParse<WorkspaceCode>(Workspace, true, out workspaceCode)) throw new DomainValidationException("工作區只支援 M 或 T。");
-        sortColumn = workspaceCode == WorkspaceCode.M ? "affiliation" : "id";
+        if (!Enum.TryParse<WorkspaceCode>(Workspace, true, out workspaceCode)) throw new DomainValidationException("不支援此工作區。");
+        Workspace = workspaceCode.Route();
+        sortColumn = workspaceCode.IsStation() ? "affiliation" : "id";
         sortDescending = false;
         var actor = await CurrentActor.GetAsync();
         canEdit = actor.CanEdit(workspaceCode) && !actor.MustChangePassword;

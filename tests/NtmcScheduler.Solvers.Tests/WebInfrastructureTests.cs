@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using NtmcScheduler.Contracts;
@@ -280,7 +282,7 @@ public sealed class WebInfrastructureTests
     public void RuleDefinitions_SoftRulesHaveExplicitFormulas()
     {
         var service = new ScheduleRunService(null!, null!);
-        foreach (var workspace in new[] { WorkspaceCode.M, WorkspaceCode.T })
+        foreach (var workspace in Enum.GetValues<WorkspaceCode>())
             foreach (var rule in service.GetRules(workspace).Where(x => !x.IsHard))
                 Assert.DoesNotContain("依目前規格", rule.Description, $"{workspace}.{rule.Key}");
     }
@@ -375,7 +377,7 @@ public sealed class WebInfrastructureTests
         {
             ["P1"] = Enumerable.Repeat<ScheduleCell?>(null, 56).ToArray()
         });
-        await new MPerpetualScheduleService(database).UploadAsync("global.csv",
+        await new MPerpetualScheduleService(database).UploadAsync(WorkspaceCode.M, "global.csv",
             new MemoryStream(ScheduleCsv.WriteMPerpetualSchedule(globalSchedule)), actor);
         var runService = new ScheduleRunService(database, new ScheduleRunQueue());
         foreach (var rejected in new[]
@@ -457,7 +459,7 @@ public sealed class WebInfrastructureTests
     {
         await using var database = await TestDatabase.CreateAsync();
         var service = new EmployeeService(database);
-        var csv = "ID,姓名,所屬,到職日期,能力\nT001,王小明,號誌,2026-08-01,5\n"u8.ToArray();
+        var csv = "ID,姓名,所屬,月中開始排班日,能力\nT001,王小明,號誌,2026-08-01,5\n"u8.ToArray();
 
         var preview = await service.PreviewImportAsync(WorkspaceCode.T, new MemoryStream(csv), Editor(WorkspaceCode.T));
 
@@ -802,7 +804,7 @@ public sealed class WebInfrastructureTests
             new() { Kind = AssignmentKind.Rest },
             .. Enumerable.Repeat<ScheduleCell?>(null, 52)
         ];
-        var uploaded = await service.UploadAsync("global.csv", new MemoryStream(ScheduleCsv.WriteMPerpetualSchedule(
+        var uploaded = await service.UploadAsync(WorkspaceCode.M, "global.csv", new MemoryStream(ScheduleCsv.WriteMPerpetualSchedule(
             new MPerpetualSchedule(new Dictionary<string, IReadOnlyList<ScheduleCell?>> { ["P1"] = cells }))), actor);
 
         Assert.AreEqual("global.csv", uploaded.FileName);
@@ -811,13 +813,82 @@ public sealed class WebInfrastructureTests
         Assert.AreEqual(1, uploaded.Patterns.Single().NightCount);
         var days = uploaded.Patterns.Single().Days.ToArray();
         days[0] = "LB12夜";
-        var renamed = await service.SavePatternAsync("P1", "P-NEW", days, uploaded.RevisionToken, actor);
+        var renamed = await service.SavePatternAsync(WorkspaceCode.M, "P1", "P-NEW", days, uploaded.RevisionToken, actor);
         Assert.AreEqual(0, renamed.Patterns.Single().EarlyCount);
         Assert.AreEqual(2, renamed.Patterns.Single().NightCount);
-        var added = await service.SavePatternAsync(null, "P2", Enumerable.Repeat("", 56).ToArray(), renamed.RevisionToken, actor);
-        var deleted = await service.DeletePatternAsync("P2", added.RevisionToken, actor);
+        var added = await service.SavePatternAsync(WorkspaceCode.M, null, "P2", Enumerable.Repeat("", 56).ToArray(), renamed.RevisionToken, actor);
+        var deleted = await service.DeletePatternAsync(WorkspaceCode.M, "P2", added.RevisionToken, actor);
         CollectionAssert.AreEqual(new[] { "P-NEW" }, deleted!.Patterns.Select(x => x.Id).ToArray());
         Assert.AreEqual(4, await database.Context.AuditLogs.CountAsync());
+    }
+
+    [TestMethod]
+    public async Task YmDefaultsAndPerpetualSchedule_AreIndependentFromM()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var mActor = Editor(WorkspaceCode.M);
+        var ymActor = Editor(WorkspaceCode.YM);
+        var viewer = new ActorContext(Guid.NewGuid(), "viewer", false, new HashSet<WorkspaceCode>(), "viewer-test");
+        var perpetualService = new MPerpetualScheduleService(database);
+        var mSchedule = new MPerpetualSchedule(new Dictionary<string, IReadOnlyList<ScheduleCell?>>
+        {
+            ["M-P1"] = [new ScheduleCell { Kind = AssignmentKind.Work, Station = "LB01", Shift = Shift.Early }, .. Enumerable.Repeat<ScheduleCell?>(null, 55)]
+        });
+        var ymSchedule = new MPerpetualSchedule(new Dictionary<string, IReadOnlyList<ScheduleCell?>>
+        {
+            ["Y-P1"] = [new ScheduleCell { Kind = AssignmentKind.Work, Station = "Y06", Shift = Shift.Early }, .. Enumerable.Repeat<ScheduleCell?>(null, 55)]
+        });
+
+        await perpetualService.UploadAsync(WorkspaceCode.M, "m.csv", new MemoryStream(ScheduleCsv.WriteMPerpetualSchedule(mSchedule)), mActor);
+        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => perpetualService.UploadAsync(
+            WorkspaceCode.YM, "ym.csv", new MemoryStream(ScheduleCsv.WriteMPerpetualSchedule(ymSchedule, WorkspaceCode.YM)), mActor));
+        await perpetualService.UploadAsync(WorkspaceCode.YM, "ym.csv", new MemoryStream(ScheduleCsv.WriteMPerpetualSchedule(ymSchedule, WorkspaceCode.YM)), ymActor);
+
+        Assert.AreEqual("M-P1", (await perpetualService.GetAsync(WorkspaceCode.M, viewer))!.Patterns.Single().Id);
+        Assert.AreEqual("Y-P1", (await perpetualService.GetAsync(WorkspaceCode.YM, viewer))!.Patterns.Single().Id);
+
+        await new CommonConfigurationService(database).CreateRevisionAsync(
+            [new(new(2026, 8, 3), new(2026, 9, 27), [])], [], null, ymActor);
+        await new EmployeeService(database).SaveAsync(
+            new(null, WorkspaceCode.YM, "YM001", "王小明", "Y06", null, null, null), ymActor);
+        var demand = await DemandService(database).CreateAsync(WorkspaceCode.YM, new(2026, 9, 1), ymActor);
+
+        CollectionAssert.AreEqual(WorkspaceCodes.YmStations.ToArray(), demand.MonthlySettings.MStations.Select(x => x.Code).ToArray());
+        CollectionAssert.AreEqual(
+            new[] { "G1", "G1", "G1", "G2", "G2", "G2", "G3", "G3", "G3", "G4", "G5", "G5", "G6", "G6" },
+            demand.MonthlySettings.MStations.Select(x => x.Group).ToArray());
+        Assert.IsTrue(demand.MonthlySettings.MStations.All(x =>
+            x.ExternalSupport == ExternalSupportPolicy.Disallowed && x.Early == new StaffingRangeDto(1, 1)
+            && x.Afternoon == new StaffingRangeDto(1, 1) && x.Night == new StaffingRangeDto(1, 1)));
+    }
+
+    [TestMethod]
+    public async Task AddYmWorkspaceMigration_PreservesExistingMPerpetualSchedule()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<NtmcDbContext>()
+            .UseSqlite(connection, sqlite => sqlite.MigrationsAssembly("NtmcScheduler.Migrations.Sqlite"))
+            .Options;
+        await using var db = new NtmcDbContext(options);
+        var migrator = db.GetService<IMigrator>();
+        await migrator.MigrateAsync("20260821041259_MakeCurrentConfigurationKeyExplicit");
+        var userId = Guid.NewGuid();
+        var revisionToken = Guid.NewGuid();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO MPerpetualScheduleTemplates
+                (Id, FileName, ScheduleJson, UpdatedByUserId, UpdatedAtUtc, RevisionToken)
+            VALUES
+                (1, {"existing-m.csv"}, {"{\"patterns\":{}}"}, {userId}, {DateTimeOffset.UtcNow}, {revisionToken})
+            """);
+
+        await migrator.MigrateAsync();
+
+        var existing = await db.MPerpetualScheduleTemplates.AsNoTracking().SingleAsync();
+        Assert.AreEqual(1, existing.Id);
+        Assert.AreEqual("existing-m.csv", existing.FileName);
+        Assert.AreEqual(WorkspaceCode.M, existing.Workspace);
+        Assert.AreEqual(revisionToken, existing.RevisionToken);
     }
 
     [TestMethod]

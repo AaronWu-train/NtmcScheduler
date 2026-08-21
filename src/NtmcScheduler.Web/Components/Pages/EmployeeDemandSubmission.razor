@@ -6,11 +6,11 @@
 @inject ICommonConfigurationService ConfigurationService
 @inject CurrentActorService CurrentActor
 
-<PageTitle>@workspaceCode 需求填寫</PageTitle>
+<PageTitle>@workspaceCode.DisplayName() 需求填寫</PageTitle>
 <SubmissionWorkspaceTabs/>
 <div class="page-title">
     <div>
-        <h1>@workspaceCode 需求填寫</h1>
+        <h1>@workspaceCode.DisplayName() 需求填寫</h1>
         <p>選擇員工後填寫 R*、R休 上限、固定班別或 X。目前登入帳號：<strong>@actorName</strong></p>
     </div>
     <PageHelp Title="填報說明">
@@ -88,9 +88,9 @@
                                     <div class="calendar-day-label">@day.Day</div>
                                     <select class="cell-editor @CellClass(cell)" disabled="@(isBusy || selectedEmployee.EmploymentStartDate is { } start && day < start)" value="@CellEditorValue(cell)" @onchange="args => ChangeCellAsync(day, cell, args.Value?.ToString())">
                                         <option value=""></option><option value="RStar">R*</option>
-                                        @if (workspaceCode == WorkspaceCode.M)
+                                        @if (workspaceCode.IsStation())
                                         {
-                                            @foreach (var station in MStations)
+                                            @foreach (var station in workspaceCode.Stations())
                                             {
                                                 <option value="m:@station:Early">@ShortStation(station)早</option>
                                                 <option value="m:@station:Afternoon">@ShortStation(station)小</option>
@@ -162,7 +162,6 @@
     private readonly SemaphoreSlim uiOperationLock = new(1, 1);
 
     private static readonly string[] WeekdayLabels = ["日", "一", "二", "三", "四", "五", "六"];
-    private static readonly string[] MStations = ["LB01", "LB02", "LB03", "LB04", "LB05", "LB06", "LB07", "LB08", "LB09", "LB10", "LB11", "LB12"];
 
     private IReadOnlyList<IReadOnlyList<DateOnly?>> CalendarWeeks()
     {
@@ -186,7 +185,8 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        if (!Enum.TryParse<WorkspaceCode>(Workspace, true, out workspaceCode)) throw new DomainValidationException("工作區只支援 M 或 T。");
+        if (!Enum.TryParse<WorkspaceCode>(Workspace, true, out workspaceCode)) throw new DomainValidationException("不支援此工作區。");
+        Workspace = workspaceCode.Route();
         var actor = await CurrentActor.GetAsync();
         actorName = actor.UserName;
         employees = await EmployeeService.ListAsync(workspaceCode, actor);
@@ -272,7 +272,7 @@
                 submission = await SubmissionService.UpdateLeaveRestAsync(workspaceCode, Month(), selectedEmployee!.EmployeeCode, leaveRest, null, await CurrentActor.GetAsync());
             }
             submission = await SubmissionService.UpdateAssignmentAsync(workspaceCode, Month(), selectedEmployee!.EmployeeCode, date, kind, requested,
-                kind == "Work" && workspaceCode == WorkspaceCode.M ? parts?[1] : null, shift,
+                kind == "Work" && workspaceCode.IsStation() ? parts?[1] : null, shift,
                 start, end, description, submission.RevisionToken, await CurrentActor.GetAsync());
         }, "日格已儲存。");
     }
@@ -296,7 +296,7 @@
     }
 
     private void CloseEditor() => editingDate = null;
-    private static string ShortStation(string station) => station[2..];
+    private static string ShortStation(string station) => station[(station.StartsWith("LB", StringComparison.Ordinal) ? 2 : 1)..].TrimStart('0');
     private static DateTimeOffset? Offset(DateTime value) => new(DateTime.SpecifyKind(value, DateTimeKind.Unspecified), TimeSpan.FromHours(8));
     private static string? LocalInput(DateTimeOffset? value) => value?.ToOffset(TimeSpan.FromHours(8)).ToString("yyyy-MM-ddTHH:mm");
 
@@ -304,7 +304,7 @@
     {
         if (cell is null) return "";
         if (cell.Kind is null && cell.RequestedRest) return "RStar";
-        if (cell.Kind == "Work" && cell.Shift is "Early" or "Afternoon" or "Night") return workspaceCode == WorkspaceCode.M ? $"m:{cell.Station}:{cell.Shift}" : cell.Shift;
+        if (cell.Kind == "Work" && cell.Shift is "Early" or "Afternoon" or "Night") return workspaceCode.IsStation() ? $"m:{cell.Station}:{cell.Shift}" : cell.Shift;
         if (cell.Kind != "WorkEvent") return "Existing";
         var start = cell.EventStart?.ToOffset(TimeSpan.FromHours(8)).DateTime;
         var end = cell.EventEnd?.ToOffset(TimeSpan.FromHours(8)).DateTime;
