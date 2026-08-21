@@ -182,9 +182,9 @@ else
                             var afternoon = Coverage(day, station, "Afternoon");
                             var night = Coverage(day, station, "Night");
                             <td class="coverage-cell @DateClass(day) @(HasCoverageProblem(early, afternoon, night) ? "coverage-problem" : "")" title="實際/需求；外派PA另列">
-                                <span>早 @(early.Internal + early.External)/@early.Required</span>
-                                <span>小 @(afternoon.Internal + afternoon.External)/@afternoon.Required</span>
-                                <span>夜 @(night.Internal + night.External)/@night.Required</span>
+                                <span>早 @(early.Internal + early.External)/@early.Required–@early.Maximum</span>
+                                <span>小 @(afternoon.Internal + afternoon.External)/@afternoon.Required–@afternoon.Maximum</span>
+                                <span>夜 @(night.Internal + night.External)/@night.Required–@night.Maximum</span>
                                 @if (early.External + afternoon.External + night.External > 0)
                                 {
                                     <strong>PA @(early.External + afternoon.External + night.External)</strong>
@@ -288,7 +288,7 @@ else
 
 @code {
     [Parameter] public Guid VersionId { get; set; }
-    private static readonly string[] MStations = Enumerable.Range(1, 12).Select(x => $"LB{x:D2}").ToArray();
+    private IEnumerable<string> MStations => detail?.Coverage.Select(x => x.Station).Distinct(StringComparer.Ordinal) ?? [];
     private ScheduleDetailDto? detail;
     private ConfigurationRevisionDto? configuration;
     private bool canEdit;
@@ -399,7 +399,12 @@ else
     };
     private static string CellClass(ScheduleAssignmentDto cell) => cell.Kind switch { "Rest" or "SpecialRest" or "LeaveRest" => "rest-text", "Work" when cell.Shift == "Afternoon" => "afternoon-text", "Work" when cell.Shift == "Night" => "night-text", "WorkEvent" => "event-text", _ => "" };
     private string CellText(ScheduleAssignmentDto cell) => cell switch { { Kind: "Rest", RequestedRest: true } => "R*", { Kind: "SpecialRest", RequestedRest: true } => "R1*", { Kind: "LeaveRest", RequestedRest: true } => "R休*", { Kind: "Rest" } => "R", { Kind: "SpecialRest" } => "R1", { Kind: "LeaveRest" } => "R休", { Kind: "WorkEvent" } => string.IsNullOrWhiteSpace(cell.EventDescription) ? "X" : cell.EventDescription!, { Kind: "Work", Shift: "Early" } => WorkText(cell, "早"), { Kind: "Work", Shift: "Afternoon" } => WorkText(cell, detail!.Version.Workspace == WorkspaceCode.M ? "小" : "午"), { Kind: "Work", Shift: "Night" } => WorkText(cell, "夜"), _ => "?" };
-    private string WorkText(ScheduleAssignmentDto cell, string shift) => detail!.Version.Workspace == WorkspaceCode.M && cell.Station is { Length: >= 4 } ? $"{int.Parse(cell.Station[2..])}{shift}" : shift;
+    private string WorkText(ScheduleAssignmentDto cell, string shift)
+    {
+        if (detail!.Version.Workspace != WorkspaceCode.M || cell.Station is null) return shift;
+        return cell.Station.Length == 4 && cell.Station.StartsWith("LB", StringComparison.Ordinal) && int.TryParse(cell.Station[2..], out var number)
+            ? $"{number}{shift}" : $"{cell.Station}{shift}";
+    }
     private ScheduleIntervalStatsDto IntervalStat(string employee, RestIntervalDto interval) => detail!.IntervalStats.Single(x => x.EmployeeCode == employee && x.Start == interval.Start);
     private ScheduleCoverageDto Coverage(DateOnly day, string station, string shift) => detail!.Coverage.Single(x => x.Date == day && x.Station == station && x.Shift == shift);
     private int IntervalRestTarget(RestIntervalDto interval)
@@ -407,9 +412,7 @@ else
         var monthStart = detail!.Version.Month;
         var monthEnd = monthStart.AddMonths(1).AddDays(-1);
         if (interval.End <= monthEnd) return 16;
-        var start = interval.Start < monthStart ? monthStart : interval.Start;
-        var end = interval.End > monthEnd ? monthEnd : interval.End;
-        return Enumerable.Range(0, end.DayNumber - start.DayNumber + 1).Count(offset => start.AddDays(offset).DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday);
+        return AllocatedMonthlyTarget(interval, detail.Version.GeneralRestTarget ?? 0, false);
     }
 
     private int IntervalSpecialRestTarget(RestIntervalDto interval)
@@ -417,9 +420,25 @@ else
         var monthStart = detail!.Version.Month;
         var monthEnd = monthStart.AddMonths(1).AddDays(-1);
         if (interval.End <= monthEnd) return interval.NationalHolidays.Count;
-        var start = interval.Start < monthStart ? monthStart : interval.Start;
-        var end = interval.End > monthEnd ? monthEnd : interval.End;
-        return interval.NationalHolidays.Count(date => date >= start && date <= end);
+        return AllocatedMonthlyTarget(interval, detail.Version.SpecialRestTarget ?? 0, true);
+    }
+
+    private int AllocatedMonthlyTarget(RestIntervalDto interval, int target, bool special)
+    {
+        var monthStart = detail!.Version.Month;
+        var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+        var intervals = configuration!.RestIntervals.Where(x => x.Start <= monthEnd && x.End >= monthStart).OrderBy(x => x.Start).ToArray();
+        var weights = intervals.Select(x => special
+            ? x.NationalHolidays.Count(date => date >= monthStart && date <= monthEnd)
+            : Enumerable.Range(Math.Max(x.Start.DayNumber, monthStart.DayNumber), Math.Min(x.End.DayNumber, monthEnd.DayNumber) - Math.Max(x.Start.DayNumber, monthStart.DayNumber) + 1)
+                .Count(day => DateOnly.FromDayNumber(day).DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)).ToArray();
+        if (weights.Sum() == 0) weights = intervals.Select(x => Math.Min(x.End.DayNumber, monthEnd.DayNumber) - Math.Max(x.Start.DayNumber, monthStart.DayNumber) + 1).ToArray();
+        var total = Math.Max(1, weights.Sum());
+        var allocations = weights.Select(weight => target * weight / total).ToArray();
+        var remainder = target - allocations.Sum();
+        var index = 0;
+        for (; remainder > 0; remainder--, index = (index + 1) % allocations.Length) allocations[index]++;
+        return allocations[Array.IndexOf(intervals, interval)];
     }
 
     private static string TargetHeatClass(int actual, int target)
@@ -439,7 +458,7 @@ else
     }
 
     private static bool HasCoverageProblem(params ScheduleCoverageDto[] values) => values.Any(x =>
-        x.Internal + x.External < x.Required || !x.AllowsMultiple && x.Internal + x.External != x.Required);
+        x.Internal + x.External < x.Required || x.Internal + x.External > x.Maximum);
 
     private void OpenCell(ScheduleAssignmentDto cell)
     {

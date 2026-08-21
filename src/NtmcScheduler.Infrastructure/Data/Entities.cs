@@ -103,6 +103,9 @@ public sealed class DemandDraft
     public string? PerpetualScheduleJson { get; set; }
     public string? PerpetualScheduleFileName { get; set; }
     public DateTimeOffset? PerpetualScheduleUploadedAtUtc { get; set; }
+    public int? GeneralRestTarget { get; set; }
+    public int? SpecialRestTarget { get; set; }
+    public string? MStationSettingsJson { get; set; }
     public Guid CreatedByUserId { get; set; }
     public Guid UpdatedByUserId { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
@@ -231,6 +234,7 @@ public sealed class ScheduleRun
     public string InputSnapshotJson { get; set; } = "";
     public string? PerpetualScheduleJson { get; set; }
     public string? ResultDetailsJson { get; set; }
+    public string? RuleWeightsJson { get; set; }
     public string? Error { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? StartedAtUtc { get; set; }
@@ -248,6 +252,8 @@ public sealed class ScheduleVersion
     public int? CandidateIndex { get; set; }
     public ScheduleRunStatus SourceStatus { get; set; }
     public Guid ConfigurationRevisionId { get; set; }
+    public string? MonthlySettingsJson { get; set; }
+    public string? RuleWeightsJson { get; set; }
     public bool HasErrors { get; set; }
     public int WarningCount { get; set; }
     public bool IsArchived { get; set; }

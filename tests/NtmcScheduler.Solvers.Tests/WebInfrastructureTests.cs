@@ -192,6 +192,77 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
+    public async Task MonthlySettings_FixStationCodesCopyOperationsAndResetRestTargets()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var actor = Editor(WorkspaceCode.M);
+        var intervalStart = new DateOnly(2026, 8, 3);
+        await new CommonConfigurationService(database).CreateRevisionAsync(
+            [
+                new RestIntervalDto(intervalStart, intervalStart.AddDays(55), [new(2026, 8, 14)]),
+                new RestIntervalDto(intervalStart.AddDays(56), intervalStart.AddDays(111), [new(2026, 10, 12)])
+            ], [], null, actor);
+        await new EmployeeService(database).SaveAsync(
+            new SaveEmployeeCommand(null, WorkspaceCode.M, "M001", "王小明", "LB01", null, null, null), actor);
+        var service = DemandService(database);
+        var august = await service.CreateAsync(WorkspaceCode.M, new(2026, 8, 1), actor);
+        CollectionAssert.AreEqual(
+            Enumerable.Range(1, 12).Select(x => $"LB{x:D2}").ToArray(),
+            august.MonthlySettings.MStations.Select(x => x.Code).ToArray());
+
+        var changedStations = august.MonthlySettings.MStations.Select((station, index) => index == 0
+            ? station with { Group = "自訂群組", Early = new(0, 2), ExternalSupport = ExternalSupportPolicy.Discouraged }
+            : station).ToArray();
+        var staleToken = august.RevisionToken;
+        august = await service.UpdateMonthlySettingsAsync(august.Id,
+            august.MonthlySettings.GeneralRestTarget, august.MonthlySettings.SpecialRestTarget,
+            changedStations, august.RevisionToken, actor);
+        Assert.AreEqual("自訂群組", august.MonthlySettings.MStations[0].Group);
+        Assert.AreEqual(new StaffingRangeDto(0, 2), august.MonthlySettings.MStations[0].Early);
+        Assert.AreEqual(1, await database.Context.AuditLogs.CountAsync(x => x.Action == "DemandMonthlySettingsUpdated"));
+        await Assert.ThrowsExactlyAsync<ConcurrencyConflictException>(() => service.UpdateMonthlySettingsAsync(
+            august.Id, august.MonthlySettings.GeneralRestTarget, august.MonthlySettings.SpecialRestTarget,
+            changedStations, staleToken, actor));
+
+        var renamed = changedStations.ToArray();
+        renamed[0] = renamed[0] with { Code = "OTHER" };
+        await Assert.ThrowsExactlyAsync<DomainValidationException>(() => service.UpdateMonthlySettingsAsync(
+            august.Id, august.MonthlySettings.GeneralRestTarget, august.MonthlySettings.SpecialRestTarget,
+            renamed, august.RevisionToken, actor));
+
+        var september = await service.CreateAsync(WorkspaceCode.M, new(2026, 9, 1), actor);
+        Assert.AreEqual("自訂群組", september.MonthlySettings.MStations[0].Group);
+        Assert.AreEqual(new StaffingRangeDto(0, 2), september.MonthlySettings.MStations[0].Early);
+        Assert.AreEqual(8, september.MonthlySettings.GeneralRestTarget, "R target must be recalculated from the new month's calendar.");
+    }
+
+    [TestMethod]
+    public void RuleWeights_RequireTheCompleteActiveSetAndAllowZero()
+    {
+        var weights = SolverRuleWeights.M.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal);
+        weights["ExternalStaffing"] = 0;
+        Assert.AreEqual(0, SolverRuleWeights.Resolve(true, weights)["ExternalStaffing"]);
+
+        var missing = new Dictionary<string, int>(weights, StringComparer.Ordinal);
+        missing.Remove("ExternalStaffing");
+        Assert.ThrowsExactly<ArgumentException>(() => SolverRuleWeights.Resolve(true, missing));
+        var unknown = new Dictionary<string, int>(weights, StringComparer.Ordinal) { ["Unknown"] = 1 };
+        Assert.ThrowsExactly<ArgumentException>(() => SolverRuleWeights.Resolve(true, unknown));
+        var negative = new Dictionary<string, int>(weights, StringComparer.Ordinal) { ["MonthlyRest"] = -1 };
+        Assert.ThrowsExactly<ArgumentException>(() => SolverRuleWeights.Resolve(true, negative));
+    }
+
+    [TestMethod]
+    public void RuleDefinitions_MUseConsecutivePriorities()
+    {
+        var rules = new ScheduleRunService(null!, null!).GetRules(WorkspaceCode.M).Where(x => !x.IsHard).ToArray();
+
+        CollectionAssert.AreEqual(new[] { 1, 2 }, rules.Select(x => x.Priority).Distinct().Order().ToArray());
+        Assert.IsTrue(rules.Where(x => x.Key is "RequestedRest" or "UnusedLeaveRest").All(x => x.Priority == 1));
+        Assert.IsTrue(rules.Where(x => x.Key is not ("RequestedRest" or "UnusedLeaveRest")).All(x => x.Priority == 2));
+    }
+
+    [TestMethod]
     public async Task EmployeeDemandSubmission_ViewerCanFillEditorCanReimport()
     {
         await using var database = await TestDatabase.CreateAsync();
@@ -687,6 +758,11 @@ public sealed class WebInfrastructureTests
         StringAssert.Contains(System.Text.Encoding.UTF8.GetString(file.Content), "P1,R");
         await service.ClearPerpetualScheduleAsync(demand.Id, saved.RevisionToken, actor);
         Assert.IsNull((await service.GetAsync(WorkspaceCode.M, demand.Month, actor))!.PerpetualUpload);
+
+        var cleared = await service.GetAsync(WorkspaceCode.M, demand.Month, actor);
+        await service.UseEmptyPerpetualScheduleAsync(demand.Id, cleared!.RevisionToken, actor);
+        var empty = await service.GetAsync(WorkspaceCode.M, demand.Month, actor);
+        Assert.IsTrue(empty!.PerpetualUpload!.IsEmpty);
     }
 
     [TestMethod]
@@ -1144,7 +1220,9 @@ public sealed class WebInfrastructureTests
         Assert.AreEqual(8, detail.IntervalStats.Single().Rest);
         Assert.AreEqual(1, detail.IntervalStats.Single().RequiredSpecialRest);
         Assert.AreEqual(1, detail.Coverage.Single(x => x.Date == version.Month && x.Station == "LB09" && x.Shift == "Early").External);
-        Assert.IsTrue(detail.Coverage.Single(x => x.Date == version.Month && x.Station == "LB01" && x.Shift == "Early").AllowsMultiple);
+        var lb01Early = detail.Coverage.Single(x => x.Date == version.Month && x.Station == "LB01" && x.Shift == "Early");
+        Assert.AreEqual(1, lb01Early.Maximum);
+        Assert.IsFalse(lb01Early.AllowsMultiple);
     }
 
     [TestMethod]

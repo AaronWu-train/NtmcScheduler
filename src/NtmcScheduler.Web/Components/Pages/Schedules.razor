@@ -226,7 +226,7 @@
         }
     }, "歷史班表已匯入。");
 
-    private static IEnumerable<ObjectiveScoreDto> DisplayObjectives(ScheduleVersionDto version) => (version.Objectives ?? []).Where(score => version.Workspace == WorkspaceCode.M ? score.Priority is 1 or 4 : score.Priority is >= 1 and <= 5).OrderBy(score => score.Priority);
+    private static IEnumerable<ObjectiveScoreDto> DisplayObjectives(ScheduleVersionDto version) => (version.Objectives ?? []).Where(score => version.Workspace == WorkspaceCode.M ? score.Priority is 1 or 2 or 4 : score.Priority is >= 1 and <= 5).OrderBy(score => score.Priority);
 
     private async Task RunAsync(Func<Task> action, string success)
     {

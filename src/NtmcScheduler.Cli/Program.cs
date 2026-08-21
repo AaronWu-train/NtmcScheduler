@@ -248,7 +248,7 @@ public static class Program
     {
         "RequestedRest" => "R* 最後未排成 R、R1 或 R休的格數",
         "UnusedLeaveRest" => "各人指定 R休上限減去實際 R休數的合計",
-        "ExternalStaffing" => "原三站外援超過 70 的部分，加上 LB09 超過 4 人次的部分",
+        "ExternalStaffing" => "允許站外援超過 70 的部分，加上盡量不要站的全部外援人次",
         "MonthlyRest" => "各人實際 R 數與當月週末日目標差額平方的合計",
         "SpecialRestBalance" => "各人八週區間截至月底的累積 R1 超額，或超過一日容許量的欠額平方合計",
         "WorkStreak" => "各已結束連續工作區段依長度罰分表計算後的合計",

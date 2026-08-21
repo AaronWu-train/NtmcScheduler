@@ -85,7 +85,10 @@ public sealed class EmployeeDemandSubmissionService(IDbContextFactory<NtmcDbCont
         ServiceSupport.RequireViewer(actor);
         month = MonthStart(month);
         if (date < month || date >= month.AddMonths(1)) throw new DomainValidationException("日格日期不在目前月份內。");
-        DemandCellValidator.Validate(workspace, date, kind, requestedRest, station, shift, eventStart, eventEnd, eventDescription);
+        IReadOnlySet<string>? stationCodes = workspace == WorkspaceCode.M
+            ? Enumerable.Range(1, 12).Select(x => $"LB{x:D2}").ToHashSet(StringComparer.Ordinal)
+            : null;
+        DemandCellValidator.Validate(workspace, date, kind, requestedRest, station, shift, eventStart, eventEnd, eventDescription, stationCodes);
         var employee = await db.Employees.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Workspace == workspace && x.EmployeeCode == employeeCode, cancellationToken)
             ?? throw new DomainValidationException("找不到員工資料。");

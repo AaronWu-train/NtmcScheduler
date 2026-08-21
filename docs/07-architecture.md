@@ -45,7 +45,7 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 |---|---|
 | `Employee` | 目前員工主檔：員工編號、姓名、單位（M/T）、M 所屬站、T 專業與 ability、revision token；刪除前內容保存在 AuditLog，既有月份使用獨立快照 |
 | `ConfigurationRevision` | 不可變的 56 日區間、國定假日、非常態班型與 M/T 各三班起訖時間版本；`CurrentConfiguration` 指向目前版 |
-| `DemandDraft`／`DemandEmployee`／`DemandAssignment` | 每單位每月一份草稿、月份人員快照、T 月班別、期初額度、R\* 與 X |
+| `DemandDraft`／`DemandEmployee`／`DemandAssignment` | 每單位每月一份草稿、月份人員快照、R／R1 軟目標；M 另存固定 12 站的群組、班位上下限與外援等級快照；並含 T 月班別、期初額度、R\* 與 X |
 | `EmployeeDemandSubmission`／`EmployeeDemandSubmissionAssignment` | 每工作區／月份／員工一份目前填報；任何登入者可代填，AuditLog 保留每次覆蓋 |
 | `DemandSubmissionImport` | 記錄 Demand 最近一次從填報匯入的時間與操作者；重複匯入時更新此紀錄；填報頁以之判斷晚於截止的填報 |
 | `UploadedPreviousSchedule` | 解析後的上月班表 typed JSON，不保存原始上傳檔；僅屬該 Demand，不建立 `ScheduleVersion` |
@@ -77,10 +77,10 @@ M、T 的 Solver 分開。**不使用**微服務、CQRS、Message Bus 或另一�
 | 類別 | 內容 |
 |---|---|
 | 班別 | M／T 早、午、夜起訖時間（可透過工作區設定頁維護，儲存於 `ConfigurationRevision`；預設 M 06:30–14:30、14:20–22:20、22:00–07:00，T 07:00–15:00、15:00–23:00、23:00–07:00） |
-| M 營運 | 車站群組、每日班位需求、可外派車站（LB02／LB04／LB09／LB11）、八週萬年班表 hint |
+| M 營運 | 每月車站／群組、每日班位人數上下限、外援等級、八週萬年班表 hint |
 | T 營運 | 月輪轉順序（早→午→夜→早），及必要時的下月班組例外 |
 | 休假週期 | 每個 8 週週期的 start、end、requiredR（一般休假，預設 16）、requiredR1（國定假日數） |
-| 規則 | 固定群組、違反量與權重寫在 M/T solver 原始碼；M 為 J1 與直接加權合併的 `J4+J5`，T 為 J1–J5 |
+| 規則 | 硬規則、Priority 與違反量公式寫在 M/T solver；每次求解保存目前啟用軟規則的權重快照，M 為 Priority 1、2（公式仍為 J1 與直接加權合併的 `J4+J5`），T 為 J1–J5 |
 | 求解 | CLI 以 `--search workers=N,seconds=N` 調整 worker 數與總時限。M 另可設 `seeds=N`，seed 依序執行、各自計時，預設 8 workers、2 seeds、300 秒，並選取第一候選字典序較佳的整批結果；T 固定單 seed 0，預設 8 workers、300 秒。Web 求解參數上限為 600 秒／seed、8 workers、4 seeds。不預留固定候選時間，目標最佳化後才以餘時搜尋。差異門檻固定 5%，最多 3 份候選。M 找不到同分第二份時各目標最多可差 20%；T 候選維持同分 |
 
 ## 8. 背景工作與併發

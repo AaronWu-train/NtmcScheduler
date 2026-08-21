@@ -7,20 +7,8 @@ namespace NtmcScheduler.Solvers;
 /// <summary>Builds and solves the station-service schedule from two typed monthly schedules.</summary>
 public static partial class MSolver
 {
-    // Fixed M configuration
-
     private const int ExtensionDays = 7;
-
-    private static readonly string[] Stations =
-    [
-        "LB01", "LB02", "LB03", "LB04", "LB05", "LB06",
-        "LB07", "LB08", "LB09", "LB10", "LB11", "LB12"
-    ];
-
     private static readonly Shift[] Shifts = [Shift.Early, Shift.Afternoon, Shift.Night];
-    private static readonly HashSet<string> ExternalStations = ["LB02", "LB04", "LB09", "LB11"];
-    private static readonly HashSet<string> NightStations = ["LB01", "LB06", "LB08", "LB12"];
-    private static readonly HashSet<string> MultiStaffStations = ["LB01", "LB06", "LB07", "LB12"];
 
     /// <summary>Validates input, optimizes each named objective in priority order, and returns up to three candidates.</summary>
     public static MSolveResult Solve(
@@ -53,6 +41,7 @@ public static partial class MSolver
             missing.Add(new(nameof(MPerpetualSchedule.Patterns), "Every pattern is required."));
         if (missing.Count > 0) return new(SolveStatus.InvalidInput, [], missing);
         input = InheritPerpetualScheduleIds(CopyInput(input));
+        input = input with { MonthlySettings = input.MonthlySettings ?? MonthlySchedulingDefaults.Create(input.DemandMonth.MonthStart, input.RestIntervals, input.DemandMonth.Employees.Count) };
         perpetualSchedule = CopyPerpetualSchedule(perpetualSchedule);
         var errors = ValidateInput(input, perpetualSchedule, options);
         if (errors.Count > 0) return new(SolveStatus.InvalidInput, [], errors);
@@ -82,7 +71,7 @@ public static partial class MSolver
         current = ReadCandidate(solver, input, targetDates, variables, []);
         model.ClearHints();
         AddSolutionHints(model, solver, variables);
-        var objectives = BuildObjectiveGroups(model, input, targetDates, modelDates, variables);
+        var objectives = BuildObjectiveGroups(model, input, targetDates, modelDates, variables, options);
 
         foreach (var objective in objectives)
         {

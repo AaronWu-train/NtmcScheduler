@@ -30,7 +30,8 @@ public static partial class MSolver
         PreviousMonth = CopySchedule(input.PreviousMonth),
         DemandMonth = CopySchedule(input.DemandMonth),
         RestIntervals = input.RestIntervals.Select(interval => interval with { NationalHolidays = interval.NationalHolidays.ToHashSet() }).ToArray(),
-        NonStandardShifts = input.NonStandardShifts with { Shifts = input.NonStandardShifts.Shifts.ToArray() }
+        NonStandardShifts = input.NonStandardShifts with { Shifts = input.NonStandardShifts.Shifts.ToArray() },
+        MonthlySettings = input.MonthlySettings is null ? null : input.MonthlySettings with { MStations = input.MonthlySettings.MStations.ToArray() }
     };
 
     private static MonthlySchedule CopySchedule(MonthlySchedule schedule) => schedule with
@@ -74,7 +75,18 @@ public static partial class MSolver
         if (input.PreviousMonth.MonthStart != monthStart.AddMonths(-1)) errors.Add(new("PreviousMonth.MonthStart", "PreviousMonth must be the calendar month immediately before DemandMonth."));
         if (options.TimeLimit <= TimeSpan.Zero) errors.Add(new("options.TimeLimit", "TimeLimit must be greater than zero."));
         if (options.WorkerCount <= 0) errors.Add(new("options.WorkerCount", "WorkerCount must be greater than zero."));
+        if (input.MonthlySettings is { } monthlySettings && (monthlySettings.GeneralRestTarget < 0 || monthlySettings.SpecialRestTarget < 0))
+            errors.Add(new("MonthlySettings", "Monthly R and R1 targets must be non-negative."));
+        try { SolverRuleWeights.Resolve(true, options.RuleWeights); }
+        catch (ArgumentException) { errors.Add(new("options.RuleWeights", "Rule weights must contain every active M rule exactly once and be non-negative.")); }
         if (monthStart.Day != 1) return errors;
+
+        var stations = input.MonthlySettings?.MStations ?? MonthlySchedulingDefaults.Create(monthStart, input.RestIntervals, input.DemandMonth.Employees.Count).MStations;
+        var expectedStations = Enumerable.Range(1, 12).Select(x => $"LB{x:D2}").ToArray();
+        if (stations.Length != expectedStations.Length || !stations.Select(x => x.Code).SequenceEqual(expectedStations, StringComparer.Ordinal) ||
+            stations.Any(x => string.IsNullOrWhiteSpace(x.Group)) ||
+            stations.SelectMany(x => new[] { x.Early, x.Afternoon, x.Night }).Any(x => x.Minimum < 0 || x.Maximum < x.Minimum))
+            errors.Add(new("MonthlySettings.MStations", "M stations must be LB01 through LB12 in order, with non-empty groups and 0 <= minimum <= maximum."));
 
         var beforeIntervals = errors.Count;
         ValidateIntervals(input, errors);
@@ -124,7 +136,7 @@ public static partial class MSolver
                                 cell.EventStart is null && cell.EventEnd is null;
                 var validWork = cell.Kind == AssignmentKind.Work && cell.Station is not null && cell.Shift is not null &&
                                 !cell.RequestedRest && cell.EventStart is null && cell.EventEnd is null &&
-                                Stations.Contains(cell.Station) && RequiredHeadcount(cell.Station, cell.Shift.Value) > 0;
+                                Stations(input).Contains(cell.Station) && RequiredHeadcount(input, cell.Station, cell.Shift.Value) > 0;
                 if (!validRest && !validWork)
                 {
                     errors.Add(new(nameof(MPerpetualSchedule.Patterns), $"Pattern '{pattern.Key}' contains an invalid M assignment."));
@@ -140,8 +152,8 @@ public static partial class MSolver
                 errors.Add(new("DemandMonth.PerpetualScheduleId", $"Employee '{employee.EmployeeId}' references unknown pattern '{employee.PerpetualScheduleId}'."));
                 continue;
             }
-            if (Stations.Contains(employee.Affiliation) &&
-                pattern.Any(cell => cell?.Kind == AssignmentKind.Work && !StationsInSameGroup(employee.Affiliation).Contains(cell.Station)))
+            if (Stations(input).Contains(employee.Affiliation) &&
+                pattern.Any(cell => cell?.Kind == AssignmentKind.Work && !StationsInSameGroup(input, employee.Affiliation).Contains(cell.Station)))
                 errors.Add(new("DemandMonth.PerpetualScheduleId", $"Pattern '{employee.PerpetualScheduleId}' contains work outside employee '{employee.EmployeeId}' station group."));
         }
     }
@@ -165,7 +177,7 @@ public static partial class MSolver
         {
             var prefix = history ? "PreviousMonth" : "DemandMonth";
             if (string.IsNullOrWhiteSpace(employee.Name)) errors.Add(new($"{prefix}.Employees", $"Employee '{employee.EmployeeId}' name cannot be blank."));
-            if (!Stations.Contains(employee.Affiliation)) errors.Add(new($"{prefix}.Employees", $"Employee '{employee.EmployeeId}' affiliation must be an M station."));
+            if (!Stations(input).Contains(employee.Affiliation)) errors.Add(new($"{prefix}.Employees", $"Employee '{employee.EmployeeId}' affiliation must be an M station in MonthlySettings."));
             if (employee.Ability is not null || employee.MonthlyShift is not null) errors.Add(new($"{prefix}.Employees", $"M employee '{employee.EmployeeId}' cannot have ability or T monthly shift."));
             if (employee.EmploymentStartDate is { } start && start > monthEnd) errors.Add(new($"{prefix}.Employees", $"Employee '{employee.EmployeeId}' starts after this schedule month."));
 
@@ -175,7 +187,7 @@ public static partial class MSolver
                     errors.Add(new($"{prefix}.Assignments", $"Assignment {employee.EmployeeId}/{pair.Key:yyyy-MM-dd} is outside the schedule month."));
                 if (employee.EmploymentStartDate is { } employmentStart && pair.Key < employmentStart)
                     errors.Add(new($"{prefix}.Assignments", $"Assignment {employee.EmployeeId}/{pair.Key:yyyy-MM-dd} is before employment starts."));
-                ValidateCell(employee, pair.Key, pair.Value, history, errors, prefix);
+                ValidateCell(input, employee, pair.Key, pair.Value, history, errors, prefix);
             }
 
             if (history)
@@ -200,6 +212,7 @@ public static partial class MSolver
     }
 
     private static void ValidateCell(
+        ScheduleInput input,
         EmployeeMonthlySchedule employee,
         DateOnly date,
         ScheduleCell cell,
@@ -216,8 +229,8 @@ public static partial class MSolver
 
         if (cell.Kind == AssignmentKind.Work)
         {
-            if (cell.Shift is null || cell.Station is null || !Stations.Contains(employee.Affiliation) || !Stations.Contains(cell.Station))
-                errors.Add(new($"{prefix}.Assignments", $"M work {employee.EmployeeId}/{date:yyyy-MM-dd} needs an LB01–LB12 station and shift."));
+            if (cell.Shift is null || cell.Station is null || !Stations(input).Contains(employee.Affiliation) || !Stations(input).Contains(cell.Station))
+                errors.Add(new($"{prefix}.Assignments", $"M work {employee.EmployeeId}/{date:yyyy-MM-dd} needs a configured station and shift."));
             if (cell.EventStart is not null || cell.EventEnd is not null) errors.Add(new($"{prefix}.Assignments", $"Normal work {employee.EmployeeId}/{date:yyyy-MM-dd} cannot contain event times."));
             return;
         }
@@ -354,8 +367,12 @@ public static partial class MSolver
             dates.Count(interval.NationalHolidays.Contains));
     }
 
-    private static int ExpectedMonthlyGeneralRestCount(ScheduleInput input, EmployeeMonthlySchedule employee) =>
-        TargetMonthDates(input).Count(date => IsEmployedOn(employee, date) && date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday);
+    private static int ExpectedMonthlyGeneralRestCount(ScheduleInput input, EmployeeMonthlySchedule employee)
+    {
+        var beforeEmployment = TargetMonthDates(input).Count(date => !IsEmployedOn(employee, date) && date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday);
+        var baseline = input.MonthlySettings?.GeneralRestTarget ?? TargetMonthDates(input).Count(date => date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday);
+        return Math.Max(0, baseline - beforeEmployment);
+    }
 
     // Date and time calculations
 
@@ -371,10 +388,12 @@ public static partial class MSolver
             DateTime.DaysInMonth(input.DemandMonth.MonthStart.Year, input.DemandMonth.MonthStart.Month) + ExtensionDays)
         .Select(input.DemandMonth.MonthStart.AddDays);
 
-    private static string[] StationsInSameGroup(string homeStation)
+    private static string[] Stations(ScheduleInput input) => input.MonthlySettings!.MStations.Select(x => x.Code).ToArray();
+
+    private static string[] StationsInSameGroup(ScheduleInput input, string homeStation)
     {
-        var firstStationIndex = ((int.Parse(homeStation[2..]) - 1) / 3) * 3;
-        return Stations.Skip(firstStationIndex).Take(3).ToArray();
+        var group = input.MonthlySettings!.MStations.FirstOrDefault(x => x.Code == homeStation)?.Group;
+        return group is null ? [] : input.MonthlySettings.MStations.Where(x => x.Group == group).Select(x => x.Code).ToArray();
     }
 
     private static (DateTimeOffset Start, DateTimeOffset End) NormalShiftInterval(DateOnly date, Shift shift, WorkspaceShiftTimes? times = null) =>

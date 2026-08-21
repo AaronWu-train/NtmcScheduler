@@ -177,19 +177,11 @@ M 模型的輸入包括：
   \item[\(\mathcal{L}^{ext}\)] 允許使用外派人力的車站集合。
 \end{description}
 
-車站群組固定為
-\[
-  \begin{aligned}
-    \mathcal{L}_{A}&=\{\mathrm{LB01},\mathrm{LB02},\mathrm{LB03}\},\\
-    \mathcal{L}_{B}&=\{\mathrm{LB04},\mathrm{LB05},\mathrm{LB06}\},\\
-    \mathcal{L}_{C}&=\{\mathrm{LB07},\mathrm{LB08},\mathrm{LB09}\},\\
-    \mathcal{L}_{D}&=\{\mathrm{LB10},\mathrm{LB11},\mathrm{LB12}\}.
-  \end{aligned}
-\]
-允許外派的車站為
-\[
-  \mathcal{L}^{ext}=\{\mathrm{LB02},\mathrm{LB04},\mathrm{LB09},\mathrm{LB11}\}.
-\]
+車站集合固定為 (mathcal L=\{\mathrm{LB01},\ldots,\mathrm{LB12}\})；
+群組函數、班位上下限與外援等級由目標月份快照提供，群組非空但不固定站數。
+令 \(\mathcal L^{disc}\) 與 \(\mathcal L^{allow}\) 分別為「盡量不要」及
+「允許」外援的車站，且
+\(\mathcal L^{ext}=\mathcal L^{disc}\cup\mathcal L^{allow}\)。
 
 \subsection{參數}
 
@@ -201,10 +193,8 @@ M 模型的輸入包括：
   \{l\in\mathcal{L}:g(l)=g(h_e)\}.
 \]
 
-令 \(b_{dls}\in\mathbb{Z}_{\geq0}\) 為日期 \(d\)、車站 \(l\)、班別 \(s\)
-所需人數。M 的固定需求為所有車站每日早班與午班各一人，且
-\(\mathrm{LB01}\)、\(\mathrm{LB06}\)、\(\mathrm{LB08}\)、\(\mathrm{LB12}\)
-每日夜班各一人；平日、週末與國定假日使用相同需求。
+令 \(b^-_{ls},b^+_{ls}\in\mathbb{Z}_{\geq0}\) 為月份快照所定的班位人數
+下限與上限，且 \(b^-_{ls}\le b^+_{ls}\)。同一設定適用目標月與月底延伸日。
 
 M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 \(14{:}20\)--\(22{:}20\)、夜班 \(22{:}00\)--翌日 \(07{:}00\)。夜班歸屬
@@ -220,15 +210,16 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 對每個八週週期 \(c\)，令 \(G_c\) 為一般 \(R\) 額度，令 \(H_c\) 為 \(R1\)
 額度；目前一般額度通常為 \(G_c=16\)。令
 \(\overline{R}_{ec}\)、\(\overline{R1}_{ec}\) 分別為建模區間開始前，週期
-\(c\) 已使用的一般 \(R\) 與 \(R1\) 數量。令 \(\mathcal D^{\mathrm{act}}_e\)
-為人員 \(e\) 到職後的目標月份日期，並令
+\(c\) 已使用的一般 \(R\) 與 \(R1\) 數量。令月份設定中的共同基準為
+\(N^R,N^{R1}\)，令 \(u^R_e,u^{R1}_e\) 分別為人員 \(e\) 到職日前、但仍在
+目標月份內的週六日與國定假日數，並令
 \[
-  n_e=\left|\{d\in\mathcal D^{\mathrm{act}}_e:d\text{ 為星期六或星期日}\}\right|,
+  n_e=\max\{0,N^R-u^R_e\},
   \qquad
-  m_e=\left|\{d\in\mathcal D^{\mathrm{act}}_e:d\text{ 為國定假日}\}\right|.
+  m_e=\max\{0,N^{R1}-u^{R1}_e\}.
 \]
-其中 \(n_e\) 是依當月實際月曆計算的一般 \(R\) 基準，不固定為 8；\(m_e\)
-為 \(R1\) 基準。
+預設 \(N^R\) 為當月週六日數、\(N^{R1}\) 為當月國定假日數，但可在後端依
+56 日硬額度推導的共同合法範圍內調整。這兩者只改變軟目標，不改變八週精確額度。
 
 完整前月歷史班表用來重建法規連續日數、尚未結束的實際工作區段、
 該工作區段最近一次正常班型與是否已混合班型。八週 R/R1 已使用數量由獨立
@@ -318,20 +309,11 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 因此人員只能在本站或同群組車站工作。
 
 \paragraph{班位覆蓋（\texttt{MH02}）}
-令 \(\mathcal L^{multi}=\{\mathrm{LB01},\mathrm{LB06},\mathrm{LB07},\mathrm{LB12}\}\)。
-早、午班的必要班位至少補足；\(\mathcal L^{multi}\) 不設人數上限，其餘站各至多一人。夜班不得多人，有需求時恰好一人；需求為 0 的站班
-組合仍禁止排人：
+內部人員與外援合計必須落在月份設定的閉區間：
 \[
-  \begin{cases}
-    \displaystyle\sum_{e\in\mathcal{E}^{M}}x^{M}_{edls}+a_{dls}\geq b_{dls},
-    & b_{dls}>0,\ s\in\{\mathrm E,\mathrm A\},\ l\in\mathcal L^{multi},\\
-    \displaystyle\sum_{e\in\mathcal{E}^{M}}x^{M}_{edls}+a_{dls}=b_{dls},
-    & b_{dls}>0,\ s\in\{\mathrm E,\mathrm A\},\ l\notin\mathcal L^{multi},\\
-    \displaystyle\sum_{e\in\mathcal{E}^{M}}x^{M}_{edls}+a_{dls}=b_{dls},
-    & s=\mathrm N,\\
-    \displaystyle\sum_{e\in\mathcal{E}^{M}}x^{M}_{edls}+a_{dls}=0,
-    & b_{dls}=0,\ s\in\{\mathrm E,\mathrm A\},
-  \end{cases}
+  b^-_{ls}\le
+  \sum_{e\in\mathcal{E}^{M}}x^{M}_{edls}+a_{dls}
+  \le b^+_{ls},
   \qquad
   \forall d\in\mathcal{D},\ l\in\mathcal{L},\ s\in\mathcal{S}.
 \]
@@ -451,23 +433,24 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 \subsubsection{\texorpdfstring{$J^M_4$}{J4}：綜合排班品質}
 
 \paragraph{外援人力（\texttt{MS01}）}
-令原三站與 LB09 的目標月外援總人次分別為
+令「允許」與「盡量不要」車站的目標月外援總人次分別為
 \[
-  A^{M,legacy}
+  A^{M,allow}
   =
   \sum_{d\in\mathcal{D}^{\mathrm{tar}}}
-  \sum_{l\in\{\mathrm{LB02},\mathrm{LB04},\mathrm{LB11}\}}
+  \sum_{l\in\mathcal L^{allow}}
   \sum_{s\in\mathcal{S}}a_{dls}.
 \]
 \[
-  A^{M,LB09}
+  A^{M,disc}
   =
   \sum_{d\in\mathcal{D}^{\mathrm{tar}}}
-  \sum_{s\in\mathcal{S}}a_{d,\mathrm{LB09},s}.
+  \sum_{l\in\mathcal L^{disc}}
+  \sum_{s\in\mathcal{S}}a_{dls}.
 \]
-原三站前 70 人次不計違反量；LB09 前 4 人次不計違反量，故
+「允許」外援共用前 70 人次免罰額度；「盡量不要」從第一人次起計分，故
 \[
-  \Phi^{M,ext}=\max\{0,A^{M,legacy}-70\}+\max\{0,A^{M,LB09}-4\}.
+  \Phi^{M,ext}=\max\{0,A^{M,allow}-70\}+A^{M,disc}.
 \]
 
 \paragraph{每月一般 R 分布（\texttt{CS02}）}
@@ -489,13 +472,15 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 此為月內分布偏好，不取代 \texttt{CH04} 的八週精確額度；\(R休\) 不計入一般 \(R\) 數量。
 
 \paragraph{八週累積 R1 餘額（\texttt{CS03}）}
-對每個與目標月相交的 56 日區間 \(I\)，令 \(c_I\) 為月底與區間結束日的較早者，
-\(p^{M,1}_{eI}\) 為目標月前已使用或折抵的 \(R1\) 數，並定義
+對每個與目標月相交的 56 日區間 \(I\)，令
+\(p^{M,1}_{eI}\) 為目標月內可排班日前已使用或折抵的 \(R1\) 數。將 \(m_e\)
+依各相交區間在可排日期內的國定假日數比例分配為 \(a_{eI}\)；若所有區間皆無
+國定假日，改依相交日數比例分配，整數餘數依區間起日順序放入前段。並定義
 \[
   A^{M,1}_{eI}=p^{M,1}_{eI}
   +\sum_{d\in\mathcal D^{\mathrm{tar}}\cap I}r^{M,1}_{ed},
   \qquad
-  H_I(c_I)=|\{h\in\mathcal H_I:h\le c_I\}|.
+  T^{M,1}_{eI}=|\{h\in\mathcal H_I:h<\max(d_{start,e},d_{month})\}|+a_{eI}.
 \]
 累積餘額的懲罰函數為
 \[
@@ -503,7 +488,7 @@ M 的班別時間為：早班 \(06{:}30\)--\(14{:}30\)、午班
 \]
 故
 \[
-  \Phi^{M,balance,R1}=\sum_{e\in\mathcal E^M}\sum_{I}g(A^{M,1}_{eI},H_I(c_I)).
+  \Phi^{M,balance,R1}=\sum_{e\in\mathcal E^M}\sum_{I}g(A^{M,1}_{eI},T^{M,1}_{eI}).
 \]
 累積剛好或暫欠一日皆不懲罰；提前多休與超過一日的欠額按平方計分。餘額沿同一
 區間跨月承接，區間結束時仍由 \texttt{CH04} 強制精確額度。
@@ -657,11 +642,14 @@ M 不計算平日休假公平。
 
 \subsubsection{字典序目標}
 
+以下係數為每次開啟求解頁時載入的程式預設值。實際求解以該次輸入的同名非負整數
+權重取代；權重為 0 時不建立該違反量。Priority 與公式固定不變。
+
 M 模型先定義指定休假的 Priority 1：
 \[
   J^M_1=3\Phi^{M,R^*}+\Phi^{M,unusedL},
 \]
-品質與公平性不再分成兩次求解，而以程式實際使用的整數係數直接合併為 Priority 4：
+品質與公平性不再分成兩次求解，而以程式實際使用的整數係數直接合併為 Priority 2；下式的 $J^M_{4+5}$ 沿用既有公式名稱：
 \[
   \begin{aligned}
     J^M_{4+5}={}&
@@ -678,7 +666,7 @@ M 模型先定義指定休假的 Priority 1：
     +50\Phi^{M,N}.
   \end{aligned}
 \]
-上式係數即為程式與輸出顯示的實際 CP-SAT 整數權重。非偏好輪轉、非所屬站
+上式係數為程式預設權重；候選輸出顯示該次實際使用的 CP-SAT 整數權重。非偏好輪轉、非所屬站
 指派與跨站支援公平的量測函數雖保留在原始碼，但權重為 0 時不建立變數、不計分
 也不輸出。
 完整目標為
@@ -1012,13 +1000,14 @@ T 模型的輸入包括：
 \]
 
 \paragraph{八週累積 R1 餘額（\texttt{CS03}）}
-令 \(p^{T,1}_{eI}\) 為目標月前已使用或折抵的 \(R1\) 數，則
+令 \(p^{T,1}_{eI}\)、\(a_{eI}\) 與 \(T^{T,1}_{eI}\) 使用和 M 相同的跨區間
+比例分配與新進折抵定義，則
 \[
   A^{T,1}_{eI}=p^{T,1}_{eI}
   +\sum_{d\in\mathcal D^{\mathrm{tar}}\cap I}r^{T,1}_{ed},
   \qquad
   \Phi^{T,balance,R1}=\sum_{e\in\mathcal E^T}\sum_I
-  \left(A^{T,1}_{eI}-H_I(c_I)\right)^2.
+  \left(A^{T,1}_{eI}-T^{T,1}_{eI}\right)^2.
 \]
 T 不保留 M 的暫欠一日免罰；因此當月分配到的 \(R1\) 會在可行的前提下盡量於當月休完。
 
@@ -1141,7 +1130,8 @@ $A_s=\sum_{e\in\mathcal E^{\mathrm{tar}}_s}R^{T,hol}_e/n_s$。則
 
 \subsubsection{字典序目標}
 
-T 模型定義五個目標群組：
+以下數字同樣是每次求解頁載入的預設權重；實際求解使用該次輸入權重，0 表示不建立
+該違反量，Priority 與公式不變。T 模型定義五個目標群組：
 \[
   J^T_1=3\Phi^{T,R^*}+\Phi^{T,unusedL},
 \]
@@ -1220,7 +1210,7 @@ M/T 若可比較格數為 \(N_{cell}\)，定義最低差異格數
 數學文件中的短 Rule ID 只供跨文件查閱；C\# 不保存 Rule ID，而以有意義的函數名稱
 直接表達公式。公開資料契約位於 \path{SolverContracts.cs}、\path{MContracts.cs}
 與 \path{TContracts.cs}。M/T 各自維持 Main、Input、HardRules、SoftRules 四個
-source-as-spec partial 檔，不加入共用規則 catalog 或外部權重設定。
+source-as-spec partial 檔，不加入通用規則引擎；前端只傳入目前啟用軟規則的逐次求解權重。
 
 \footnotesize
 \setlength{\tabcolsep}{3pt}

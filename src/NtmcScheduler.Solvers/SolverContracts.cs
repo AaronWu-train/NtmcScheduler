@@ -79,6 +79,7 @@ public sealed record SolverOptions
     public TimeSpan TimeLimit { get; init; } = TimeSpan.FromMinutes(5);
     public int RandomSeed { get; init; }
     public int WorkerCount { get; init; } = 8;
+    public Dictionary<string, int>? RuleWeights { get; init; }
 }
 
 public sealed record InputError(string Field, string Message);
@@ -139,13 +140,94 @@ public sealed record RestInterval(
     DateOnly End,
     HashSet<DateOnly> NationalHolidays);
 
+public enum ExternalSupportLevel
+{
+    Disallowed,
+    Discouraged,
+    Allowed
+}
+
+public sealed record StaffingRange(int Minimum, int Maximum);
+
+public sealed record MStationSetting(
+    string Code,
+    string Group,
+    ExternalSupportLevel ExternalSupport,
+    StaffingRange Early,
+    StaffingRange Afternoon,
+    StaffingRange Night)
+{
+    public StaffingRange For(Shift shift) => shift switch
+    {
+        Shift.Early => Early,
+        Shift.Afternoon => Afternoon,
+        Shift.Night => Night,
+        _ => throw new ArgumentOutOfRangeException(nameof(shift))
+    };
+}
+
+public sealed record MonthlySchedulingSettings(
+    int GeneralRestTarget,
+    int SpecialRestTarget,
+    MStationSetting[] MStations);
+
+public static class MonthlySchedulingDefaults
+{
+    public static MonthlySchedulingSettings Create(DateOnly month, IReadOnlyList<RestInterval> intervals, int employeeCount)
+    {
+        var dates = Enumerable.Range(0, DateTime.DaysInMonth(month.Year, month.Month)).Select(month.AddDays).ToArray();
+        var holidays = intervals.SelectMany(x => x.NationalHolidays).ToHashSet();
+        var stations = Enumerable.Range(1, 12).Select(number =>
+        {
+            var code = $"LB{number:D2}";
+            var maximum = code is "LB01" or "LB06" or "LB07" or "LB12" ? Math.Max(1, employeeCount) : 1;
+            var external = code is "LB02" or "LB04" or "LB11" ? ExternalSupportLevel.Allowed
+                : code == "LB09" ? ExternalSupportLevel.Discouraged : ExternalSupportLevel.Disallowed;
+            return new MStationSetting(code, $"G{(number - 1) / 3 + 1}", external,
+                new(1, maximum), new(1, maximum), new(code is "LB01" or "LB06" or "LB08" or "LB12" ? 1 : 0,
+                    code is "LB01" or "LB06" or "LB08" or "LB12" ? 1 : 0));
+        }).ToArray();
+        return new(dates.Count(x => x.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday), dates.Count(holidays.Contains), stations);
+    }
+}
+
+public static class SolverRuleWeights
+{
+    public static readonly IReadOnlyDictionary<string, int> M = new Dictionary<string, int>(StringComparer.Ordinal)
+    {
+        ["RequestedRest"] = 3, ["UnusedLeaveRest"] = 1, ["ExternalStaffing"] = 5,
+        ["MonthlyRest"] = 240, ["SpecialRestBalance"] = 120, ["WorkStreak"] = 20,
+        ["MixedShiftWorkStreak"] = 15, ["NightRestEarly"] = 400, ["NightRestAfternoon"] = 300,
+        ["ShiftChangeWithoutRest"] = 5, ["HolidayRestFairness"] = 5,
+        ["EarlyAfternoonImbalance"] = 20, ["NightShiftTarget"] = 50
+    };
+
+    public static readonly IReadOnlyDictionary<string, int> T = new Dictionary<string, int>(StringComparer.Ordinal)
+    {
+        ["RequestedRest"] = 3, ["UnusedLeaveRest"] = 1, ["NonMonthlyShift"] = 9,
+        ["Attendance"] = 9, ["Specialty"] = 3, ["Ability"] = 1, ["MonthlyRest"] = 1,
+        ["SpecialRestBalance"] = 1, ["WorkStreak"] = 3, ["NightToEarlyRest"] = 12,
+        ["MonthBoundaryRestBalance"] = 5, ["WeekdayRestFairness"] = 2, ["HolidayRestFairness"] = 4
+    };
+
+    public static IReadOnlyDictionary<string, int> Resolve(bool isM, Dictionary<string, int>? requested)
+    {
+        var defaults = isM ? M : T;
+        if (requested is null) return defaults;
+        if (requested.Count != defaults.Count || requested.Any(pair => pair.Value < 0 || !defaults.ContainsKey(pair.Key)))
+            throw new ArgumentException("Rule weights must contain every active rule exactly once and be non-negative.", nameof(requested));
+        return requested;
+    }
+}
+
 /// <summary>The complete input shared by the independent M and T solvers.</summary>
 public sealed record ScheduleInput(
     MonthlySchedule PreviousMonth,
     MonthlySchedule DemandMonth,
     IReadOnlyList<RestInterval> RestIntervals,
     NonStandardShiftTable NonStandardShifts,
-    StandardShiftTimes? StandardShiftTimes = null);
+    StandardShiftTimes? StandardShiftTimes = null,
+    MonthlySchedulingSettings? MonthlySettings = null);
 
 public sealed record ObjectiveComponent(string Name, long Value, int Weight)
 {

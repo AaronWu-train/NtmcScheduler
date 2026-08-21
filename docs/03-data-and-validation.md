@@ -14,7 +14,8 @@ public sealed record ScheduleInput(
     MonthlySchedule DemandMonth,
     IReadOnlyList<RestInterval> RestIntervals,
     NonStandardShiftTable NonStandardShifts,
-    WorkspaceShiftTimes? StandardShiftTimes = null);
+    WorkspaceShiftTimes? StandardShiftTimes = null,
+    MonthlySchedulingSettings? MonthlySettings = null);
 
 public sealed record NonStandardShift(
     string? Name,
@@ -39,6 +40,8 @@ public sealed record WorkspaceShiftTimes(
 `StandardShiftTimes` 為可選欄位，缺省時 Solver 使用硬編碼預設值（M：06:30–14:30、14:20–22:20、22:00–翌日 07:00；T：07:00–15:00、15:00–23:00、23:00–翌日 07:00）。每對起訖不可相同；結束時間早於開始時間視為跨日班。三個班別的時間窗可以互相重疊（班別定義允許重疊，實際排班仍受 CH03 工作區間至少 11 小時休息限制）。
 
 `DemandMonth` 是本月人員資料的唯一來源，不另建員工主檔。上月有、本月沒有的人不排入本月。
+
+`MonthlySettings` 保存本次月份的 R／R1 軟目標；M 的車站固定為 `LB01`–`LB12`，另保存每站群組、早／小／夜班人數上下限與外援等級。Web 建立月份時複製前一個日曆月的 M 設定，沒有前月時使用既有 12 站設定。舊 CLI／舊快照缺少此欄位時使用相同的相容預設。
 
 ## 月班表 CSV
 

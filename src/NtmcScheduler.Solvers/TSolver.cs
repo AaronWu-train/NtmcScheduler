@@ -25,6 +25,7 @@ public static partial class TSolver
         var missing = FindMissingCollections(input);
         if (missing.Count > 0) return new(SolveStatus.InvalidInput, [], missing);
         input = CopyInput(input);
+        input = input with { MonthlySettings = input.MonthlySettings ?? MonthlySchedulingDefaults.Create(input.DemandMonth.MonthStart, input.RestIntervals, input.DemandMonth.Employees.Count) };
         var errors = ValidateInput(input, options);
         if (errors.Count > 0) return new(SolveStatus.InvalidInput, [], errors);
 
@@ -50,7 +51,7 @@ public static partial class TSolver
             return new(SolveStatus.TimeLimit, candidates, []);
         current = ReadCandidate(solver, input, targetDates, variables, []);
         AddSolutionHints(model, solver, variables);
-        var objectives = BuildObjectiveGroups(model, input, targetDates, modelDates, variables);
+        var objectives = BuildObjectiveGroups(model, input, targetDates, modelDates, variables, options);
 
         foreach (var objective in objectives)
         {

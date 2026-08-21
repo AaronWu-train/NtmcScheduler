@@ -12,6 +12,28 @@ namespace NtmcScheduler.Infrastructure.Services;
 
 public sealed class ScheduleRunService(IDbContextFactory<NtmcDbContext> dbFactory, ScheduleRunQueue queue, IScheduleRunNotifier? notifier = null) : IScheduleRunService
 {
+    public IReadOnlyList<SolverRuleDefinitionDto> GetRules(WorkspaceCode workspace)
+    {
+        var hard = new[]
+        {
+            new SolverRuleDefinitionDto("DailyAssignment", "每日單一狀態", "每位在職人員每日必須恰好一個工作或休假狀態。", 0, true, null),
+            new SolverRuleDefinitionDto("FixedAssignments", "固定格", "已填正常班、R、R1 與 X 必須保留。", 0, true, null),
+            new SolverRuleDefinitionDto("EmploymentStart", "到職日期", "到職日前不建立班位，也不可存在固定日格。", 0, true, null),
+            new SolverRuleDefinitionDto("LeaveRestLimit", "R休上限", "R休只可用於 R*，且不可超過每人本月上限。", 0, true, null),
+            new SolverRuleDefinitionDto("MinimumRest", "工作間隔", "任兩次工作至少間隔 11 小時。", 0, true, null),
+            new SolverRuleDefinitionDto("SevenDayRest", "七日一般 R", "每個連續七日視窗至少一天一般 R。", 0, true, null),
+            new SolverRuleDefinitionDto("EightWeekQuota", "56 日 R/R1 額度", "每區間必須剛好 16R，R1 等於國定假日數。", 0, true, null)
+        };
+        if (workspace == WorkspaceCode.M)
+            hard = hard.Concat([
+                new("StationGroup", "車站群組", "未固定正常班只能排在所屬站的本月群組內。", 0, true, null),
+                new("StationCoverage", "班位人數", "每個站班的內部與外援總人數須符合本月上下限。", 0, true, null),
+                new("ExternalSupport", "外援使用範圍", "不允許站不建立外援；其他站的外援只補最低需求差額。", 0, true, null)
+            ]).ToArray();
+        var defaults = workspace == WorkspaceCode.M ? SolverRuleWeights.M : SolverRuleWeights.T;
+        return hard.Concat(defaults.Select(pair => new SolverRuleDefinitionDto(pair.Key, RuleName(pair.Key), RuleDescription(pair.Key), RulePriority(workspace, pair.Key), false, pair.Value))).ToArray();
+    }
+
     public async Task<ScheduleRunDto> QueueAsync(Guid demandId, Guid revisionToken, ScheduleRunOptions options, ActorContext actor, CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
@@ -41,7 +63,11 @@ public sealed class ScheduleRunService(IDbContextFactory<NtmcDbContext> dbFactor
             SolverScheduleMapper.ToMonthlySchedule(demand),
             SolverScheduleMapper.ToRestIntervals(demand.ConfigurationRevision),
             SolverScheduleMapper.ToNonStandardShifts(demand.ConfigurationRevision),
-            SolverScheduleMapper.ToStandardShiftTimes(demand.ConfigurationRevision));
+            SolverScheduleMapper.ToStandardShiftTimes(demand.ConfigurationRevision),
+            SolverScheduleMapper.ToMonthlySettings(demand));
+        IReadOnlyDictionary<string, int> resolvedWeights;
+        try { resolvedWeights = SolverRuleWeights.Resolve(demand.Workspace == WorkspaceCode.M, options.RuleWeights); }
+        catch (ArgumentException) { throw new DomainValidationException("規則權重必須完整、不可為負數，且只能包含目前啟用的軟規則。"); }
         var snapshot = JsonSerializer.Serialize(input, ServiceSupport.JsonOptions);
         var perpetualScheduleJson = demand.PerpetualScheduleJson;
         if (demand.Workspace == WorkspaceCode.M && string.IsNullOrWhiteSpace(perpetualScheduleJson))
@@ -70,11 +96,12 @@ public sealed class ScheduleRunService(IDbContextFactory<NtmcDbContext> dbFactor
             InputHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(snapshot))),
             PerpetualScheduleJson = perpetualScheduleJson
         };
+        run.RuleWeightsJson = JsonSerializer.Serialize(resolvedWeights, ServiceSupport.JsonOptions);
         await using (var transaction = await db.Database.BeginTransactionAsync(cancellationToken))
         {
             db.ScheduleRuns.Add(run);
             ServiceSupport.AddAudit(db, actor, "ScheduleRunQueued", demand.Workspace, "ScheduleRun", run.Id, null,
-                new { run.Month, run.InputHash, run.RandomSeed, run.WorkerCount, run.SeedCount, run.TimeLimitSeconds });
+                new { run.Month, run.InputHash, run.RandomSeed, run.WorkerCount, run.SeedCount, run.TimeLimitSeconds, RuleWeights = resolvedWeights });
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
@@ -147,7 +174,41 @@ public sealed class ScheduleRunService(IDbContextFactory<NtmcDbContext> dbFactor
         return SolverScheduleMapper.ToMonthlySchedule(version);
     }
 
-    internal static ScheduleRunDto ToDto(ScheduleRun run) => new(run.Id, run.Workspace, run.Month, run.Status, run.Error, run.CreatedAtUtc, run.CompletedAtUtc, run.TimeLimitSeconds, run.WorkerCount, run.SeedCount, DeserializeCandidates(run.ResultDetailsJson));
+    internal static ScheduleRunDto ToDto(ScheduleRun run) => new(run.Id, run.Workspace, run.Month, run.Status, run.Error, run.CreatedAtUtc, run.CompletedAtUtc, run.TimeLimitSeconds, run.WorkerCount, run.SeedCount,
+        string.IsNullOrWhiteSpace(run.RuleWeightsJson)
+            ? (run.Workspace == WorkspaceCode.M ? SolverRuleWeights.M : SolverRuleWeights.T)
+            : JsonSerializer.Deserialize<Dictionary<string, int>>(run.RuleWeightsJson, ServiceSupport.JsonOptions) ?? new Dictionary<string, int>(),
+        DeserializeCandidates(run.ResultDetailsJson));
+
+    private static int RulePriority(WorkspaceCode workspace, string key) => key switch
+    {
+        "RequestedRest" or "UnusedLeaveRest" => 1,
+        "NonMonthlyShift" or "Attendance" or "Specialty" or "Ability" => 2,
+        "MonthlyRest" or "SpecialRestBalance" when workspace == WorkspaceCode.T => 3,
+        "WeekdayRestFairness" or "HolidayRestFairness" when workspace == WorkspaceCode.T => 5,
+        _ when workspace == WorkspaceCode.M => 2,
+        _ => 4
+    };
+
+    private static string RuleName(string key) => key switch
+    {
+        "RequestedRest" => "指定休假", "UnusedLeaveRest" => "未使用 R休", "ExternalStaffing" => "外援人力",
+        "MonthlyRest" => "每月一般 R", "SpecialRestBalance" => "八週累積 R1 餘額", "WorkStreak" => "連續工作區段",
+        "MixedShiftWorkStreak" => "工作區段混合班型", "NightRestEarly" => "夜休早", "NightRestAfternoon" => "夜休午",
+        "ShiftChangeWithoutRest" => "未休假直接換班", "HolidayRestFairness" => "假日休假公平",
+        "EarlyAfternoonImbalance" => "早小班差距", "NightShiftTarget" => "夜班目標", "NonMonthlyShift" => "月班別不一致",
+        "Attendance" => "班組出勤不足", "Specialty" => "專業缺席", "Ability" => "高能力人員不足",
+        "NightToEarlyRest" => "跨月夜轉早休假不足", "MonthBoundaryRestBalance" => "月交界休假不平衡",
+        "WeekdayRestFairness" => "平日休假公平", _ => key
+    };
+
+    private static string RuleDescription(string key) => key switch
+    {
+        "RequestedRest" => "R* 最後未排成任何實際休假。", "UnusedLeaveRest" => "未用完每人輸入的 R休 上限。",
+        "ExternalStaffing" => "允許站超過 70 人次與盡量不要站的外援人次。", "MonthlyRest" => "實際 R 與本月自訂基準的平方偏差。",
+        "SpecialRestBalance" => "截至月底的 56 日累積 R1 餘額。", "WorkStreak" => "連續實際工作區段的長度品質。",
+        _ => "依目前規格計算此軟規則的違反量。"
+    };
 
     private static IReadOnlyList<ScheduleRunCandidateDto> DeserializeCandidates(string? json) => string.IsNullOrWhiteSpace(json)
         ? [] : JsonSerializer.Deserialize<List<ScheduleRunCandidateDto>>(json, ServiceSupport.JsonOptions) ?? [];

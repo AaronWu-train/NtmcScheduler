@@ -73,7 +73,7 @@ public sealed class ScheduleService(
         var employee = version.Employees.SingleOrDefault(x => x.Assignments.Any(a => a.Id == assignmentId))
             ?? throw new DomainValidationException("找不到日格。");
         var assignment = employee.Assignments.Single(x => x.Id == assignmentId);
-        ValidateCell(version.Workspace, assignment.Date, kind, requestedRest, station, shift, eventStart, eventEnd, eventDescription);
+        ValidateCell(version, assignment.Date, kind, requestedRest, station, shift, eventStart, eventEnd, eventDescription);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var before = AssignmentSnapshot(version, employee, assignment);
         assignment.Kind = kind;
@@ -281,6 +281,11 @@ public sealed class ScheduleService(
         var isT = schedule.Employees.Any(x => x.Ability is not null || x.MonthlyShift is not null);
         if (isT != (workspace == WorkspaceCode.T)) throw new DomainValidationException("CSV 的 M/T 欄位與目前工作區不符。");
         var version = SolverScheduleMapper.ToImportedVersion(schedule, workspace, configurationId, actor.UserId);
+        var demand = await db.DemandDrafts.AsNoTracking().AsSplitQuery()
+            .Include(x => x.ConfigurationRevision).ThenInclude(x => x.RestIntervals).ThenInclude(x => x.NationalHolidays)
+            .Include(x => x.Employees).SingleOrDefaultAsync(x => x.Workspace == workspace && x.Month == month, cancellationToken);
+        if (demand is not null)
+            version.MonthlySettingsJson = JsonSerializer.Serialize(SolverScheduleMapper.ToMonthlySettings(demand), ServiceSupport.JsonOptions);
         version.Name = $"上傳 {month:yyyy-MM} 班表";
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         db.ScheduleVersions.Add(version);
@@ -354,27 +359,41 @@ public sealed class ScheduleService(
     {
         if (version.Workspace != WorkspaceCode.M) return [];
         var monthEnd = version.Month.AddMonths(1).AddDays(-1);
-        string[] stations = ["LB01", "LB02", "LB03", "LB04", "LB05", "LB06", "LB07", "LB08", "LB09", "LB10", "LB11", "LB12"];
+        var settings = string.IsNullOrWhiteSpace(version.MonthlySettingsJson)
+            ? MonthlySchedulingDefaults.Create(version.Month, SolverScheduleMapper.ToRestIntervals(version.ConfigurationRevision), version.Employees.Count)
+            : JsonSerializer.Deserialize<MonthlySchedulingSettings>(version.MonthlySettingsJson, ServiceSupport.JsonOptions)
+                ?? MonthlySchedulingDefaults.Create(version.Month, SolverScheduleMapper.ToRestIntervals(version.ConfigurationRevision), version.Employees.Count);
         string[] shifts = ["Early", "Afternoon", "Night"];
         var result = new List<ScheduleCoverageDto>();
         for (var date = version.Month; date <= monthEnd; date = date.AddDays(1))
-            foreach (var station in stations)
+            foreach (var station in settings.MStations)
                 foreach (var shift in shifts)
                 {
-                    var required = shift is "Early" or "Afternoon" ? 1 : station is "LB01" or "LB06" or "LB08" or "LB12" ? 1 : 0;
-                    var allowsMultiple = (station is "LB01" or "LB06" or "LB07" or "LB12") &&
-                        shift is "Early" or "Afternoon";
-                    var internalCount = version.Employees.SelectMany(x => x.Assignments).Count(x => x.Date == date && x.Kind == "Work" && x.Station == station && x.Shift == shift);
-                    var externalCount = version.ExternalAssignments.Where(x => x.Date == date && x.Station == station && x.Shift == shift).Sum(x => x.Count);
-                    result.Add(new(date, station, shift, required, allowsMultiple, internalCount, externalCount));
+                    var range = shift switch { "Early" => station.Early, "Afternoon" => station.Afternoon, _ => station.Night };
+                    var internalCount = version.Employees.SelectMany(x => x.Assignments).Count(x => x.Date == date && x.Kind == "Work" && x.Station == station.Code && x.Shift == shift);
+                    var externalCount = version.ExternalAssignments.Where(x => x.Date == date && x.Station == station.Code && x.Shift == shift).Sum(x => x.Count);
+                    result.Add(new(date, station.Code, shift, range.Minimum, range.Maximum, range.Maximum > range.Minimum, internalCount, externalCount));
                 }
         return result;
     }
 
-    private static ScheduleVersionDto ToDto(ScheduleVersion version, bool adopted) => new(
-        version.Id, version.Workspace, version.Month, version.Name, version.SourceStatus, adopted, version.IsArchived,
-        version.HasErrors, version.WarningCount, version.CreatedAtUtc, version.UpdatedAtUtc, version.RevisionToken, version.ConfigurationRevisionId,
-        Objectives(version));
+    private static ScheduleVersionDto ToDto(ScheduleVersion version, bool adopted)
+    {
+        MonthlySchedulingSettings? settings = null;
+        if (!string.IsNullOrWhiteSpace(version.MonthlySettingsJson))
+            settings = JsonSerializer.Deserialize<MonthlySchedulingSettings>(version.MonthlySettingsJson, ServiceSupport.JsonOptions);
+        else if (version.ConfigurationRevision is not null)
+            settings = MonthlySchedulingDefaults.Create(version.Month, SolverScheduleMapper.ToRestIntervals(version.ConfigurationRevision), version.Employees.Count);
+        return new(
+            version.Id, version.Workspace, version.Month, version.Name, version.SourceStatus, adopted, version.IsArchived,
+            version.HasErrors, version.WarningCount, version.CreatedAtUtc, version.UpdatedAtUtc, version.RevisionToken, version.ConfigurationRevisionId,
+            settings?.GeneralRestTarget, settings?.SpecialRestTarget, Objectives(version));
+    }
+
+    private static MonthlySchedulingSettings VersionSettings(ScheduleVersion version) => string.IsNullOrWhiteSpace(version.MonthlySettingsJson)
+        ? MonthlySchedulingDefaults.Create(version.Month, SolverScheduleMapper.ToRestIntervals(version.ConfigurationRevision), version.Employees.Count)
+        : JsonSerializer.Deserialize<MonthlySchedulingSettings>(version.MonthlySettingsJson, ServiceSupport.JsonOptions)
+            ?? MonthlySchedulingDefaults.Create(version.Month, SolverScheduleMapper.ToRestIntervals(version.ConfigurationRevision), version.Employees.Count);
 
     private static IReadOnlyList<ObjectiveScoreDto> Objectives(ScheduleVersion version)
     {
@@ -519,7 +538,7 @@ public sealed class ScheduleService(
     }
 
     private static void ValidateCell(
-        WorkspaceCode workspace,
+        ScheduleVersion version,
         DateOnly date,
         string kind,
         bool requestedRest,
@@ -536,8 +555,8 @@ public sealed class ScheduleService(
         if (kind == "Work")
         {
             if (SolverScheduleMapper.ParseShift(shift) is null) throw new DomainValidationException("正常班必須指定班別。");
-            if (workspace == WorkspaceCode.M && !IsMStation(station)) throw new DomainValidationException("M 正常班車站必須為 LB01–LB12。");
-            if (workspace == WorkspaceCode.T && !string.IsNullOrWhiteSpace(station)) throw new DomainValidationException("T 正常班不可指定車站。");
+            if (version.Workspace == WorkspaceCode.M && (station is null || !VersionSettings(version).MStations.Any(x => x.Code == station))) throw new DomainValidationException("M 正常班車站必須存在於本月車站設定。");
+            if (version.Workspace == WorkspaceCode.T && !string.IsNullOrWhiteSpace(station)) throw new DomainValidationException("T 正常班不可指定車站。");
         }
         if (kind == "WorkEvent")
         {
@@ -549,8 +568,5 @@ public sealed class ScheduleService(
             if (eventDescription?.Length > 500) throw new DomainValidationException("X 說明不可超過 500 字元。");
         }
     }
-    private static bool IsMStation(string? station) => station is not null && station.Length == 4 &&
-        station.StartsWith("LB", StringComparison.Ordinal) && int.TryParse(station[2..], out var number) && number is >= 1 and <= 12;
-
     private static string ShiftText(string shift) => shift switch { "Early" => "早", "Afternoon" => "小", "Night" => "夜", _ => "" };
 }

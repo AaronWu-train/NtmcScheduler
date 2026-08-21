@@ -31,6 +31,13 @@ public enum ValidationSeverity
     Error
 }
 
+public enum ExternalSupportPolicy
+{
+    Disallowed,
+    Discouraged,
+    Allowed
+}
+
 public static class AuditClaimTypes
 {
     public const string SessionId = "audit_session_id";
@@ -84,6 +91,23 @@ public sealed record ConfigurationRevisionDto(
     WorkspaceShiftTimesDto MShiftTimes,
     WorkspaceShiftTimesDto TShiftTimes);
 
+public sealed record StaffingRangeDto(int Minimum, int Maximum);
+public sealed record MStationSettingDto(
+    string Code,
+    string Group,
+    ExternalSupportPolicy ExternalSupport,
+    StaffingRangeDto Early,
+    StaffingRangeDto Afternoon,
+    StaffingRangeDto Night);
+public sealed record MonthlySchedulingSettingsDto(
+    int GeneralRestTarget,
+    int SpecialRestTarget,
+    int GeneralRestMinimum,
+    int GeneralRestMaximum,
+    int SpecialRestMinimum,
+    int SpecialRestMaximum,
+    IReadOnlyList<MStationSettingDto> MStations);
+
 public sealed record DemandEmployeeDto(
     Guid Id,
     string EmployeeCode,
@@ -123,13 +147,14 @@ public sealed record DemandDraftDto(
     DateTimeOffset UpdatedAtUtc,
     PreviousUploadDto? PreviousUpload,
     PerpetualUploadDto? PerpetualUpload,
+    MonthlySchedulingSettingsDto MonthlySettings,
     IReadOnlyList<DemandEmployeeDto> Employees);
 
 public sealed record PreviousUploadDto(string FileName, DateTimeOffset UploadedAtUtc);
 public sealed record PreviousSchedulePreviewDto(WorkspaceCode Workspace, DateOnly Month, IReadOnlyList<PreviousScheduleEmployeeDto> Employees);
 public sealed record PreviousScheduleEmployeeDto(string EmployeeCode, string Name, string Affiliation, IReadOnlyList<string> MonthlyCsvValues);
 public sealed record PreviousScheduleFileDto(string FileName, byte[] Content);
-public sealed record PerpetualUploadDto(string FileName, DateTimeOffset UploadedAtUtc);
+public sealed record PerpetualUploadDto(string FileName, DateTimeOffset UploadedAtUtc, bool IsEmpty);
 public sealed record PerpetualScheduleFileDto(string FileName, byte[] Content);
 public sealed record MPerpetualPatternDto(string Id, IReadOnlyList<string> Days, int EarlyCount, int AfternoonCount, int NightCount);
 public sealed record MPerpetualScheduleDto(string FileName, DateTimeOffset UpdatedAtUtc, Guid RevisionToken, IReadOnlyList<MPerpetualPatternDto> Patterns);
@@ -190,6 +215,8 @@ public sealed record ScheduleVersionDto(
     DateTimeOffset UpdatedAtUtc,
     Guid RevisionToken,
     Guid ConfigurationRevisionId,
+    int? GeneralRestTarget = null,
+    int? SpecialRestTarget = null,
     IReadOnlyList<ObjectiveScoreDto>? Objectives = null);
 
 public sealed record ScheduleMonthDto(DateOnly Month, int VersionCount, ScheduleVersionDto? Adopted, DateTimeOffset UpdatedAtUtc);
@@ -247,6 +274,7 @@ public sealed record ScheduleCoverageDto(
     string Station,
     string Shift,
     int Required,
+    int Maximum,
     bool AllowsMultiple,
     int Internal,
     int External);
@@ -286,18 +314,21 @@ public sealed record ScheduleRunDto(
     int TimeLimitSeconds,
     int WorkerCount,
     int SeedCount,
+    IReadOnlyDictionary<string, int> RuleWeights,
     IReadOnlyList<ScheduleRunCandidateDto> Candidates);
 
 public sealed record ScheduleRunCandidateDto(int Number, IReadOnlyList<ObjectiveScoreDto> Objectives);
 public sealed record ObjectiveScoreDto(int Priority, string Name, long Value, IReadOnlyList<ObjectiveComponentDto> Components);
 public sealed record ObjectiveComponentDto(string Name, long Value, int Weight);
 
-public sealed record ScheduleRunOptions(int TimeLimitSeconds, int WorkerCount, int SeedCount)
+public sealed record ScheduleRunOptions(int TimeLimitSeconds, int WorkerCount, int SeedCount, Dictionary<string, int>? RuleWeights = null)
 {
     public const int MaxTimeLimitSeconds = 600;
     public const int MaxWorkerCount = 8;
     public const int MaxSeedCount = 4;
 }
+
+public sealed record SolverRuleDefinitionDto(string Key, string Name, string Description, int Priority, bool IsHard, int? DefaultWeight);
 
 public sealed record AuditFieldChangeDto(string Label, string? Before, string? After);
 

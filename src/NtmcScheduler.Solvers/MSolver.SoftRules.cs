@@ -11,52 +11,31 @@ public static partial class MSolver
         ScheduleInput input,
         IReadOnlyList<DateOnly> targetDates,
         IReadOnlyList<DateOnly> modelDates,
-        ModelVariables variables)
+        ModelVariables variables,
+        SolverOptions options)
     {
-        var requestedRest = CountUnfulfilledRequestedRests(input, targetDates, variables);
-        var unusedLeaveRest = MeasureUnusedLeaveRests(model, input, targetDates, variables);
-        var externalStaffing = MeasureExternalStaffingAboveAllowance(model, targetDates, variables);
-        var monthlyRest = MeasureMonthlyRestDeviation(model, input, targetDates, variables.Rest);
-        var specialRestBalance = MeasureSpecialRestBalance(model, input, targetDates, variables.SpecialRest);
-        var workStreak = MeasureWorkStreakPenalties(model, input, targetDates, modelDates, variables);
-        var mixedShiftWorkStreak = CountMixedShiftWorkStreaks(model, input, targetDates, modelDates, variables);
-        var nightRestEarly = CountNightRestShiftPatterns(model, input, variables, Shift.Early, "night_rest_early");
-        var nightRestAfternoon = CountNightRestShiftPatterns(model, input, variables, Shift.Afternoon, "night_rest_afternoon");
-        var shiftChangeWithoutRest = CountShiftChangesWithoutRest(model, input, modelDates, variables);
-        var holidayFairness = MeasureHolidayRestPenaltyByStationGroup(model, input, targetDates.Where(date => IsWeekendOrNationalHoliday(input, date)), variables);
-        var earlyAfternoonImbalance = MeasureEarlyAfternoonImbalance(model, input, targetDates, variables);
-        var nightShiftTarget = MeasureNightShiftTargetPenalty(model, input, targetDates, variables);
+        var weights = SolverRuleWeights.Resolve(true, options.RuleWeights);
+        List<(string Name, int Weight, LinearExpr Expression)> Group(params (string Name, Func<LinearExpr> Build)[] rules) =>
+            rules.Where(x => weights[x.Name] > 0).Select(x => (x.Name, weights[x.Name], x.Build())).ToList();
+        static LinearExpr Total(List<(string Name, int Weight, LinearExpr Expression)> components) =>
+            LinearExpr.Sum(components.Select(x => x.Expression * x.Weight));
 
-        return
-        [
-            new(1, "RequestedRest", requestedRest * 3 + unusedLeaveRest,
-                [("RequestedRest", 3, requestedRest), ("UnusedLeaveRest", 1, unusedLeaveRest)]),
-            new(4, "ScheduleQualityAndFairness",
-                externalStaffing * 5
-                    + monthlyRest * 240
-                    + specialRestBalance * 120
-                    + workStreak * 20
-                    + mixedShiftWorkStreak * 15
-                    + nightRestEarly * 400
-                    + nightRestAfternoon * 300
-                    + shiftChangeWithoutRest * 5
-                    + holidayFairness * 5
-                    + earlyAfternoonImbalance * 20
-                    + nightShiftTarget * 50,
-                [
-                    ("ExternalStaffing", 5, externalStaffing),
-                    ("MonthlyRest", 240, monthlyRest),
-                    ("SpecialRestBalance", 120, specialRestBalance),
-                    ("WorkStreak", 20, workStreak),
-                    ("MixedShiftWorkStreak", 15, mixedShiftWorkStreak),
-                    ("NightRestEarly", 400, nightRestEarly),
-                    ("NightRestAfternoon", 300, nightRestAfternoon),
-                    ("ShiftChangeWithoutRest", 5, shiftChangeWithoutRest),
-                    ("HolidayRestFairness", 5, holidayFairness),
-                    ("EarlyAfternoonImbalance", 20, earlyAfternoonImbalance),
-                    ("NightShiftTarget", 50, nightShiftTarget)
-                ])
-        ];
+        var requested = Group(
+            ("RequestedRest", () => CountUnfulfilledRequestedRests(input, targetDates, variables)),
+            ("UnusedLeaveRest", () => MeasureUnusedLeaveRests(model, input, targetDates, variables)));
+        var quality = Group(
+            ("ExternalStaffing", () => MeasureExternalStaffingAboveAllowance(model, input, targetDates, variables)),
+            ("MonthlyRest", () => MeasureMonthlyRestDeviation(model, input, targetDates, variables.Rest)),
+            ("SpecialRestBalance", () => MeasureSpecialRestBalance(model, input, targetDates, variables.SpecialRest)),
+            ("WorkStreak", () => MeasureWorkStreakPenalties(model, input, targetDates, modelDates, variables)),
+            ("MixedShiftWorkStreak", () => CountMixedShiftWorkStreaks(model, input, targetDates, modelDates, variables)),
+            ("NightRestEarly", () => CountNightRestShiftPatterns(model, input, variables, Shift.Early, "night_rest_early")),
+            ("NightRestAfternoon", () => CountNightRestShiftPatterns(model, input, variables, Shift.Afternoon, "night_rest_afternoon")),
+            ("ShiftChangeWithoutRest", () => CountShiftChangesWithoutRest(model, input, modelDates, variables)),
+            ("HolidayRestFairness", () => MeasureHolidayRestPenaltyByStationGroup(model, input, targetDates.Where(date => IsWeekendOrNationalHoliday(input, date)), variables)),
+            ("EarlyAfternoonImbalance", () => MeasureEarlyAfternoonImbalance(model, input, targetDates, variables)),
+            ("NightShiftTarget", () => MeasureNightShiftTargetPenalty(model, input, targetDates, variables)));
+        return [new(1, "RequestedRest", Total(requested), requested), new(2, "ScheduleQualityAndFairness", Total(quality), quality)];
     }
 
     // 指定休假滿足——計算結果不是實際休假的 R* 格數。
@@ -80,17 +59,17 @@ public static partial class MSolver
         return LinearExpr.Sum(unused);
     }
 
-    // 外援人力——原三站前 70 人次免罰；LB09 前 4 人次免罰。
-    private static LinearExpr MeasureExternalStaffingAboveAllowance(CpModel model, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
+    // 外援人力——「允許」站共用前 70 人次免罰；「盡量不要」站從第一人次計分。
+    private static LinearExpr MeasureExternalStaffingAboveAllowance(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
     {
         var target = variables.External.Where(x => targetDates.Contains(x.Key.Date)).ToArray();
-        var legacy = target.Where(x => x.Key.Station != "LB09").Select(x => x.Value).ToArray();
-        var lb09 = target.Where(x => x.Key.Station == "LB09").Select(x => x.Value).ToArray();
-        var legacyAboveAllowance = model.NewIntVar(0, legacy.Length, "external_staffing_above_allowance");
-        var lb09AboveAllowance = model.NewIntVar(0, lb09.Length, "lb09_external_staffing_above_allowance");
-        model.AddMaxEquality(legacyAboveAllowance, [LinearExpr.Sum(legacy) - 70, LinearExpr.Constant(0)]);
-        model.AddMaxEquality(lb09AboveAllowance, [LinearExpr.Sum(lb09) - 4, LinearExpr.Constant(0)]);
-        return legacyAboveAllowance + lb09AboveAllowance;
+        var allowedStations = input.MonthlySettings!.MStations.Where(x => x.ExternalSupport == ExternalSupportLevel.Allowed).Select(x => x.Code).ToHashSet();
+        var discouragedStations = input.MonthlySettings.MStations.Where(x => x.ExternalSupport == ExternalSupportLevel.Discouraged).Select(x => x.Code).ToHashSet();
+        var allowed = target.Where(x => allowedStations.Contains(x.Key.Station)).Select(x => x.Value).ToArray();
+        var discouraged = target.Where(x => discouragedStations.Contains(x.Key.Station)).Select(x => x.Value).ToArray();
+        var aboveAllowance = model.NewIntVar(0, target.Length, "external_staffing_above_allowance");
+        model.AddMaxEquality(aboveAllowance, [LinearExpr.Sum(allowed) - 70, LinearExpr.Constant(0)]);
+        return aboveAllowance + LinearExpr.Sum(discouraged);
     }
 
     // 每月一般 R 分布——依到職後的週末推導每人的一般 R 目標。
@@ -131,7 +110,7 @@ public static partial class MSolver
             {
                 var dates = targetDates.Where(date => date >= interval.Start && date <= interval.End && IsEmployedOn(employee, date)).ToArray();
                 var prior = RestUsageBeforeModeledDates(input, employee, interval).SpecialRest;
-                var expected = interval.NationalHolidays.Count(date => date <= (interval.End < monthEnd ? interval.End : monthEnd));
+                var expected = ExpectedSpecialRest(input, employee, interval, monthEnd);
                 var values = Enumerable.Range(0, dates.Length + 1).Select(count => SpecialRestBalancePenaltyValue(prior + count, expected)).ToArray();
                 var count = model.NewIntVar(0, dates.Length, $"special_rest_balance_count_{employee.EmployeeId}_{interval.Start:yyyyMMdd}");
                 var penalty = model.NewIntVar(0, values.Max(), $"special_rest_balance_penalty_{employee.EmployeeId}_{interval.Start:yyyyMMdd}");
@@ -147,6 +126,26 @@ public static partial class MSolver
         var balance = actual - expected;
         var penalizedDeviation = balance > 0 ? balance : Math.Max(0, -balance - 1);
         return (long)penalizedDeviation * penalizedDeviation;
+    }
+
+    private static int ExpectedSpecialRest(ScheduleInput input, EmployeeMonthlySchedule employee, RestInterval interval, DateOnly monthEnd)
+    {
+        var monthStart = input.DemandMonth.MonthStart;
+        var priorTarget = interval.NationalHolidays.Count(date => date < monthStart);
+        var start = employee.EmploymentStartDate is { } hired && hired > monthStart ? hired : monthStart;
+        priorTarget += interval.NationalHolidays.Count(date => date >= monthStart && date < start);
+        var employeeTarget = Math.Max(0, input.MonthlySettings!.SpecialRestTarget -
+            input.RestIntervals.SelectMany(x => x.NationalHolidays).Count(date => date >= monthStart && date < start));
+        var intersecting = input.RestIntervals.Where(x => x.Start <= monthEnd && x.End >= start).OrderBy(x => x.Start).ToArray();
+        var weights = intersecting.Select(x => x.NationalHolidays.Count(date => date >= start && date <= monthEnd)).ToArray();
+        if (weights.Sum() == 0) weights = intersecting.Select(x => Math.Max(0, Math.Min(x.End.DayNumber, monthEnd.DayNumber) - Math.Max(x.Start.DayNumber, start.DayNumber) + 1)).ToArray();
+        var total = Math.Max(1, weights.Sum());
+        var allocations = weights.Select(weight => employeeTarget * weight / total).ToArray();
+        var remainder = employeeTarget - allocations.Sum();
+        var index = 0;
+        for (; remainder > 0; remainder--, index = (index + 1) % allocations.Length) allocations[index]++;
+        var intervalIndex = Array.IndexOf(intersecting, interval);
+        return priorTarget + (intervalIndex < 0 ? 0 : allocations[intervalIndex]);
     }
 
     // Disabled at BuildObjectiveGroups while its weight is zero.
@@ -410,7 +409,7 @@ public static partial class MSolver
         var penalties = new List<LinearExpr>();
         foreach (var group in input.DemandMonth.Employees
                      .Where(employee => IsEmployedOn(employee, input.DemandMonth.MonthStart))
-                     .GroupBy(employee => StationGroupIndex(employee.Affiliation)))
+                     .GroupBy(employee => StationGroup(input, employee.Affiliation)))
         {
             var counts = group.Select(employee =>
             {
@@ -451,7 +450,7 @@ public static partial class MSolver
         var deviations = new List<LinearExpr>();
         foreach (var group in input.DemandMonth.Employees
                      .Where(employee => IsEmployedOn(employee, input.DemandMonth.MonthStart))
-                     .GroupBy(employee => StationGroupIndex(employee.Affiliation)))
+                     .GroupBy(employee => StationGroup(input, employee.Affiliation)))
         {
             var counts = group.Select(employee =>
             {
@@ -553,8 +552,8 @@ public static partial class MSolver
         return LinearExpr.Constant(cell?.Kind is AssignmentKind.Rest or AssignmentKind.SpecialRest or AssignmentKind.LeaveRest ? 1 : 0);
     }
 
-    // Converts LB01-LB12 into the four fixed three-station comparison groups.
-    private static int StationGroupIndex(string station) => (int.Parse(station[2..]) - 1) / 3;
+    private static string StationGroup(ScheduleInput input, string station) =>
+        input.MonthlySettings!.MStations.Single(x => x.Code == station).Group;
 
     private static bool IsWeekendOrNationalHoliday(ScheduleInput input, DateOnly date) =>
         date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday

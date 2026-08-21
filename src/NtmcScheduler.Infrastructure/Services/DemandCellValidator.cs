@@ -14,7 +14,8 @@ internal static class DemandCellValidator
         string? shift,
         DateTimeOffset? eventStart,
         DateTimeOffset? eventEnd,
-        string? description)
+        string? description,
+        IReadOnlySet<string>? mStations = null)
     {
         if (kind is not (null or "" or "Unresolved" or "Work" or "Rest" or "SpecialRest" or "LeaveRest" or "WorkEvent"))
             throw new DomainValidationException("不支援的需求日格狀態。");
@@ -23,7 +24,7 @@ internal static class DemandCellValidator
         if (kind == "Work")
         {
             if (SolverScheduleMapper.ParseShift(shift) is null) throw new DomainValidationException("正常班必須指定班別。");
-            if (workspace == WorkspaceCode.M && !IsMStation(station)) throw new DomainValidationException("M 正常班車站必須為 LB01–LB12。");
+            if (workspace == WorkspaceCode.M && (station is null || mStations is not null && !mStations.Contains(station))) throw new DomainValidationException("M 正常班車站必須存在於本月車站設定。");
             if (workspace == WorkspaceCode.T && !string.IsNullOrWhiteSpace(station)) throw new DomainValidationException("T 正常班不可指定車站。");
         }
         if (kind == "WorkEvent" && (eventStart is null || eventEnd is null || eventEnd <= eventStart || eventEnd - eventStart > TimeSpan.FromHours(24) || eventStart.Value.Offset != TimeSpan.FromHours(8) || eventEnd.Value.Offset != TimeSpan.FromHours(8)))
@@ -32,7 +33,4 @@ internal static class DemandCellValidator
             throw new DomainValidationException("X 必須歸在台北時間的開始日期。");
         if (description?.Length > 500) throw new DomainValidationException("X 說明不可超過 500 字元。");
     }
-
-    private static bool IsMStation(string? station) => station is not null && station.Length == 4 &&
-        station.StartsWith("LB", StringComparison.Ordinal) && int.TryParse(station[2..], out var number) && number is >= 1 and <= 12;
 }

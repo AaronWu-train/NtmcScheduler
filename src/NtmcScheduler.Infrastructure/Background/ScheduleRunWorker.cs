@@ -82,19 +82,21 @@ public sealed class ScheduleRunWorker(
         {
             RandomSeed = run.RandomSeed,
             WorkerCount = run.WorkerCount,
-            TimeLimit = TimeSpan.FromSeconds(run.TimeLimitSeconds)
+            TimeLimit = TimeSpan.FromSeconds(run.TimeLimitSeconds),
+            RuleWeights = string.IsNullOrWhiteSpace(run.RuleWeightsJson) ? null
+                : JsonSerializer.Deserialize<Dictionary<string, int>>(run.RuleWeightsJson, ServiceSupport.JsonOptions)
         };
         try
         {
             if (run.Workspace == WorkspaceCode.M)
             {
                 var result = SolveMPortfolio(input, run, options, solving.Token);
-                await StoreMResultAsync(db, run, input.DemandMonth, result, stoppingToken);
+                await StoreMResultAsync(db, run, input.DemandMonth, input.MonthlySettings, result, stoppingToken);
             }
             else
             {
                 var result = TSolver.Solve(input, options, solving.Token);
-                await StoreTResultAsync(db, run, input.DemandMonth, result, stoppingToken);
+                await StoreTResultAsync(db, run, input.DemandMonth, input.MonthlySettings, result, stoppingToken);
             }
         }
         catch (Exception exception) when (WasCancelledByOperator(exception, solving.Token, stoppingToken))
@@ -115,7 +117,7 @@ public sealed class ScheduleRunWorker(
         await NotifyAsync(run, cancellationToken);
     }
 
-    private async Task StoreMResultAsync(NtmcDbContext db, ScheduleRun run, MonthlySchedule demand, MSolveResult result, CancellationToken cancellationToken)
+    private async Task StoreMResultAsync(NtmcDbContext db, ScheduleRun run, MonthlySchedule demand, MonthlySchedulingSettings? settings, MSolveResult result, CancellationToken cancellationToken)
     {
         run.Status = Map(result.Status);
         run.Error = ErrorText(result.Errors);
@@ -124,7 +126,8 @@ public sealed class ScheduleRunWorker(
         {
             var candidate = result.Candidates[index];
             var version = SolverScheduleMapper.ToVersion(candidate.Schedule, WorkspaceCode.M, run.Id, index, run.Status,
-                ConfigurationId(run), run.RequestedByUserId, demand, candidate.ExternalAssignments);
+                ConfigurationId(run), run.RequestedByUserId, demand, candidate.ExternalAssignments, settings);
+            version.RuleWeightsJson = run.RuleWeightsJson;
             version.WarningCount = candidate.Objectives.SelectMany(x => x.Components).Count(x => x.Value > 0);
             db.ScheduleVersions.Add(version);
         }
@@ -132,7 +135,7 @@ public sealed class ScheduleRunWorker(
         await NotifyAsync(run, cancellationToken);
     }
 
-    private async Task StoreTResultAsync(NtmcDbContext db, ScheduleRun run, MonthlySchedule demand, TSolveResult result, CancellationToken cancellationToken)
+    private async Task StoreTResultAsync(NtmcDbContext db, ScheduleRun run, MonthlySchedule demand, MonthlySchedulingSettings? settings, TSolveResult result, CancellationToken cancellationToken)
     {
         run.Status = Map(result.Status);
         run.Error = ErrorText(result.Errors);
@@ -141,7 +144,8 @@ public sealed class ScheduleRunWorker(
         {
             var candidate = result.Candidates[index];
             var version = SolverScheduleMapper.ToVersion(candidate.Schedule, WorkspaceCode.T, run.Id, index, run.Status,
-                ConfigurationId(run), run.RequestedByUserId, demand);
+                ConfigurationId(run), run.RequestedByUserId, demand, monthlySettings: settings);
+            version.RuleWeightsJson = run.RuleWeightsJson;
             version.WarningCount = candidate.Objectives.SelectMany(x => x.Components).Count(x => x.Value > 0);
             db.ScheduleVersions.Add(version);
         }
@@ -162,6 +166,7 @@ public sealed class ScheduleRunWorker(
     {
         var template = string.IsNullOrWhiteSpace(run.PerpetualScheduleJson) ? null
             : JsonSerializer.Deserialize<MPerpetualSchedule>(run.PerpetualScheduleJson, ServiceSupport.JsonOptions);
+        if (template?.Patterns.Count == 0) template = null;
         // Seeds run one after another so a portfolio never multiplies the memory and CPU of a single
         // solve. TimeLimit stays per seed, which makes the wall time SeedCount x TimeLimit.
         MSolveResult? best = null;

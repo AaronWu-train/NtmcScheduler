@@ -61,6 +61,35 @@
         <section class="card">
             <h2>@MonthLabel(demand.Month)</h2>
             <p>最後儲存：@Taipei(demand.UpdatedAtUtc)</p>
+            <hr/>
+            <div class="section-heading">
+                <div><h2>本月排班設定</h2><p>R／R1 是軟目標；56 日硬額度不會因此改變。</p></div>
+                @if (canEdit) { <button class="primary" disabled="@isBusy" @onclick="SaveMonthlySettingsAsync">@(isBusy ? "處理中…" : "儲存本月排班設定")</button> }
+            </div>
+            <div class="toolbar">
+                <label>R 基準（@demand.MonthlySettings.GeneralRestMinimum–@demand.MonthlySettings.GeneralRestMaximum）<input class="number-field" type="number" min="@demand.MonthlySettings.GeneralRestMinimum" max="@demand.MonthlySettings.GeneralRestMaximum" @bind="generalRestTarget" disabled="@(!canEdit || isBusy)"/></label>
+                <label>R1 基準（@demand.MonthlySettings.SpecialRestMinimum–@demand.MonthlySettings.SpecialRestMaximum）<input class="number-field" type="number" min="@demand.MonthlySettings.SpecialRestMinimum" max="@demand.MonthlySettings.SpecialRestMaximum" @bind="specialRestTarget" disabled="@(!canEdit || isBusy)"/></label>
+            </div>
+            @if (workspaceCode == WorkspaceCode.M)
+            {
+                <div class="table-scroll">
+                    <table>
+                        <thead><tr><th>車站</th><th>群組</th><th>外援</th><th>早 最少</th><th>早 最多</th><th>小 最少</th><th>小 最多</th><th>夜 最少</th><th>夜 最多</th></tr></thead>
+                        <tbody>
+                        @foreach (var row in stationSettings)
+                        {
+                            <tr>
+                                <td>@row.Code</td><td><input @bind="row.Group" disabled="@(!canEdit || isBusy)"/></td>
+                                <td><select @bind="row.ExternalSupport" disabled="@(!canEdit || isBusy)"><option value="@ExternalSupportPolicy.Disallowed">不允許</option><option value="@ExternalSupportPolicy.Discouraged">盡量不要</option><option value="@ExternalSupportPolicy.Allowed">允許</option></select></td>
+                                <td><input class="number-field" type="number" min="0" @bind="row.EarlyMinimum" disabled="@(!canEdit || isBusy)"/></td><td><input class="number-field" type="number" min="0" @bind="row.EarlyMaximum" disabled="@(!canEdit || isBusy)"/></td>
+                                <td><input class="number-field" type="number" min="0" @bind="row.AfternoonMinimum" disabled="@(!canEdit || isBusy)"/></td><td><input class="number-field" type="number" min="0" @bind="row.AfternoonMaximum" disabled="@(!canEdit || isBusy)"/></td>
+                                <td><input class="number-field" type="number" min="0" @bind="row.NightMinimum" disabled="@(!canEdit || isBusy)"/></td><td><input class="number-field" type="number" min="0" @bind="row.NightMaximum" disabled="@(!canEdit || isBusy)"/></td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
             @if (canEdit)
             {
                 <button class="danger" disabled="@isBusy" @onclick="DeleteDemandAsync">@(isBusy ? "處理中…" : "刪除本月需求")</button>
@@ -117,15 +146,24 @@
                 <hr/>
                 <h2>M 八週萬年班表</h2>
                 <p>目前來源：<strong>@PerpetualSourceLabel()</strong></p>
-                <p class="format-help">選填。未上傳本月份暫用檔案時，自動使用 M 班表列表保存的全域萬年班表；兩者都沒有時仍可求解。</p>
+                <p class="format-help">選填。未上傳本月份暫用檔案時，自動使用 M 班表列表保存的全域萬年班表；可選擇不使用萬年班表，兩者都沒有時仍可求解。</p>
                 <div class="toolbar">
                     <a class="button-link" href="/download/templates/m/perpetual.csv">下載範本</a>
                     @if (canEdit)
                     {
                         <label class="button-link primary file-upload-button">上傳萬年班表<InputFile OnChange="UploadPerpetualAsync" accept=".csv,text/csv" disabled="@isBusy"/></label>
+                        <button disabled="@isBusy" @onclick="UseEmptyPerpetualAsync">不使用萬年班表</button>
                     }
                 </div>
-                @if (demand.PerpetualUpload is not null)
+                @if (demand.PerpetualUpload is { IsEmpty: true })
+                {
+                    <p>本月份不使用萬年班表。</p>
+                    @if (canEdit)
+                    {
+                        <div class="toolbar"><button disabled="@isBusy" @onclick="UseGlobalPerpetualAsync">@(globalPerpetual is null ? "清除不使用選項" : "改用全域萬年班表")</button></div>
+                    }
+                }
+                else if (demand.PerpetualUpload is not null)
                 {
                     <p>檔名：@demand.PerpetualUpload.FileName　上傳時間：@Taipei(demand.PerpetualUpload.UploadedAtUtc)</p>
                     <div class="toolbar">
@@ -371,6 +409,20 @@
                     }
                 </div>
             </div>
+            <details class="advanced-settings" open>
+                <summary><strong>規則與權重</strong></summary>
+                <p class="format-help">硬規則不可調整；軟規則權重只套用這次求解，0 表示停用。</p>
+                <div class="table-scroll"><table><thead><tr><th>Priority</th><th>規則</th><th>說明</th><th>權重</th></tr></thead><tbody>
+                @foreach (var rule in ruleDefinitions)
+                {
+                    <tr><td>@(rule.IsHard ? "硬規則" : rule.Priority)</td><td>@rule.Name</td><td>@rule.Description</td><td>
+                        @if (rule.IsHard) { <span>不可調整</span> }
+                        else { <input class="number-field" type="number" min="0" disabled="@(!canEdit || isBusy)" value="@ruleWeights[rule.Key]" @onchange="args => ChangeRuleWeight(rule.Key, args.Value)"/> }
+                    </td></tr>
+                }
+                </tbody></table></div>
+                @if (canEdit) { <button disabled="@isBusy" @onclick="ResetRuleWeights">恢復預設權重</button> }
+            </details>
             <h3 class="solve-history-title">最近求解工作</h3>
             <div class="table-scroll">
                 <table>
@@ -384,6 +436,13 @@
                     {
                         <tr>
                             <td>@Taipei(run.CreatedAtUtc)</td><td>@RunStatusText(run)</td><td>@run.TimeLimitSeconds 秒／@run.WorkerCount workers／@run.SeedCount seeds</td><td>@(run.CompletedAtUtc is null ? "" : Taipei(run.CompletedAtUtc.Value))</td><td>
+                                <details class="solve-details">
+                                    <summary>本次規則權重</summary>
+                                    @foreach (var weight in run.RuleWeights)
+                                    {
+                                        <div class="solve-component">@RuleText(weight.Key)：@weight.Value</div>
+                                    }
+                                </details>
                                 @if (!string.IsNullOrWhiteSpace(run.Error))
                                 {
                                     <details class="solve-details">
@@ -507,6 +566,11 @@
     private int solveTimeLimitSeconds = 300;
     private int solveWorkerCount = 8;
     private int solveSeedCount = 1;
+    private int generalRestTarget;
+    private int specialRestTarget;
+    private readonly List<StationSettingEdit> stationSettings = [];
+    private IReadOnlyList<SolverRuleDefinitionDto> ruleDefinitions = [];
+    private Dictionary<string, int> ruleWeights = new(StringComparer.Ordinal);
     private string sortColumn = "ID";
     private bool sortDescending;
     private bool pendingUploadPreviousSource;
@@ -582,6 +646,9 @@
             ? previousOptions.FirstOrDefault(x => x.Id == selectedId)
             : null;
         InitializeEmployeeEdits();
+        InitializeMonthlySettings();
+        ruleDefinitions = RunService.GetRules(workspaceCode);
+        ResetRuleWeights();
         await LoadRunsAsync();
         submissionPreview = null;
     }
@@ -637,7 +704,7 @@
     private bool IsUploadPreviousSelected => demand?.PreviousSource == PreviousScheduleSource.Upload || pendingUploadPreviousSource;
     private bool CanRestorePreviousInheritedFields => demand?.PreviousScheduleVersionId is not null || demand?.HasUploadedPreviousSchedule == true;
     private string PreviousSourceValue => IsUploadPreviousSelected ? "upload" : previousVersion?.Id.ToString() ?? "";
-    private string PerpetualSourceLabel() => demand?.PerpetualUpload is not null ? "本月份暫用萬年班表" : globalPerpetual is not null ? "全域萬年班表" : "未使用萬年班表";
+    private string PerpetualSourceLabel() => demand?.PerpetualUpload is { IsEmpty: true } ? "不使用萬年班表" : demand?.PerpetualUpload is not null ? "本月份暫用萬年班表" : globalPerpetual is not null ? "全域萬年班表" : "未使用萬年班表";
     private static bool TryDay(string header, out int day) => int.TryParse(header, NumberStyles.None, CultureInfo.InvariantCulture, out day);
 
     private IReadOnlyList<string> InputHeaders => ScheduleCsv.MonthlyHeaders.Where(header => !PostSolveHeaders.Contains(header) &&
@@ -684,15 +751,47 @@
     }
 
     private string SortMark(string column) => sortColumn == column ? sortDescending ? "▼" : "▲" : "";
-    private static string ShortStation(string station) => int.Parse(station[2..], CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
+    private static string ShortStation(string station) => station.Length == 4 && station.StartsWith("LB", StringComparison.Ordinal) && int.TryParse(station[2..], out var number) ? number.ToString(CultureInfo.InvariantCulture) : station;
     private IEnumerable<int> PreviousDays() => previousSchedulePreview is null ? [] : Enumerable.Range(1, DateTime.DaysInMonth(previousSchedulePreview.Month.Year, previousSchedulePreview.Month.Month));
     private async Task LoadRunsAsync() => runs = await RunService.ListAsync(workspaceCode, Month(), await CurrentActor.GetAsync());
 
     private async Task QueueAsync() => await RunUiAsync(async () =>
     {
-        await RunService.QueueAsync(demand!.Id, demand.RevisionToken, new ScheduleRunOptions(solveTimeLimitSeconds, solveWorkerCount, workspaceCode == WorkspaceCode.M ? solveSeedCount : 1), await CurrentActor.GetAsync());
+        await RunService.QueueAsync(demand!.Id, demand.RevisionToken, new ScheduleRunOptions(solveTimeLimitSeconds, solveWorkerCount, workspaceCode == WorkspaceCode.M ? solveSeedCount : 1, new(ruleWeights, StringComparer.Ordinal)), await CurrentActor.GetAsync());
         await LoadRunsAsync();
     }, "已送出，已排入背景求解佇列。請到首頁 Dashboard 查看即時進度。");
+
+    private void InitializeMonthlySettings()
+    {
+        stationSettings.Clear();
+        if (demand is null) return;
+        generalRestTarget = demand.MonthlySettings.GeneralRestTarget;
+        specialRestTarget = demand.MonthlySettings.SpecialRestTarget;
+        stationSettings.AddRange(demand.MonthlySettings.MStations.Select(x => new StationSettingEdit
+        {
+            Code = x.Code, Group = x.Group, ExternalSupport = x.ExternalSupport,
+            EarlyMinimum = x.Early.Minimum, EarlyMaximum = x.Early.Maximum,
+            AfternoonMinimum = x.Afternoon.Minimum, AfternoonMaximum = x.Afternoon.Maximum,
+            NightMinimum = x.Night.Minimum, NightMaximum = x.Night.Maximum
+        }));
+    }
+
+    private async Task SaveMonthlySettingsAsync() => await RunUiAsync(async () =>
+    {
+        var stations = stationSettings.Select(x => new MStationSettingDto(x.Code, x.Group, x.ExternalSupport,
+            new(x.EarlyMinimum, x.EarlyMaximum), new(x.AfternoonMinimum, x.AfternoonMaximum), new(x.NightMinimum, x.NightMaximum))).ToArray();
+        demand = await DemandService.UpdateMonthlySettingsAsync(demand!.Id, generalRestTarget, specialRestTarget, stations, demand.RevisionToken, await CurrentActor.GetAsync());
+        InitializeMonthlySettings();
+    }, "本月排班設定已儲存。");
+
+    private void ResetRuleWeights() => ruleWeights = ruleDefinitions.Where(x => !x.IsHard).ToDictionary(x => x.Key, x => x.DefaultWeight ?? 0, StringComparer.Ordinal);
+
+    private void ChangeRuleWeight(string key, object? value)
+    {
+        if (int.TryParse(value?.ToString(), out var parsed) && parsed >= 0) ruleWeights[key] = parsed;
+    }
+
+    private string RuleText(string key) => ruleDefinitions.FirstOrDefault(x => x.Key == key)?.Name ?? key;
 
     private async Task CancelRunAsync(Guid runId) => await RunUiAsync(async () =>
     {
@@ -772,6 +871,12 @@
         await DemandService.ClearPerpetualScheduleAsync(demand!.Id, demand.RevisionToken, await CurrentActor.GetAsync());
         await LoadAsync();
     }, globalPerpetual is null ? "已清除本月份暫用萬年班表。" : "已改用全域萬年班表。");
+
+    private async Task UseEmptyPerpetualAsync() => await RunUiAsync(async () =>
+    {
+        await DemandService.UseEmptyPerpetualScheduleAsync(demand!.Id, demand.RevisionToken, await CurrentActor.GetAsync());
+        await LoadAsync();
+    }, "本月份將不使用萬年班表。");
 
     private static string PreviousOptionText(ScheduleVersionDto version) => $"{version.Name}（{(version.IsAdopted ? "已採用" : SourceText(version.SourceStatus))}，{Taipei(version.UpdatedAtUtc)}）";
     private static string SourceText(ScheduleRunStatus status) => status == ScheduleRunStatus.Imported ? "上傳" : "求解";
@@ -976,6 +1081,19 @@
         public DateTime? Start { get; set; }
         public DateTime? End { get; set; }
         public string Description { get; set; } = "";
+    }
+
+    private sealed class StationSettingEdit
+    {
+        public string Code { get; set; } = "";
+        public string Group { get; set; } = "";
+        public ExternalSupportPolicy ExternalSupport { get; set; }
+        public int EarlyMinimum { get; set; }
+        public int EarlyMaximum { get; set; }
+        public int AfternoonMinimum { get; set; }
+        public int AfternoonMaximum { get; set; }
+        public int NightMinimum { get; set; }
+        public int NightMaximum { get; set; }
     }
 
     private async Task CopyErrorAsync(string error)

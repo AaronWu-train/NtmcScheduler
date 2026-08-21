@@ -623,3 +623,21 @@
 - 啟動 `MigrateAsync`、HTTP 下載端點、登入／改密碼靜態表單，以及 `ScheduleRunWorker` 自行建立的短生命週期 scope 仍直接解析 `NtmcDbContext`。`AddEntityFrameworkStores<NtmcDbContext>()` 仍需要 scoped context。
 - `UserAdministrationService` 因 Identity `UserManager` 必須與 EF 共用同一 context 與交易，改為每個操作建立短生命週期 scope，不在 circuit 上長期持有 context。
 - 不用 lock／`SemaphoreSlim` 把共用 context 排隊。
+
+## 2026-08-21：M Demand 可選擇不使用萬年班表
+
+- M 建立班表的萬年班表步驟新增「不使用萬年班表」選項。它為該月份保存空萬年班表，明確覆蓋全域模板，求解時不加入任何萬年班表 hint。
+- 這個選項不刪除或修改全域模板，也可隨時改回全域模板或上傳本月份暫用模板。
+
+## 2026-08-21：月份排班參數與每次求解權重前端化
+
+- M 車站固定為 `LB01`–`LB12`，不可新增、刪除或改名；群組、早／小／夜班人數上下限與外援等級保存於 Demand 月份快照。新月份複製前一個日曆月，沒有前月時使用既有 12 站行為。群組不再固定三站。
+- 外援分為不允許、盡量不要、允許；允許車站共用 70 人次免罰額度，盡量不要從第一人次計分。舊 LB02／LB04／LB11 為允許、LB09 為盡量不要，其餘不允許；本決策取代 LB09 前 4 人次免罰。
+- M/T 每月 R／R1 基準可調但仍為軟目標；56 日精確額度、七日一般 R 與 11 小時休息等硬規則不變。R1 保留跨月累積餘額，跨兩區間按國定假日比例分配本月目標。
+- 求解頁列出硬規則唯讀說明；目前啟用的軟規則權重可逐次求解調整，0 表示不建模。Priority、公式、70 人次額度及歷史停用規則不可調整。ScheduleRun 與 ScheduleVersion 保存實際設定快照。
+
+## 2026-08-21：M 品質群組優先層級改為 2
+
+- M 的 `ScheduleQualityAndFairness` 由 Priority 4 改為 Priority 2，使目前兩個目標群組依序為 Priority 1、2。
+- 此變更只調整群組編號；既有 `J4+J5` 公式名稱、違反量、權重與字典序求解順序不變。T 仍維持 Priority 1–5。
+- 已保存的 ScheduleRun／ScheduleVersion 快照不改寫，班表列表仍相容顯示其中原有的 Priority 4。

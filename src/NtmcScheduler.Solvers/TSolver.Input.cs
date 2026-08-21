@@ -30,7 +30,8 @@ public static partial class TSolver
         PreviousMonth = CopySchedule(input.PreviousMonth),
         DemandMonth = CopySchedule(input.DemandMonth),
         RestIntervals = input.RestIntervals.Select(interval => interval with { NationalHolidays = interval.NationalHolidays.ToHashSet() }).ToArray(),
-        NonStandardShifts = input.NonStandardShifts with { Shifts = input.NonStandardShifts.Shifts.ToArray() }
+        NonStandardShifts = input.NonStandardShifts with { Shifts = input.NonStandardShifts.Shifts.ToArray() },
+        MonthlySettings = input.MonthlySettings is null ? null : input.MonthlySettings with { MStations = input.MonthlySettings.MStations.ToArray() }
     };
 
     private static MonthlySchedule CopySchedule(MonthlySchedule schedule) => schedule with
@@ -51,6 +52,10 @@ public static partial class TSolver
         if (input.PreviousMonth.MonthStart != monthStart.AddMonths(-1)) errors.Add(new("PreviousMonth.MonthStart", "PreviousMonth must be the calendar month immediately before DemandMonth."));
         if (options.TimeLimit <= TimeSpan.Zero) errors.Add(new("options.TimeLimit", "TimeLimit must be greater than zero."));
         if (options.WorkerCount <= 0) errors.Add(new("options.WorkerCount", "WorkerCount must be greater than zero."));
+        if (input.MonthlySettings is { } monthlySettings && (monthlySettings.GeneralRestTarget < 0 || monthlySettings.SpecialRestTarget < 0))
+            errors.Add(new("MonthlySettings", "Monthly R and R1 targets must be non-negative."));
+        try { SolverRuleWeights.Resolve(false, options.RuleWeights); }
+        catch (ArgumentException) { errors.Add(new("options.RuleWeights", "Rule weights must contain every active T rule exactly once and be non-negative.")); }
         if (monthStart.Day != 1) return errors;
 
         var beforeIntervals = errors.Count;
@@ -288,8 +293,12 @@ public static partial class TSolver
             dates.Count(interval.NationalHolidays.Contains));
     }
 
-    private static int ExpectedMonthlyGeneralRestCount(ScheduleInput input, EmployeeMonthlySchedule employee) =>
-        TargetMonthDates(input).Count(date => IsEmployedOn(employee, date) && date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday);
+    private static int ExpectedMonthlyGeneralRestCount(ScheduleInput input, EmployeeMonthlySchedule employee)
+    {
+        var beforeEmployment = TargetMonthDates(input).Count(date => !IsEmployedOn(employee, date) && date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday);
+        var baseline = input.MonthlySettings?.GeneralRestTarget ?? TargetMonthDates(input).Count(date => date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday);
+        return Math.Max(0, baseline - beforeEmployment);
+    }
 
     // Date and time calculations
 

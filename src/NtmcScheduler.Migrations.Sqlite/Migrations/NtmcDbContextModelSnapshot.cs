@@ -416,6 +416,12 @@ namespace NtmcScheduler.Infrastructure.Data.Migrations
                     b.Property<Guid>("CreatedByUserId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("GeneralRestTarget")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("MStationSettingsJson")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateOnly>("Month")
                         .HasColumnType("TEXT");
 
@@ -439,6 +445,9 @@ namespace NtmcScheduler.Infrastructure.Data.Migrations
                     b.Property<Guid>("RevisionToken")
                         .IsConcurrencyToken()
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("SpecialRestTarget")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTimeOffset>("UpdatedAtUtc")
                         .HasColumnType("TEXT");
@@ -996,6 +1005,9 @@ namespace NtmcScheduler.Infrastructure.Data.Migrations
                     b.Property<string>("ResultDetailsJson")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("RuleWeightsJson")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("SeedCount")
                         .HasColumnType("INTEGER");
 
@@ -1058,6 +1070,9 @@ namespace NtmcScheduler.Infrastructure.Data.Migrations
                     b.Property<DateOnly>("Month")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("MonthlySettingsJson")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -1065,6 +1080,9 @@ namespace NtmcScheduler.Infrastructure.Data.Migrations
 
                     b.Property<Guid>("RevisionToken")
                         .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RuleWeightsJson")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid?>("SourceRunId")

@@ -31,7 +31,7 @@ public static partial class MSolver
                 var fixedStation = employee.Assignments.GetValueOrDefault(date) is { Kind: AssignmentKind.Work } assignment
                     ? assignment.Station
                     : null;
-                var legalStations = StationsInSameGroup(employee.Affiliation).Append(fixedStation).OfType<string>().Distinct();
+                var legalStations = StationsInSameGroup(input, employee.Affiliation).Append(fixedStation).OfType<string>().Distinct();
                 var dayWork = new List<BoolVar>();
                 foreach (var shift in Shifts)
                 {
@@ -76,11 +76,11 @@ public static partial class MSolver
 
         foreach (var date in dates)
         {
-            foreach (var station in ExternalStations)
+            foreach (var station in input.MonthlySettings!.MStations.Where(x => x.ExternalSupport != ExternalSupportLevel.Disallowed))
             {
-                foreach (var shift in Shifts.Where(shift => RequiredHeadcount(station, shift) > 0))
+                foreach (var shift in Shifts.Where(shift => station.For(shift).Minimum > 0))
                 {
-                    external[(date, station, shift)] = model.NewIntVar(0, RequiredHeadcount(station, shift), $"external_{date:yyyyMMdd}_{station}_{shift}");
+                    external[(date, station.Code, shift)] = model.NewIntVar(0, station.For(shift).Minimum, $"external_{date:yyyyMMdd}_{station.Code}_{shift}");
                 }
             }
         }
@@ -160,32 +160,27 @@ public static partial class MSolver
         }
     }
 
-    // 班位覆蓋——指定站早、午可多人，其餘站至多一人；夜班恰好滿足 0/1 人需求。
+    // 班位覆蓋——每站班依月份設定限制總人數；外援只補內部人力未達最低需求的差額。
     private static void RequireStationCoverage(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> dates, ModelVariables variables)
     {
         foreach (var date in dates)
         {
-            foreach (var station in Stations)
+            foreach (var station in Stations(input))
             {
                 foreach (var shift in Shifts)
                 {
                     var assigned = variables.Work
                         .Where(x => x.Key.Date == date && x.Key.Station == station && x.Key.Shift == shift)
-                        .Select(x => x.Value);
+                        .Select(x => x.Value).ToArray();
+                    var range = input.MonthlySettings!.MStations.Single(x => x.Code == station).For(shift);
                     LinearExpr coverage = LinearExpr.Sum(assigned);
                     if (variables.External.TryGetValue((date, station, shift), out var external))
                     {
+                        model.AddMaxEquality(external, [range.Minimum - LinearExpr.Sum(assigned), LinearExpr.Constant(0)]);
                         coverage += external;
                     }
-                    var required = RequiredHeadcount(station, shift);
-                    if (shift == Shift.Night || required == 0 || !MultiStaffStations.Contains(station))
-                    {
-                        model.Add(coverage == required);
-                    }
-                    else
-                    {
-                        model.Add(coverage >= required);
-                    }
+                    model.Add(coverage >= range.Minimum);
+                    model.Add(coverage <= range.Maximum);
                 }
             }
         }
@@ -289,12 +284,8 @@ public static partial class MSolver
         }
     }
 
-    private static int RequiredHeadcount(string station, Shift shift) => shift switch
-    {
-        Shift.Early or Shift.Afternoon => 1,
-        Shift.Night when NightStations.Contains(station) => 1,
-        _ => 0
-    };
+    private static int RequiredHeadcount(ScheduleInput input, string station, Shift shift) =>
+        input.MonthlySettings!.MStations.Single(x => x.Code == station).For(shift).Minimum;
 
     private sealed record ModelVariables(
         Dictionary<(string Employee, DateOnly Date, string Station, Shift Shift), BoolVar> Work,

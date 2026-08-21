@@ -9,11 +9,6 @@ namespace NtmcScheduler.Infrastructure.Services;
 public sealed class ScheduleValidationService(IDbContextFactory<NtmcDbContext> dbFactory) : IScheduleValidationService
 {
     private static readonly TimeSpan TaipeiOffset = TimeSpan.FromHours(8);
-    private static readonly string[] MStations =
-    [
-        "LB01", "LB02", "LB03", "LB04", "LB05", "LB06",
-        "LB07", "LB08", "LB09", "LB10", "LB11", "LB12"
-    ];
 
     public async Task<(IReadOnlyList<ValidationIssue> Issues, IReadOnlyList<ScheduleEmployeeStats> Stats)> ValidateAsync(
         Guid versionId,
@@ -45,7 +40,7 @@ public sealed class ScheduleValidationService(IDbContextFactory<NtmcDbContext> d
         ValidateMinimumRestGap(version, previous, shiftTimes, issues);
         ValidateGeneralRestInEverySevenDays(version, previous, issues);
         ValidateEightWeekBalances(version, issues);
-        if (version.Workspace == WorkspaceCode.M) ValidateM(version, issues);
+        if (version.Workspace == WorkspaceCode.M) ValidateM(version, MonthlySettings(version), issues);
         else ValidateT(version, issues);
         return (issues, CalculateStats(version));
     }
@@ -172,16 +167,33 @@ public sealed class ScheduleValidationService(IDbContextFactory<NtmcDbContext> d
             }
     }
 
-    private static void ValidateM(ScheduleVersion version, List<ValidationIssue> issues)
+    private static void ValidateM(ScheduleVersion version, MonthlySchedulingSettings settings, List<ValidationIssue> issues)
     {
         var monthEnd = version.Month.AddMonths(1).AddDays(-1);
         foreach (var employee in version.Employees)
             foreach (var cell in employee.Assignments.Where(x => x.Kind == "Work"))
             {
-                if (cell.Station is null || cell.Shift is null || !MStations.Contains(cell.Station) ||
-                    !StationsInSameGroup(employee.Affiliation).Contains(cell.Station))
-                    issues.Add(new(ValidationSeverity.Error, "M 合法站群", "正常班必須同時指定合法車站與班別，且車站須位於員工所屬三站群組。", employee.EmployeeCode, cell.Date, cell.Station, cell.Shift));
+                if (cell.Station is null || cell.Shift is null || !settings.MStations.Any(x => x.Code == cell.Station) ||
+                    !StationsInSameGroup(settings, employee.Affiliation).Contains(cell.Station))
+                    issues.Add(new(ValidationSeverity.Error, "M 合法站群", "正常班必須同時指定合法車站與班別，且車站須位於員工所屬群組。", employee.EmployeeCode, cell.Date, cell.Station, cell.Shift));
             }
+        foreach (var external in version.ExternalAssignments.Where(x => settings.MStations.All(station => station.Code != x.Station)))
+            issues.Add(new(ValidationSeverity.Error, "M 外援站碼", "外援車站必須為 LB01–LB12。", null, external.Date, external.Station, external.Shift));
+        for (var date = version.Month; date <= monthEnd; date = date.AddDays(1))
+            foreach (var station in settings.MStations)
+                foreach (var shift in new[] { "Early", "Afternoon", "Night" })
+                {
+                    var range = shift switch { "Early" => station.Early, "Afternoon" => station.Afternoon, _ => station.Night };
+                    var internalCount = version.Employees.SelectMany(x => x.Assignments)
+                        .Count(x => x.Date == date && x.Kind == "Work" && x.Station == station.Code && x.Shift == shift);
+                    var externalCount = version.ExternalAssignments.Where(x => x.Date == date && x.Station == station.Code && x.Shift == shift).Sum(x => x.Count);
+                    var total = internalCount + externalCount;
+                    if (total < range.Minimum || total > range.Maximum)
+                        issues.Add(new(ValidationSeverity.Error, "M 班位人數", $"內部與外援合計 {total} 人，必須介於 {range.Minimum}–{range.Maximum} 人。", null, date, station.Code, shift));
+                    var expectedExternal = station.ExternalSupport == ExternalSupportLevel.Disallowed ? 0 : Math.Max(0, range.Minimum - internalCount);
+                    if (externalCount != expectedExternal)
+                        issues.Add(new(ValidationSeverity.Error, "M 外援使用", $"此站班外援應為補足最低需求所需的 {expectedExternal} 人，目前為 {externalCount} 人。", null, date, station.Code, shift));
+                }
         foreach (var employee in version.Employees)
         {
             var byDate = employee.Assignments.ToDictionary(x => x.Date);
@@ -255,11 +267,16 @@ public sealed class ScheduleValidationService(IDbContextFactory<NtmcDbContext> d
         return (cell.Date, start, end);
     }
 
-    private static string[] StationsInSameGroup(string homeStation)
+    private static MonthlySchedulingSettings MonthlySettings(ScheduleVersion version) =>
+        string.IsNullOrWhiteSpace(version.MonthlySettingsJson)
+            ? MonthlySchedulingDefaults.Create(version.Month, SolverScheduleMapper.ToRestIntervals(version.ConfigurationRevision), version.Employees.Count)
+            : JsonSerializer.Deserialize<MonthlySchedulingSettings>(version.MonthlySettingsJson, ServiceSupport.JsonOptions)
+                ?? MonthlySchedulingDefaults.Create(version.Month, SolverScheduleMapper.ToRestIntervals(version.ConfigurationRevision), version.Employees.Count);
+
+    private static string[] StationsInSameGroup(MonthlySchedulingSettings settings, string homeStation)
     {
-        if (!MStations.Contains(homeStation)) return [];
-        var first = ((int.Parse(homeStation[2..]) - 1) / 3) * 3;
-        return MStations.Skip(first).Take(3).ToArray();
+        var group = settings.MStations.FirstOrDefault(x => x.Code == homeStation)?.Group;
+        return group is null ? [] : settings.MStations.Where(x => x.Group == group).Select(x => x.Code).ToArray();
     }
 
     private static bool IsHoliday(DateOnly date, IReadOnlySet<DateOnly> holidays) =>

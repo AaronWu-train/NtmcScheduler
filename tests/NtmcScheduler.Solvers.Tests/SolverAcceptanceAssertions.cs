@@ -48,14 +48,14 @@ internal static class SolverAcceptanceAssertions
         AssertObjectiveStructure(candidate.Objectives,
         [
             (1, "RequestedRest", [("RequestedRest", 3), ("UnusedLeaveRest", 1)]),
-            (4, "ScheduleQualityAndFairness", [("ExternalStaffing", 5), ("MonthlyRest", 240), ("SpecialRestBalance", 120), ("WorkStreak", 20), ("MixedShiftWorkStreak", 15), ("NightRestEarly", 400), ("NightRestAfternoon", 300), ("ShiftChangeWithoutRest", 5), ("HolidayRestFairness", 5), ("EarlyAfternoonImbalance", 20), ("NightShiftTarget", 50)])
+            (2, "ScheduleQualityAndFairness", [("ExternalStaffing", 5), ("MonthlyRest", 240), ("SpecialRestBalance", 120), ("WorkStreak", 20), ("MixedShiftWorkStreak", 15), ("NightRestEarly", 400), ("NightRestAfternoon", 300), ("ShiftChangeWithoutRest", 5), ("HolidayRestFairness", 5), ("EarlyAfternoonImbalance", 20), ("NightShiftTarget", 50)])
         ]);
 
         Expect(candidate.Objectives, "RequestedRest", RequestedRestViolations(input, candidate.Schedule));
         Expect(candidate.Objectives, "UnusedLeaveRest", UnusedLeaveRest(input, candidate.Schedule));
         Expect(candidate.Objectives, "ExternalStaffing",
             Math.Max(0, candidate.ExternalAssignments.Where(item => item.Station != "LB09").Sum(item => item.Count) - 70) +
-            Math.Max(0, candidate.ExternalAssignments.Where(item => item.Station == "LB09").Sum(item => item.Count) - 4));
+            candidate.ExternalAssignments.Where(item => item.Station == "LB09").Sum(item => item.Count));
         Expect(candidate.Objectives, "MonthlyRest", MonthlyRestPenalty(input, candidate.Schedule, AssignmentKind.Rest));
         Expect(candidate.Objectives, "SpecialRestBalance", SpecialRestBalancePenalty(input, candidate.Schedule, allowOneOutstandingDeficitDay: true));
 
@@ -205,8 +205,12 @@ internal static class SolverAcceptanceAssertions
         var demand = input.DemandMonth.Employees.ToDictionary(employee => employee.EmployeeId);
         return schedule.Employees.Sum(employee =>
         {
-            var active = TargetDates(input).Where(date => IsActive(demand[employee.EmployeeId], date)).ToArray();
-            var target = kind == AssignmentKind.Rest ? active.Count(date => date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) : active.Count(date => IsNationalHoliday(input, date));
+            var source = demand[employee.EmployeeId];
+            var active = TargetDates(input).Where(date => IsActive(source, date)).ToArray();
+            var baseline = input.MonthlySettings?.GeneralRestTarget ?? TargetDates(input).Count(date => date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday);
+            var target = kind == AssignmentKind.Rest
+                ? Math.Max(0, baseline - TargetDates(input).Count(date => !IsActive(source, date) && date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday))
+                : active.Count(date => IsNationalHoliday(input, date));
             var actual = employee.Assignments.Values.Count(cell => cell.Kind == kind);
             var deviation = Math.Abs(actual - target);
             return (long)deviation * deviation;
@@ -231,7 +235,18 @@ internal static class SolverAcceptanceAssertions
                         : 0;
                 var actual = prior + employee.Assignments.Count(pair =>
                     pair.Key >= interval.Start && pair.Key <= interval.End && pair.Value.Kind == AssignmentKind.SpecialRest);
-                var expected = interval.NationalHolidays.Count(date => date <= (interval.End < monthEnd ? interval.End : monthEnd));
+                var activeStart = source.EmploymentStartDate is { } hired && hired > monthStart ? hired : monthStart;
+                var baseline = input.MonthlySettings?.SpecialRestTarget ?? TargetDates(input).Count(date => IsNationalHoliday(input, date));
+                var employeeTarget = Math.Max(0, baseline - input.RestIntervals.SelectMany(x => x.NationalHolidays).Count(date => date >= monthStart && date < activeStart));
+                var intersecting = input.RestIntervals.Where(x => x.Start <= monthEnd && x.End >= activeStart).OrderBy(x => x.Start).ToArray();
+                var weights = intersecting.Select(x => x.NationalHolidays.Count(date => date >= activeStart && date <= monthEnd)).ToArray();
+                if (weights.Sum() == 0) weights = intersecting.Select(x => Math.Max(0, Math.Min(x.End.DayNumber, monthEnd.DayNumber) - Math.Max(x.Start.DayNumber, activeStart.DayNumber) + 1)).ToArray();
+                var total = Math.Max(1, weights.Sum());
+                var allocations = weights.Select(weight => employeeTarget * weight / total).ToArray();
+                var remainder = employeeTarget - allocations.Sum();
+                for (var index = 0; remainder > 0; remainder--, index = (index + 1) % allocations.Length) allocations[index]++;
+                var intervalIndex = Array.IndexOf(intersecting, interval);
+                var expected = interval.NationalHolidays.Count(date => date < activeStart) + (intervalIndex < 0 ? 0 : allocations[intervalIndex]);
                 var balance = actual - expected;
                 var deviation = balance > 0
                     ? balance

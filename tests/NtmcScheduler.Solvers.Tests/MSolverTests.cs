@@ -46,10 +46,10 @@ public sealed class MSolverTests
         var incomplete = Result(new ObjectiveScore(1, "RequestedRest", 0, []));
         var complete = Result(
             new ObjectiveScore(1, "RequestedRest", 0, []),
-            new ObjectiveScore(4, "ScheduleQualityAndFairness", 200, []));
+            new ObjectiveScore(2, "ScheduleQualityAndFairness", 200, []));
         var better = Result(
             new ObjectiveScore(1, "RequestedRest", 0, []),
-            new ObjectiveScore(4, "ScheduleQualityAndFairness", 100, []));
+            new ObjectiveScore(2, "ScheduleQualityAndFairness", 100, []));
 
         Assert.IsLessThan(0, Compare(complete, incomplete));
         Assert.IsLessThan(0, Compare(better, complete));
@@ -274,7 +274,7 @@ public sealed class MSolverTests
     }
 
     [TestMethod]
-    public void Solve_Lb09ExternalAllowanceUsesFourAssignmentThreshold()
+    public void Solve_Lb09ExternalSupportIsPenalizedFromFirstAssignment()
     {
         var input = ValidInput();
         var date = input.DemandMonth.MonthStart;
@@ -311,7 +311,7 @@ public sealed class MSolverTests
         var legacyTotal = candidate.ExternalAssignments.Where(item => item.Station != "LB09").Sum(item => item.Count);
         var lb09Total = candidate.ExternalAssignments.Where(item => item.Station == "LB09").Sum(item => item.Count);
         Assert.AreEqual(
-            Math.Max(0, legacyTotal - 70) + Math.Max(0, lb09Total - 4),
+            Math.Max(0, legacyTotal - 70) + lb09Total,
             candidate.Objectives.SelectMany(objective => objective.Components).Single(component => component.Name == "ExternalStaffing").Value);
 
         static ScheduleCell Work(string station, Shift shift) => new() { Kind = AssignmentKind.Work, Station = station, Shift = shift };

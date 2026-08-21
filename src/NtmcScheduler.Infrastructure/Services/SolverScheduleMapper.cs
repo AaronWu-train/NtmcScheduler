@@ -1,3 +1,4 @@
+using System.Text.Json;
 using NtmcScheduler.Contracts;
 using NtmcScheduler.Infrastructure.Data;
 using NtmcScheduler.Solvers;
@@ -8,6 +9,65 @@ namespace NtmcScheduler.Infrastructure.Services;
 
 internal static class SolverScheduleMapper
 {
+    public static MonthlySchedulingSettings ToMonthlySettings(DemandDraft demand)
+    {
+        var intervals = ToRestIntervals(demand.ConfigurationRevision);
+        var defaults = MonthlySchedulingDefaults.Create(demand.Month, intervals, demand.Employees.Count);
+        var stations = string.IsNullOrWhiteSpace(demand.MStationSettingsJson)
+            ? defaults.MStations
+            : JsonSerializer.Deserialize<MStationSetting[]>(demand.MStationSettingsJson, ServiceSupport.JsonOptions) ?? defaults.MStations;
+        return new MonthlySchedulingSettings(
+            demand.GeneralRestTarget ?? defaults.GeneralRestTarget,
+            demand.SpecialRestTarget ?? defaults.SpecialRestTarget,
+            stations);
+    }
+
+    public static MonthlySchedulingSettingsDto ToDto(DemandDraft demand)
+    {
+        var settings = ToMonthlySettings(demand);
+        var (rMin, rMax) = TargetBounds(demand, false);
+        var (r1Min, r1Max) = TargetBounds(demand, true);
+        return new(settings.GeneralRestTarget, settings.SpecialRestTarget, rMin, rMax, r1Min, r1Max,
+            settings.MStations.Select(x => new MStationSettingDto(x.Code, x.Group, (ExternalSupportPolicy)x.ExternalSupport,
+                new(x.Early.Minimum, x.Early.Maximum), new(x.Afternoon.Minimum, x.Afternoon.Maximum), new(x.Night.Minimum, x.Night.Maximum))).ToArray());
+    }
+
+    private static (int Minimum, int Maximum) TargetBounds(DemandDraft demand, bool special)
+    {
+        var monthEnd = demand.Month.AddMonths(1).AddDays(-1);
+        var intervals = demand.ConfigurationRevision.RestIntervals.Where(x => x.Start <= monthEnd && x.End >= demand.Month).ToArray();
+        if (demand.Employees.Count == 0) return (0, DateTime.DaysInMonth(demand.Month.Year, demand.Month.Month));
+        var valid = Enumerable.Range(0, DateTime.DaysInMonth(demand.Month.Year, demand.Month.Month) + 1).Where(baseline =>
+            demand.Employees.All(employee =>
+            {
+                var start = employee.EmploymentStartDate is { } hired && hired > demand.Month ? hired : demand.Month;
+                var deduction = Enumerable.Range(0, Math.Max(0, start.DayNumber - demand.Month.DayNumber))
+                    .Select(demand.Month.AddDays).Count(date => special
+                        ? intervals.SelectMany(x => x.NationalHolidays).Any(x => x.Date == date)
+                        : date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday);
+                var target = Math.Max(0, baseline - deduction);
+                var minimum = 0;
+                var maximum = 0;
+                foreach (var interval in intervals)
+                {
+                    var activeStart = start > interval.Start ? start : interval.Start;
+                    var segmentEnd = monthEnd < interval.End ? monthEnd : interval.End;
+                    if (activeStart > segmentEnd) continue;
+                    var segmentDays = segmentEnd.DayNumber - activeStart.DayNumber + 1;
+                    var prior = interval.Start < demand.Month
+                        ? special ? employee.OpeningSpecialRest ?? 0 : employee.OpeningRest ?? 0
+                        : 0;
+                    var quota = special ? interval.NationalHolidays.Count : 16;
+                    var futureStart = monthEnd.AddDays(1) > activeStart ? monthEnd.AddDays(1) : activeStart;
+                    var futureDays = futureStart <= interval.End ? interval.End.DayNumber - futureStart.DayNumber + 1 : 0;
+                    minimum += Math.Max(0, quota - prior - futureDays);
+                    maximum += Math.Min(segmentDays, Math.Max(0, quota - prior));
+                }
+                return target >= minimum && target <= maximum;
+            })).ToArray();
+        return valid.Length == 0 ? (0, 0) : (valid[0], valid[^1]);
+    }
+
     public static MonthlySchedule ToMonthlySchedule(DemandDraft demand) => new(
         demand.Month,
         demand.Employees.OrderBy(x => x.EmployeeCode).Select(employee => new EmployeeMonthlySchedule
@@ -81,7 +141,8 @@ internal static class SolverScheduleMapper
         Guid configurationRevisionId,
         Guid actorId,
         MonthlySchedule demand,
-        IReadOnlyList<MExternalAssignment>? externalAssignments = null)
+        IReadOnlyList<MExternalAssignment>? externalAssignments = null,
+        MonthlySchedulingSettings? monthlySettings = null)
     {
         var now = DateTimeOffset.UtcNow;
         var version = new ScheduleVersion
@@ -93,6 +154,7 @@ internal static class SolverScheduleMapper
             CandidateIndex = candidateIndex,
             SourceStatus = sourceStatus,
             ConfigurationRevisionId = configurationRevisionId,
+            MonthlySettingsJson = monthlySettings is null ? null : JsonSerializer.Serialize(monthlySettings, ServiceSupport.JsonOptions),
             CreatedByUserId = actorId,
             UpdatedByUserId = actorId,
             CreatedAtUtc = now,
