@@ -32,6 +32,7 @@ public static partial class MSolver
             ("NightRestEarly", () => CountNightRestShiftPatterns(model, input, variables, Shift.Early, "night_rest_early")),
             ("NightRestAfternoon", () => CountNightRestShiftPatterns(model, input, variables, Shift.Afternoon, "night_rest_afternoon")),
             ("ShiftChangeWithoutRest", () => CountShiftChangesWithoutRest(model, input, modelDates, variables)),
+            ("NonHomeStation", () => MeasureNonHomeStationAssignmentsAboveAllowance(model, input, targetDates, variables)),
             ("HolidayRestFairness", () => MeasureHolidayRestPenaltyByStationGroup(model, input, targetDates.Where(date => IsWeekendOrNationalHoliday(input, date)), variables)),
             ("EarlyAfternoonImbalance", () => MeasureEarlyAfternoonImbalance(model, input, targetDates, variables)),
             ("NightShiftTarget", () => MeasureNightShiftTargetPenalty(model, input, targetDates, variables)));
@@ -148,11 +149,26 @@ public static partial class MSolver
         return priorTarget + (intervalIndex < 0 ? 0 : allocations[intervalIndex]);
     }
 
-    // Disabled at BuildObjectiveGroups while its weight is zero.
-    private static LinearExpr CountCrossStationAssignments(ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables) =>
-        LinearExpr.Sum(from employee in input.DemandMonth.Employees
-                       from date in targetDates
-                       select variables.SupportsOtherStation[(employee.EmployeeId, date)]);
+    // 非所屬站指派——每人目標月前 8 班免罰，超過部分逐班計分。
+    private static LinearExpr MeasureNonHomeStationAssignmentsAboveAllowance(
+        CpModel model,
+        ScheduleInput input,
+        IReadOnlyList<DateOnly> targetDates,
+        ModelVariables variables)
+    {
+        var penalties = new List<IntVar>();
+        foreach (var employee in input.DemandMonth.Employees)
+        {
+            var penalty = model.NewIntVar(0, targetDates.Count, $"non_home_station_{employee.EmployeeId}");
+            model.AddMaxEquality(penalty,
+            [
+                LinearExpr.Sum(targetDates.Select(date => variables.SupportsOtherStation[(employee.EmployeeId, date)])) - 8,
+                LinearExpr.Constant(0)
+            ]);
+            penalties.Add(penalty);
+        }
+        return LinearExpr.Sum(penalties);
+    }
 
     // 連續工作區段——計算已結束的實際工作區段；R、R1、R休會結束區段。
     private static LinearExpr MeasureWorkStreakPenalties(

@@ -48,7 +48,7 @@ internal static class SolverAcceptanceAssertions
         AssertObjectiveStructure(candidate.Objectives,
         [
             (1, "RequestedRest", [("RequestedRest", 3), ("UnusedLeaveRest", 1)]),
-            (2, "ScheduleQualityAndFairness", [("ExternalStaffing", 5), ("MonthlyRest", 240), ("SpecialRestBalance", 120), ("WorkStreak", 20), ("MixedShiftWorkStreak", 15), ("NightRestEarly", 400), ("NightRestAfternoon", 300), ("ShiftChangeWithoutRest", 5), ("HolidayRestFairness", 5), ("EarlyAfternoonImbalance", 20), ("NightShiftTarget", 50)])
+            (2, "ScheduleQualityAndFairness", [("ExternalStaffing", 5), ("MonthlyRest", 240), ("SpecialRestBalance", 120), ("WorkStreak", 20), ("MixedShiftWorkStreak", 15), ("NightRestEarly", 400), ("NightRestAfternoon", 300), ("ShiftChangeWithoutRest", 5), ("NonHomeStation", 1), ("HolidayRestFairness", 5), ("EarlyAfternoonImbalance", 20), ("NightShiftTarget", 50)])
         ]);
 
         Expect(candidate.Objectives, "RequestedRest", RequestedRestViolations(input, candidate.Schedule));
@@ -74,6 +74,8 @@ internal static class SolverAcceptanceAssertions
         Assert.IsGreaterThan(0, afternoonPatterns);
 
         Expect(candidate.Objectives, "ShiftChangeWithoutRest", ShiftChangesWithoutRest(input, candidate.Schedule));
+        Expect(candidate.Objectives, "NonHomeStation", candidate.Schedule.Employees.Sum(employee => Math.Max(0,
+            employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Work && cell.Station != input.DemandMonth.Employees.Single(source => source.EmployeeId == employee.EmployeeId).Affiliation) - 8)));
         Expect(candidate.Objectives, "HolidayRestFairness", MHolidayRestFairness(input, candidate.Schedule));
         Expect(candidate.Objectives, "EarlyAfternoonImbalance", MEarlyAfternoonImbalance(input, candidate.Schedule));
         Expect(candidate.Objectives, "NightShiftTarget", MNightShiftTarget(input, candidate.Schedule));

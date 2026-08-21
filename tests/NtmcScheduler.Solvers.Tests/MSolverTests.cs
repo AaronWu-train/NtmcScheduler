@@ -25,7 +25,7 @@ public sealed class MSolverTests
     public void ZeroWeightMRuleImplementationsRemainAvailableButDisabled()
     {
         const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
-        Assert.IsNotNull(typeof(MSolver).GetMethod("CountCrossStationAssignments", flags));
+        Assert.IsNotNull(typeof(MSolver).GetMethod("MeasureNonHomeStationAssignmentsAboveAllowance", flags));
         Assert.IsNotNull(typeof(MSolver).GetMethod("CountNonPreferredRotations", flags));
         Assert.IsNotNull(typeof(MSolver).GetMethod("MeasureSupportCountDeviationByStationGroup", flags));
     }

@@ -198,7 +198,7 @@ public static class SolverRuleWeights
         ["RequestedRest"] = 3, ["UnusedLeaveRest"] = 1, ["ExternalStaffing"] = 5,
         ["MonthlyRest"] = 240, ["SpecialRestBalance"] = 120, ["WorkStreak"] = 20,
         ["MixedShiftWorkStreak"] = 15, ["NightRestEarly"] = 400, ["NightRestAfternoon"] = 300,
-        ["ShiftChangeWithoutRest"] = 5, ["HolidayRestFairness"] = 5,
+        ["ShiftChangeWithoutRest"] = 5, ["NonHomeStation"] = 1, ["HolidayRestFairness"] = 5,
         ["EarlyAfternoonImbalance"] = 20, ["NightShiftTarget"] = 50
     };
 

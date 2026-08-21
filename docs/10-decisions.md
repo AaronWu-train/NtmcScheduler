@@ -646,3 +646,15 @@
 
 - 以 git annotated tag `v1.1.0` 標示目前 `main` 為第一版範圍內的次版穩定版。
 - 組件 `Version`／`InformationalVersion` 為 `1.1.0`；Web 頁首與 `ScheduleRun.ProgramVersion` 沿用同一字串。
+
+## 2026-08-21：M 非所屬站指派恢復計分並給予個人額度
+
+- M 的非所屬站指派（`NonHomeStation`）重新加入 `ScheduleQualityAndFairness`，預設權重為 1。
+- 違反量改為逐人計算：每位人員目標月前 8 班非所屬站正常工作免罰，超過部分每班計 1，再加總所有人員。
+- 合法站群組的硬限制不變；此決策取代先前停用非所屬站指派，以及以全部非所屬站工作人次直接計分的定義。
+
+## 2026-08-21：穩定版 v1.1.1
+
+- 以 git annotated tag `v1.1.1` 標示目前 `main` 為第一版範圍內的修訂穩定版。
+- 組件 `Version`／`InformationalVersion` 為 `1.1.1`；Web 頁首與 `ScheduleRun.ProgramVersion` 沿用同一字串。
+- 本版恢復 M 非所屬站指派（`NonHomeStation`）計分：每人前 8 班免罰，預設權重 1。

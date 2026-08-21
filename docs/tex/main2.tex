@@ -177,7 +177,7 @@ M 模型的輸入包括：
   \item[\(\mathcal{L}^{ext}\)] 允許使用外派人力的車站集合。
 \end{description}
 
-車站集合固定為 (mathcal L=\{\mathrm{LB01},\ldots,\mathrm{LB12}\})；
+車站集合固定為 \(\mathcal L=\{\mathrm{LB01},\ldots,\mathrm{LB12}\}\)；
 群組函數、班位上下限與外援等級由目標月份快照提供，群組非空但不固定站數。
 令 \(\mathcal L^{disc}\) 與 \(\mathcal L^{allow}\) 分別為「盡量不要」及
 「允許」外援的車站，且
@@ -610,6 +610,22 @@ $Z_g=\sum_{e\in\mathcal E^{full}_g}z_e$、$\bar z_g=Z_g/n_g$，並定義
 
 M 不計算平日休假公平。
 
+\paragraph{非所屬站指派（\texttt{MS07}）}
+令
+\[
+  C^{M,other}_e
+  =
+  \sum_{d\in\mathcal{D}^{\mathrm{tar}}}
+  \sum_{s\in\mathcal S}
+  \sum_{p\in\mathcal P\setminus\{h_e\}}x^{M}_{edps}.
+\]
+每位人員前 8 班非所屬站正常工作免罰，總違反量為
+\[
+  \Phi^{M,other}
+  =
+  \sum_{e\in\mathcal E}\max(0,C^{M,other}_e-8).
+\]
+
 \paragraph{個人早小班差距（\texttt{MS09}）}
 \[
   C^{M,s}_e=\sum_{d\in\mathcal{D}^{\mathrm{tar}}}y^{M}_{eds}.
@@ -661,13 +677,14 @@ M 模型先定義指定休假的 Priority 1：
     +400\Phi^{M,NE}
     +300\Phi^{M,NA}
     +5\Phi^{M,restswitch}\\
-    &+5\Phi^{M,holiday}
+    &+\Phi^{M,other}
+    +5\Phi^{M,holiday}
     +20\Phi^{M,EA}
     +50\Phi^{M,N}.
   \end{aligned}
 \]
-上式係數為程式預設權重；候選輸出顯示該次實際使用的 CP-SAT 整數權重。非偏好輪轉、非所屬站
-指派與跨站支援公平的量測函數雖保留在原始碼，但權重為 0 時不建立變數、不計分
+上式係數為程式預設權重；候選輸出顯示該次實際使用的 CP-SAT 整數權重。非偏好輪轉
+與跨站支援公平的量測函數雖保留在原始碼，但權重為 0 時不建立變數、不計分
 也不輸出。
 完整目標為
 \[
