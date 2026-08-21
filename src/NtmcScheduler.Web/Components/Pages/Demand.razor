@@ -525,7 +525,7 @@
                 </tr>
                 </thead>
                 <tbody>
-                @foreach (var employee in previousSchedulePreview.Employees)
+                @foreach (var employee in SortedPreviousEmployees())
                 {
                     <tr>
                         <td class="sticky-col sticky-id">@employee.EmployeeCode</td><td class="sticky-col sticky-name">@employee.Name</td><td class="sticky-col sticky-affiliation">@employee.Affiliation</td>
@@ -583,6 +583,8 @@
     protected override async Task OnParametersSetAsync()
     {
         if (!Enum.TryParse<WorkspaceCode>(Workspace, true, out workspaceCode)) throw new DomainValidationException("工作區只支援 M 或 T。");
+        sortColumn = workspaceCode == WorkspaceCode.M ? "所屬" : "ID";
+        sortDescending = false;
         var actor = await CurrentActor.GetAsync();
         if (!actor.CanEdit(workspaceCode))
         {
@@ -751,6 +753,9 @@
     }
 
     private string SortMark(string column) => sortColumn == column ? sortDescending ? "▼" : "▲" : "";
+    private IEnumerable<PreviousScheduleEmployeeDto> SortedPreviousEmployees() => workspaceCode == WorkspaceCode.M
+        ? previousSchedulePreview!.Employees.OrderBy(x => x.Affiliation, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.EmployeeCode, StringComparer.OrdinalIgnoreCase)
+        : previousSchedulePreview!.Employees.OrderBy(x => x.EmployeeCode, StringComparer.OrdinalIgnoreCase);
     private static string ShortStation(string station) => station.Length == 4 && station.StartsWith("LB", StringComparison.Ordinal) && int.TryParse(station[2..], out var number) ? number.ToString(CultureInfo.InvariantCulture) : station;
     private IEnumerable<int> PreviousDays() => previousSchedulePreview is null ? [] : Enumerable.Range(1, DateTime.DaysInMonth(previousSchedulePreview.Month.Year, previousSchedulePreview.Month.Month));
     private async Task LoadRunsAsync() => runs = await RunService.ListAsync(workspaceCode, Month(), await CurrentActor.GetAsync());

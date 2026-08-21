@@ -154,6 +154,8 @@
     protected override async Task OnParametersSetAsync()
     {
         if (!Enum.TryParse<WorkspaceCode>(Workspace, true, out workspaceCode)) throw new DomainValidationException("工作區只支援 M 或 T。");
+        sortColumn = workspaceCode == WorkspaceCode.M ? "affiliation" : "id";
+        sortDescending = false;
         var actor = await CurrentActor.GetAsync();
         canEdit = actor.CanEdit(workspaceCode) && !actor.MustChangePassword;
         await ReloadAsync();
