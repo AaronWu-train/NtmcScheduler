@@ -320,6 +320,7 @@ NtmcScheduler tables 與 `__EFMigrationsHistory` 的空資料庫。script 為 id
 ## 11. 升級既有部署
 
 ```bash
+dotnet publish src/NtmcScheduler.Web -c Release -r linux-x64 --self-contained false -o /tmp/ntmsy-schedule-publish
 sudo systemctl stop ntmsy-schedule
 sudo find /opt/ntmsy-schedule -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
 sudo cp -a /tmp/ntmsy-schedule-publish/. /opt/ntmsy-schedule/
