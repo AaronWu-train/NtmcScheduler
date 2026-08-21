@@ -641,3 +641,8 @@
 - M 的 `ScheduleQualityAndFairness` 由 Priority 4 改為 Priority 2，使目前兩個目標群組依序為 Priority 1、2。
 - 此變更只調整群組編號；既有 `J4+J5` 公式名稱、違反量、權重與字典序求解順序不變。T 仍維持 Priority 1–5。
 - 已保存的 ScheduleRun／ScheduleVersion 快照不改寫，班表列表仍相容顯示其中原有的 Priority 4。
+
+## 2026-08-21：穩定版 v1.1.0
+
+- 以 git annotated tag `v1.1.0` 標示目前 `main` 為第一版範圍內的次版穩定版。
+- 組件 `Version`／`InformationalVersion` 為 `1.1.0`；Web 頁首與 `ScheduleRun.ProgramVersion` 沿用同一字串。
