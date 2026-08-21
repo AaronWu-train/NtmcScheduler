@@ -25,7 +25,7 @@ internal static class DemandCellValidator
         {
             if (SolverScheduleMapper.ParseShift(shift) is null) throw new DomainValidationException("正常班必須指定班別。");
             if (workspace.IsStation() && (station is null || mStations is not null && !mStations.Contains(station))) throw new DomainValidationException("站務正常班車站必須存在於本月車站設定。");
-            if (workspace == WorkspaceCode.T && !string.IsNullOrWhiteSpace(station)) throw new DomainValidationException("T 正常班不可指定車站。");
+            if (workspace.IsMaintenance() && !string.IsNullOrWhiteSpace(station)) throw new DomainValidationException("T 正常班不可指定車站。");
         }
         if (kind == "WorkEvent" && (eventStart is null || eventEnd is null || eventEnd <= eventStart || eventEnd - eventStart > TimeSpan.FromHours(24) || eventStart.Value.Offset != TimeSpan.FromHours(8) || eventEnd.Value.Offset != TimeSpan.FromHours(8)))
             throw new DomainValidationException("X 必須使用台北時間，結束晚於開始且長度不超過 24 小時。");

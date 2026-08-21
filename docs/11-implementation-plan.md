@@ -43,7 +43,7 @@ src/
 - 每頁使用共用 `PageHelp` 顯示說明；編輯器固定人員欄、日期表頭、右側統計與底部 coverage 品質列。
 - 所有寫入 service command 接收 `ActorContext` 與資源 revision token；服務層再次驗證工作區權限，資料與 AuditLog 在同一 transaction。
 - Blazor circuit 內的 application service 不以 scoped `NtmcDbContext` 長期持有連線；每次操作經 `IDbContextFactory` 建立 context。帳號管理每個操作建立短生命週期 scope，讓 Identity 與 EF 共用同一 context。
-- `ScheduleRunWorker` 單一讀取者執行 M／YM 共用的 `MSolver` 或 T 的 `TSolver`，從 immutable typed input JSON 重現；重啟恢復未完成工作且不重複處理終態 run。若 M 與 YM 後續規則不同，再依新決策調整或拆分 solver。
+- `ScheduleRunWorker` 單一讀取者執行 M／YM 共用的 `MSolver` 或 T／YT 共用的 `TSolver`，從 immutable typed input JSON 重現；重啟恢復未完成工作且不重複處理終態 run。若同模型的工作區後續規則不同，再依新決策調整或拆分 solver。
 
 ## 資料庫與 migration
 
@@ -68,7 +68,7 @@ NTMC_MIGRATION_PROVIDER=SqlServer dotnet ef migrations add <Name> \
 
 - `SolverContracts.cs`：共用的 `ScheduleInput`、月班表、日格、區間、選項、狀態與 Objective 輸出。無建模函數。
 - `MContracts.cs` / `TContracts.cs`：候選與求解結果；M 另有外派輸出。
-- `MSolver.cs` / `TSolver.cs`：公開 `Solve`、固定 Priority 群組的字典序 CP-SAT 呼叫、候選差異與結果讀取。M 與 YM 目前共用 `MSolver`，由 Infrastructure 傳入各自固定站點與班別時間；不建立重複的 `YMSolver`。未來規則若分歧，須另案更新規格、決策、實作與測試。
+- `MSolver.cs` / `TSolver.cs`：公開 `Solve`、固定 Priority 群組的字典序 CP-SAT 呼叫、候選差異與結果讀取。M 與 YM 共用 `MSolver`，T 與 YT 共用 `TSolver`，由 Infrastructure 傳入各自的工作區資料與班別時間；不建立重複的 `YMSolver` 或 `YTSolver`。未來規則若分歧，須另案更新規格、決策、實作與測試。
 - `*.Input.cs`：快照複製、月份／人員／日格／區間驗證、歷史查詢與 R/R1 累積推導。
 - `*.HardRules.cs`：OR-Tools 變數與不可關閉的硬限制。
 - `*.SoftRules.cs`：軟違反量、固定群組及權重；M 為 J1 與直接加權合併的 `J4+J5`，T 為 J1–J5。
@@ -92,7 +92,7 @@ CLI 不包含業務規則，solver 不知道 CSV 路徑。
 `tests/NtmcScheduler.Solvers.Tests` 使用 MSTest，涵蓋 solver／CLI 與 Web Infrastructure。測試重點為：
 
 - typed input 與 InvalidInput 邊界。
-- M/T 至少一個可求解主要案例。
+- M／YM 與 T／YT 各至少一個可求解主要案例，並驗證同模型工作區之資料、權限與設定互不混用。
 - CSV round-trip、舊表頭相容、M 萬年班表、BOM、quoted field、非常態班型、跨午夜 X 與非法格值。
 - 新進人員、A/B 區間累積、八週區間驗證。
 - timeout、cancellation、CLI redirected stdin 與 examples smoke test。

@@ -43,8 +43,8 @@
 
 | 實體 | 承載資訊 |
 |---|---|
-| `Employee` | 目前員工主檔：員工編號、姓名、工作區（M/T/YM）、M/YM 所屬站、T 專業與 ability、revision token；刪除前內容保存在 AuditLog，既有月份使用獨立快照 |
-| `ConfigurationRevision` | 不可變的 56 日區間、國定假日、非常態班型與 M/T/YM 各三班起訖時間版本；`CurrentConfiguration` 指向目前版 |
+| `Employee` | 目前員工主檔：員工編號、姓名、工作區（M/T/YM/YT）、M/YM 所屬站、T/YT 專業與 ability、revision token；刪除前內容保存在 AuditLog，既有月份使用獨立快照 |
+| `ConfigurationRevision` | 不可變的 56 日區間、國定假日、非常態班型與 M/T/YM/YT 各三班起訖時間版本；`CurrentConfiguration` 指向目前版 |
 | `DemandDraft`／`DemandEmployee`／`DemandAssignment` | 每單位每月一份草稿、月份人員快照、R／R1 軟目標；M/YM 另存各自固定站點的群組、班位上下限與外援等級快照；並含 T 月班別、期初額度、R\* 與 X |
 | `EmployeeDemandSubmission`／`EmployeeDemandSubmissionAssignment` | 每工作區／月份／員工一份目前填報；任何登入者可代填，AuditLog 保留每次覆蓋 |
 | `DemandSubmissionImport` | 記錄 Demand 最近一次從填報匯入的時間與操作者；重複匯入時更新此紀錄；填報頁以之判斷晚於截止的填報 |
@@ -66,7 +66,7 @@
 ## 6. 登入與授權（第一版）
 
 - 使用 ASP.NET Core Identity 本機帳號；不開放自助註冊、忘記密碼或電子郵件重設。
-- Administrator 建立帳號、設定一次性密碼、停用帳號及配置 M/T/YM 工作區編輯權；三者不互相繼承，首次登入或重設後必須改密碼。已登入者可從頁首隨時自行修改密碼，須驗證目前密碼。
+- Administrator 建立帳號、設定一次性密碼、停用帳號及配置 M/T/YM/YT 工作區編輯權；四者不互相繼承，首次登入或重設後必須改密碼。已登入者可從頁首隨時自行修改密碼，須驗證目前密碼。
 - 所有已登入者可檢視；只有對應工作區 Editor 或 Administrator 可寫入。共同設定可由任一 Editor 修改。
 - 路由、元件與後端 application service 都執行授權檢查，不能只依 UI 隱藏按鈕。
 - 互動中的驗證狀態失效時，強制重新載入根頁，由 Cookie middleware 回到登入首頁，不保留失效的互動頁面。

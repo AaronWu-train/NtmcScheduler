@@ -285,7 +285,7 @@ app.MapGet("/download/templates/{workspace}/{kind}.csv", (string workspace, stri
     var header = kind.ToLowerInvariant() switch
     {
         "employees" when workspaceCode.IsStation() => "ID,姓名,所屬車站,月中開始排班日",
-        "employees" when workspaceCode == WorkspaceCode.T => "ID,姓名,所屬,月中開始排班日,能力",
+        "employees" when workspaceCode.IsMaintenance() => "ID,姓名,所屬,月中開始排班日,能力",
         "demand" or "previous" => ScheduleCsv.MonthlyDownloadHeader(workspaceCode),
         "perpetual" when workspaceCode.IsStation() => ScheduleCsv.MPerpetualHeader,
         "rest-intervals" => "區間開始日期,區間結束日期,國定假日日期",

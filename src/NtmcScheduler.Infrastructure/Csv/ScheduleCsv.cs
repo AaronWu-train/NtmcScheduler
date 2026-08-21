@@ -468,7 +468,7 @@ public static partial class ScheduleCsv
     private static bool IsExcludedFromDownload(string header, WorkspaceCode workspace) => workspace switch
     {
         WorkspaceCode.M or WorkspaceCode.YM => header is "能力" or "T月班別",
-        WorkspaceCode.T => header is "萬年班表",
+        WorkspaceCode.T or WorkspaceCode.YT => header is "萬年班表",
         _ => throw new ArgumentOutOfRangeException(nameof(workspace))
     };
 

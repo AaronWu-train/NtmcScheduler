@@ -19,7 +19,7 @@
 {
     <p class="alert @messageClass" role="status">@message</p>
 }
-@if (workspaceCode == WorkspaceCode.T)
+@if (workspaceCode.IsMaintenance())
 {
     <section class="card">
         <div class="section-heading">
@@ -28,7 +28,7 @@
                 <p>指定月份後，上傳為一份可編輯的一般班表；不會自動採用或覆蓋既有版本。</p>
             </div>
             <div class="toolbar">
-                <label>歷史月份<input type="month" value="@historyMonthText" @onchange="args => historyMonthText = args.Value?.ToString() ?? historyMonthText"/></label><a class="button-link" href="/download/templates/t/previous.csv">下載範本</a>
+                <label>歷史月份<input type="month" value="@historyMonthText" @onchange="args => historyMonthText = args.Value?.ToString() ?? historyMonthText"/></label><a class="button-link" href="@($"/download/templates/{Workspace}/previous.csv")">下載範本</a>
                 @if (canEdit)
                 {
                     <label class="button-link primary file-upload-button">上傳歷史班表<InputFile OnChange="ImportHistoryAsync" accept=".csv,text/csv" disabled="@isBusy"/></label>

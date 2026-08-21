@@ -49,7 +49,7 @@
                     <td><input type="time" disabled="@(!canEdit)" value="@Format(earlyEnd)" @onchange="e => earlyEnd = Parse(e.Value)" /></td>
                 </tr>
                 <tr>
-                    <td>@(workspace == "t" ? "午班" : "午班（小班）")</td>
+                    <td>@(workspaceCode?.IsMaintenance() == true ? "午班" : "午班（小班）")</td>
                     <td><input type="time" disabled="@(!canEdit)" value="@Format(afternoonStart)" @onchange="e => afternoonStart = Parse(e.Value)" /></td>
                     <td><input type="time" disabled="@(!canEdit)" value="@Format(afternoonEnd)" @onchange="e => afternoonEnd = Parse(e.Value)" /></td>
                 </tr>
@@ -99,6 +99,7 @@
             WorkspaceCode.M => current.MShiftTimes,
             WorkspaceCode.T => current.TShiftTimes,
             WorkspaceCode.YM => current.YmShiftTimes,
+            WorkspaceCode.YT => current.YtShiftTimes,
             _ => current.MShiftTimes
         };
         earlyStart = times.Early.Start;

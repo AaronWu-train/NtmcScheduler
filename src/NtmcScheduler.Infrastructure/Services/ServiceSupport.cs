@@ -111,11 +111,12 @@ internal static class ServiceSupport
             x.Name, x.Code, x.StartTime, x.EndTime)).ToArray(),
         ToWorkspaceShiftTimesDto(revision, "M"),
         ToWorkspaceShiftTimesDto(revision, "T"),
-        ToWorkspaceShiftTimesDto(revision, "YM"));
+        ToWorkspaceShiftTimesDto(revision, "YM"),
+        ToWorkspaceShiftTimesDto(revision, "YT"));
 
     private static WorkspaceShiftTimesDto ToWorkspaceShiftTimesDto(ConfigurationRevision revision, string workspace)
     {
-        var defaults = workspace == "T" ? WorkspaceShiftTimes.DefaultT : WorkspaceShiftTimes.DefaultM;
+        var defaults = workspace is "T" or "YT" ? WorkspaceShiftTimes.DefaultT : WorkspaceShiftTimes.DefaultM;
         ShiftTimePairDto Pair(string shift, ShiftTimePair fallback)
         {
             var e = revision.StandardShiftTimes.FirstOrDefault(x => x.Workspace == workspace && x.Shift == shift);

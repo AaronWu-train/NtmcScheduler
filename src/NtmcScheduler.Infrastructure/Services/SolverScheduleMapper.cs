@@ -140,7 +140,7 @@ internal static class SolverScheduleMapper
 
     public static StandardShiftTimes ToStandardShiftTimes(ConfigurationRevision revision, WorkspaceCode workspace) => new(
         ToWorkspaceShiftTimes(revision, workspace.IsStation() ? workspace.ToString() : "M", WorkspaceShiftTimes.DefaultM),
-        ToWorkspaceShiftTimes(revision, "T", WorkspaceShiftTimes.DefaultT));
+        ToWorkspaceShiftTimes(revision, workspace.IsMaintenance() ? workspace.ToString() : "T", WorkspaceShiftTimes.DefaultT));
 
     private static WorkspaceShiftTimes ToWorkspaceShiftTimes(ConfigurationRevision revision, string workspace, WorkspaceShiftTimes defaults)
     {

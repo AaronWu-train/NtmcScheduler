@@ -185,6 +185,58 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
+    public async Task YtEmployeesAndAbility_AreIndependentFromT()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var service = new EmployeeService(database);
+        var tEditor = Editor(WorkspaceCode.T);
+        var ytEditor = Editor(WorkspaceCode.YT);
+        await service.SaveAsync(new(null, WorkspaceCode.T, "T001", "三鷹員工", "號誌", null, 5, null), tEditor);
+        await service.SaveAsync(new(null, WorkspaceCode.YT, "YT001", "環狀員工", "車輛", null, 4, null), ytEditor);
+
+        Assert.AreEqual("T001", (await service.ListAsync(WorkspaceCode.T, tEditor)).Single().EmployeeCode);
+        Assert.AreEqual("YT001", (await service.ListAsync(WorkspaceCode.YT, ytEditor)).Single().EmployeeCode);
+        Assert.AreEqual(4, (await service.ListAsync(WorkspaceCode.YT, ytEditor)).Single().Ability);
+        Assert.IsNull((await service.ListAsync(WorkspaceCode.YT, tEditor)).Single().Ability);
+        Assert.IsNull((await service.ListAsync(WorkspaceCode.T, ytEditor)).Single().Ability);
+        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => service.SaveAsync(
+            new(null, WorkspaceCode.YT, "YT002", "不可新增", "號誌", null, 3, null), tEditor));
+    }
+
+    [TestMethod]
+    public async Task YtShiftTimes_DefaultToTAndRemainIndependent()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var service = new CommonConfigurationService(database);
+        var tEditor = Editor(WorkspaceCode.T);
+        var ytEditor = Editor(WorkspaceCode.YT);
+        var start = new DateOnly(2026, 8, 3);
+        var initial = await service.CreateRevisionAsync(
+            [new RestIntervalDto(start, start.AddDays(55), [])], [], null, tEditor);
+
+        Assert.AreEqual(initial.TShiftTimes, initial.YtShiftTimes);
+        var custom = new WorkspaceShiftTimesDto(
+            new(new TimeOnly(6, 0), new TimeOnly(14, 0)),
+            new(new TimeOnly(14, 0), new TimeOnly(22, 0)),
+            new(new TimeOnly(22, 0), new TimeOnly(6, 0)));
+        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => service.UpdateWorkspaceShiftTimesAsync(
+            WorkspaceCode.YT, custom, initial.CurrentRevisionToken, tEditor));
+        var updated = await service.UpdateWorkspaceShiftTimesAsync(
+            WorkspaceCode.YT, custom, initial.CurrentRevisionToken, ytEditor);
+
+        Assert.AreEqual(custom, updated.YtShiftTimes);
+        Assert.AreEqual(initial.TShiftTimes, updated.TShiftTimes);
+        var revision = await database.Context.ConfigurationRevisions.AsNoTracking()
+            .Include(x => x.StandardShiftTimes).SingleAsync(x => x.Id == updated.Id);
+        var mapper = typeof(EmployeeService).Assembly.GetType("NtmcScheduler.Infrastructure.Services.SolverScheduleMapper")!;
+        var solverTimes = ((NtmcScheduler.Solvers.StandardShiftTimes)mapper.GetMethod("ToStandardShiftTimes")!
+            .Invoke(null, [revision, WorkspaceCode.YT])!).T;
+        Assert.AreEqual(custom.Early.Start, solverTimes.Early.Start);
+        Assert.AreEqual(custom.Afternoon.Start, solverTimes.Afternoon.Start);
+        Assert.AreEqual(custom.Night.Start, solverTimes.Night.Start);
+    }
+
+    [TestMethod]
     public async Task ScheduleCreation_ReadsRequireMatchingWorkspaceEditor()
     {
         await using var database = await TestDatabase.CreateAsync();

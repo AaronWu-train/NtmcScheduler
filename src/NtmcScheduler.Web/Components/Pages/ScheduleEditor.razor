@@ -86,7 +86,7 @@ else
                 <th class="sticky-col sticky-affiliation sortable" rowspan="2">
                     <button class="sort-button" @onclick='() => SortBy("affiliation")'>所屬 @SortMark("affiliation")</button>
                 </th>
-                @if (detail.Version.Workspace == WorkspaceCode.T)
+                @if (detail.Version.Workspace.IsMaintenance())
                 {
                     <th class="sticky-col sticky-monthly-shift sortable" rowspan="2">
                         <button class="sort-button" @onclick='() => SortBy("monthlyShift")'>T月班別 @SortMark("monthlyShift")</button>
@@ -130,7 +130,7 @@ else
                             <small class="new-hire">新人 @employee.EmploymentStartDate!.Value.ToString("M/d")</small>
                         }
                     </td><td class="sticky-col sticky-affiliation">@employee.Affiliation</td>
-                    @if (detail.Version.Workspace == WorkspaceCode.T)
+                    @if (detail.Version.Workspace.IsMaintenance())
                     {
                         <td class="sticky-col sticky-monthly-shift">
                             <select class="cell-editor" aria-label="@employee.Name 的 T 月班別" disabled="@(!canEdit || detail.Version.IsArchived || isBusy)" value="@employee.MonthlyShift" @onchange='args => UpdateMonthlyShiftAsync(employee, args.Value?.ToString())'>
@@ -370,7 +370,7 @@ else
 
     private bool DisplaysSuggestion(string name) => detail!.Version.Workspace switch
     {
-        WorkspaceCode.T => name is not "MonthBoundaryRestBalance" and not "UnusedLeaveRest" and not "MonthlyRest"
+        WorkspaceCode.T or WorkspaceCode.YT => name is not "MonthBoundaryRestBalance" and not "UnusedLeaveRest" and not "MonthlyRest"
             and not "SpecialRestBalance" and not "WeekdayRestFairness" and not "HolidayRestFairness",
         WorkspaceCode.M or WorkspaceCode.YM => name is not "ExternalStaffing" and not "MixedShiftWorkStreak" and not "NightRestEarly"
             and not "NightRestAfternoon" and not "ShiftChangeWithoutRest" and not "HolidayRestFairness"

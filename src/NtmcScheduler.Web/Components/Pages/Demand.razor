@@ -338,7 +338,7 @@
                                         <input class="inline-field date-field" type="date" disabled="@(!canEdit || isBusy)" value="@DateText(edit.EmploymentStartDate)" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "employmentStart", args.Value?.ToString())'/>
                                     </td>
                                 }
-                                else if (header == "T月班別" && workspaceCode == WorkspaceCode.T)
+                                else if (header == "T月班別" && workspaceCode.IsMaintenance())
                                 {
                                     <td>
                                         <select class="inline-field" disabled="@(!canEdit || isBusy)" value="@edit.MonthlyShift" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "monthlyShift", args.Value?.ToString())'>
@@ -713,7 +713,7 @@
     private static bool TryDay(string header, out int day) => int.TryParse(header, NumberStyles.None, CultureInfo.InvariantCulture, out day);
 
     private IReadOnlyList<string> InputHeaders => ScheduleCsv.MonthlyHeaders.Where(header => !PostSolveHeaders.Contains(header) &&
-                                                                                             (workspaceCode == WorkspaceCode.T || header is not "能力" and not "T月班別") &&
+                                                                                             (workspaceCode.IsMaintenance() || header is not "能力" and not "T月班別") &&
                                                                                              (workspaceCode.IsStation() || header != "萬年班表") &&
                                                                                              (!TryDay(header, out var day) || day <= DateTime.DaysInMonth(demand!.Month.Year, demand.Month.Month))).ToArray();
 
@@ -961,7 +961,7 @@
         if ((edit.OpeningRest is null) != (edit.OpeningSpecialRest is null)) return;
         await RunUiAsync(async () =>
         {
-            demand = await DemandService.UpdateEmployeeAsync(demand!.Id, employee.EmployeeCode, edit.EmploymentStartDate, workspaceCode == WorkspaceCode.T ? edit.MonthlyShift : null,
+            demand = await DemandService.UpdateEmployeeAsync(demand!.Id, employee.EmployeeCode, edit.EmploymentStartDate, workspaceCode.IsMaintenance() ? edit.MonthlyShift : null,
                 edit.OpeningRest, edit.OpeningSpecialRest, edit.LeaveRest, edit.PerpetualId, demand.RevisionToken, await CurrentActor.GetAsync());
             InitializeEmployeeEdits();
         }, "月份欄位已自動儲存。");

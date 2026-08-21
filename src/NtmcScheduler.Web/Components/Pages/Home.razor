@@ -16,13 +16,16 @@
 <section>
     <div class="workspace-grid">
         <a class="workspace-card" href="/m/schedules">
-            <strong><img src="/images/New_Taipei_Metro_Line_LB_(black).svg" alt="" />M</strong><span>三鷹站務 M</span>
+            <strong><img src="/images/New_Taipei_Metro_Line_LB_(black).svg" alt=""/>M</strong><span>三鷹線站務 M</span>
         </a>
         <a class="workspace-card" href="/t/schedules">
-            <strong><img src="/images/New_Taipei_Metro_Line_LB_(black).svg" alt="" />T</strong><span>三鷹檢修 T</span>
+            <strong><img src="/images/New_Taipei_Metro_Line_LB_(black).svg" alt=""/>T</strong><span>三鷹線檢修 T</span>
         </a>
         <a class="workspace-card" href="/ym/schedules">
-            <strong><img src="/images/New_Taipei_Metro_Line_Y.svg" alt="" />M</strong><span>環狀站務 M</span>
+            <strong><img src="/images/New_Taipei_Metro_Line_Y.svg" alt=""/>M</strong><span>環狀線站務 M</span>
+        </a>
+        <a class="workspace-card" href="/yt/schedules">
+            <strong><img src="/images/New_Taipei_Metro_Line_Y.svg" alt=""/>T</strong><span>環狀線檢修 T</span>
         </a>
     </div>
 </section>
@@ -48,7 +51,7 @@
     }
     @if (runs.Count == 0)
     {
-        <p class="empty-state">還沒有求解紀錄。請先進入 M、T 或 YM 建立班表。</p>
+        <p class="empty-state">還沒有求解紀錄。請先進入 M、T、YM 或 YT 建立班表。</p>
     }
     else
     {

@@ -143,7 +143,7 @@ public sealed class ScheduleRunWorker(
         for (var index = 0; index < result.Candidates.Count; index++)
         {
             var candidate = result.Candidates[index];
-            var version = SolverScheduleMapper.ToVersion(candidate.Schedule, WorkspaceCode.T, run.Id, index, run.Status,
+            var version = SolverScheduleMapper.ToVersion(candidate.Schedule, run.Workspace, run.Id, index, run.Status,
                 ConfigurationId(run), run.RequestedByUserId, demand, monthlySettings: settings);
             version.RuleWeightsJson = run.RuleWeightsJson;
             version.WarningCount = candidate.Objectives.SelectMany(x => x.Components).Count(x => x.Value > 0);

@@ -47,7 +47,7 @@ public sealed class ScheduleService(
             ?? throw new DomainValidationException("找不到班表版本。");
         var adopted = await db.AdoptedSchedules.AsNoTracking().AnyAsync(x => x.ScheduleVersionId == versionId, cancellationToken);
         var result = await validation.ValidateAsync(db, versionId, cancellationToken);
-        return ToDetail(version, adopted, result.Issues, result.Stats, actor.CanEdit(WorkspaceCode.T));
+        return ToDetail(version, adopted, result.Issues, result.Stats, version.Workspace.IsMaintenance() && actor.CanEdit(version.Workspace));
     }
 
     public async Task<ScheduleDetailDto> UpdateAssignmentAsync(
@@ -93,7 +93,7 @@ public sealed class ScheduleService(
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         var adopted = await db.AdoptedSchedules.AsNoTracking().AnyAsync(x => x.ScheduleVersionId == version.Id, cancellationToken);
-        return ToDetail(version, adopted, checkedSchedule.Issues, checkedSchedule.Stats, actor.CanEdit(WorkspaceCode.T));
+        return ToDetail(version, adopted, checkedSchedule.Issues, checkedSchedule.Stats, version.Workspace.IsMaintenance() && actor.CanEdit(version.Workspace));
     }
 
     public async Task<ScheduleDetailDto> UpdateMonthlyShiftAsync(
@@ -109,7 +109,7 @@ public sealed class ScheduleService(
             ?? throw new DomainValidationException("找不到班表版本。");
         ServiceSupport.RequireEditor(actor, version.Workspace);
         if (version.IsArchived) throw new DomainValidationException("封存班表不可修改。");
-        if (version.Workspace != WorkspaceCode.T) throw new DomainValidationException("只有 T 班表可設定月班別。");
+        if (!version.Workspace.IsMaintenance()) throw new DomainValidationException("只有 T 班表可設定月班別。");
         if (version.RevisionToken != revisionToken) throw new ConcurrencyConflictException("班表已被其他人修改，請重新整理。");
         var shift = SolverScheduleMapper.ParseShift(monthlyShift)
             ?? throw new DomainValidationException("T 月班別必須為早、午或夜。");
@@ -129,7 +129,7 @@ public sealed class ScheduleService(
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         var adopted = await db.AdoptedSchedules.AsNoTracking().AnyAsync(x => x.ScheduleVersionId == version.Id, cancellationToken);
-        return ToDetail(version, adopted, checkedSchedule.Issues, checkedSchedule.Stats, actor.CanEdit(WorkspaceCode.T));
+        return ToDetail(version, adopted, checkedSchedule.Issues, checkedSchedule.Stats, version.Workspace.IsMaintenance() && actor.CanEdit(version.Workspace));
     }
 
     public async Task AdoptAsync(Guid versionId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
@@ -279,7 +279,7 @@ public sealed class ScheduleService(
         var shifts = SolverScheduleMapper.ToNonStandardShifts(configuration);
         var schedule = await UploadFile.ParseAsync(csv, path => ScheduleCsv.ReadMonthly(path, month, shifts, true, workspace), cancellationToken);
         var isT = schedule.Employees.Any(x => x.Ability is not null || x.MonthlyShift is not null);
-        if (isT != (workspace == WorkspaceCode.T)) throw new DomainValidationException("CSV 的站務／檢修欄位與目前工作區不符。");
+        if (isT != workspace.IsMaintenance()) throw new DomainValidationException("CSV 的站務／檢修欄位與目前工作區不符。");
         var version = SolverScheduleMapper.ToImportedVersion(schedule, workspace, configurationId, actor.UserId);
         var demand = await db.DemandDrafts.AsNoTracking().AsSplitQuery()
             .Include(x => x.ConfigurationRevision).ThenInclude(x => x.RestIntervals).ThenInclude(x => x.NationalHolidays)
@@ -423,7 +423,7 @@ public sealed class ScheduleService(
 
     private static bool DisplaysSuggestion(WorkspaceCode workspace, string name) => workspace switch
     {
-        WorkspaceCode.T => name is not "MonthBoundaryRestBalance" and not "UnusedLeaveRest" and not "MonthlyRest"
+        WorkspaceCode.T or WorkspaceCode.YT => name is not "MonthBoundaryRestBalance" and not "UnusedLeaveRest" and not "MonthlyRest"
             and not "SpecialRestBalance" and not "WeekdayRestFairness" and not "HolidayRestFairness",
         WorkspaceCode.M or WorkspaceCode.YM => name is not "ExternalStaffing" and not "MixedShiftWorkStreak" and not "NightRestEarly"
             and not "NightRestAfternoon" and not "ShiftChangeWithoutRest" and not "HolidayRestFairness"
@@ -556,7 +556,7 @@ public sealed class ScheduleService(
         {
             if (SolverScheduleMapper.ParseShift(shift) is null) throw new DomainValidationException("正常班必須指定班別。");
             if (version.Workspace.IsStation() && (station is null || !VersionSettings(version).MStations.Any(x => x.Code == station))) throw new DomainValidationException("站務正常班車站必須存在於本月車站設定。");
-            if (version.Workspace == WorkspaceCode.T && !string.IsNullOrWhiteSpace(station)) throw new DomainValidationException("T 正常班不可指定車站。");
+            if (version.Workspace.IsMaintenance() && !string.IsNullOrWhiteSpace(station)) throw new DomainValidationException("T 正常班不可指定車站。");
         }
         if (kind == "WorkEvent")
         {

@@ -84,7 +84,7 @@ public sealed class StandardShiftTimeEntity
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid ConfigurationRevisionId { get; set; }
-    public string Workspace { get; set; } = "";   // "M", "T", or "YM"
+    public string Workspace { get; set; } = "";   // "M", "T", "YM", or "YT"
     public string Shift { get; set; } = "";        // "Early", "Afternoon", "Night"
     public TimeOnly StartTime { get; set; }
     public TimeOnly EndTime { get; set; }

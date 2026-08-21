@@ -14,7 +14,7 @@ public sealed class EmployeeService(IDbContextFactory<NtmcDbContext> dbFactory) 
     {
         ServiceSupport.RequireViewer(actor);
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var canViewAbility = actor.CanEdit(WorkspaceCode.T);
+        var canViewAbility = workspace.IsMaintenance() && actor.CanEdit(workspace);
         return await db.Employees.AsNoTracking()
             .Where(x => x.Workspace == workspace)
             .OrderBy(x => x.EmployeeCode)
@@ -167,7 +167,7 @@ public sealed class EmployeeService(IDbContextFactory<NtmcDbContext> dbFactory) 
         parser.SetDelimiters(",");
         var header = IgnoreTrailingEmptyFields(parser.ReadFields() ?? [], expected.Length);
         if (header.Length > 3 && header[3] == "到職日期") header[3] = "月中開始排班日";
-        var validHeader = header.SequenceEqual(expected) || workspace == WorkspaceCode.T && header.SequenceEqual(["ID", "姓名", "專業分組", "月中開始排班日", "能力"]);
+        var validHeader = header.SequenceEqual(expected) || workspace.IsMaintenance() && header.SequenceEqual(["ID", "姓名", "專業分組", "月中開始排班日", "能力"]);
         if (!validHeader) throw new DomainValidationException($"員工 CSV 表頭必須為：{string.Join(',', expected)}");
         var records = new List<EmployeeImportRecord>();
         var codes = new HashSet<string>(StringComparer.Ordinal);
@@ -189,7 +189,7 @@ public sealed class EmployeeService(IDbContextFactory<NtmcDbContext> dbFactory) 
                 employmentStart = parsedEmploymentStart;
             }
             int? ability = null;
-            if (workspace == WorkspaceCode.T)
+            if (workspace.IsMaintenance())
             {
                 if (!int.TryParse(fields[4].Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var parsedAbility) || parsedAbility is < 1 or > 5)
                     throw new DomainValidationException($"員工 {code} 的能力必須為 1–5。");

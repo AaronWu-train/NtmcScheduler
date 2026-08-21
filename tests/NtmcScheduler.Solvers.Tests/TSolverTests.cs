@@ -353,6 +353,9 @@ public sealed class TSolverTests
             ScheduleCsv.MonthlyHeaders.Except(ScheduleCsv.MonthlyDownloadHeaders(WorkspaceCode.T)).ToArray());
         Assert.HasCount(44, ScheduleCsv.MonthlyDownloadHeaders(WorkspaceCode.M));
         Assert.HasCount(45, ScheduleCsv.MonthlyDownloadHeaders(WorkspaceCode.T));
+        CollectionAssert.AreEqual(
+            ScheduleCsv.MonthlyDownloadHeaders(WorkspaceCode.T).ToArray(),
+            ScheduleCsv.MonthlyDownloadHeaders(WorkspaceCode.YT).ToArray());
     }
 
     [TestMethod]

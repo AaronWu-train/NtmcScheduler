@@ -174,7 +174,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
         if ((openingRest is null) != (openingSpecialRest is null) || openingRest < 0 || openingSpecialRest < 0 || requestedLeaveRestCount < 0)
             throw new DomainValidationException("月初 R/R1 必須同時填寫且不可為負數；R休上限不可為負數。");
-        if (demand.Workspace == WorkspaceCode.T && SolverScheduleMapper.ParseShift(monthlyShift) is null)
+        if (demand.Workspace.IsMaintenance() && SolverScheduleMapper.ParseShift(monthlyShift) is null)
             throw new DomainValidationException("T 月班別必須為早、午或夜。");
         if (demand.Workspace.IsStation() && !string.IsNullOrWhiteSpace(monthlyShift))
             throw new DomainValidationException("站務工作區不可設定 T 月班別。");
@@ -632,7 +632,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
     private static void ValidateWorkspace(MonthlySchedule schedule, WorkspaceCode workspace)
     {
         var isT = schedule.Employees.Any(x => x.Ability is not null || x.MonthlyShift is not null);
-        if (isT != (workspace == WorkspaceCode.T)) throw new DomainValidationException("CSV 的站務／檢修欄位與目前工作區不符。");
+        if (isT != workspace.IsMaintenance()) throw new DomainValidationException("CSV 的站務／檢修欄位與目前工作區不符。");
     }
 
     private static void ApplyPreviousSchedule(DemandDraft demand, MonthlySchedule schedule)

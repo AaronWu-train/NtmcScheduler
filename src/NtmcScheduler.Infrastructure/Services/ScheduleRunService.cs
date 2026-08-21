@@ -55,7 +55,7 @@ public sealed class ScheduleRunService(IDbContextFactory<NtmcDbContext> dbFactor
             || options.WorkerCount > ScheduleRunOptions.MaxWorkerCount
             || options.SeedCount > ScheduleRunOptions.MaxSeedCount)
             throw new DomainValidationException($"求解時限最多 {ScheduleRunOptions.MaxTimeLimitSeconds} 秒、worker 數最多 {ScheduleRunOptions.MaxWorkerCount}、seed 數最多 {ScheduleRunOptions.MaxSeedCount}。");
-        if (demand.Workspace == WorkspaceCode.T && options.SeedCount != 1)
+        if (demand.Workspace.IsMaintenance() && options.SeedCount != 1)
             throw new DomainValidationException("T 只支援一個 seed。");
         var previous = await ResolvePreviousAsync(db, demand, cancellationToken);
         var input = new ScheduleInput(
@@ -184,8 +184,8 @@ public sealed class ScheduleRunService(IDbContextFactory<NtmcDbContext> dbFactor
     {
         "RequestedRest" or "UnusedLeaveRest" => 1,
         "NonMonthlyShift" or "Attendance" or "Specialty" or "Ability" => 2,
-        "MonthlyRest" or "SpecialRestBalance" when workspace == WorkspaceCode.T => 3,
-        "WeekdayRestFairness" or "HolidayRestFairness" when workspace == WorkspaceCode.T => 5,
+        "MonthlyRest" or "SpecialRestBalance" when workspace.IsMaintenance() => 3,
+        "WeekdayRestFairness" or "HolidayRestFairness" when workspace.IsMaintenance() => 5,
         _ when workspace.IsStation() => 2,
         _ => 4
     };

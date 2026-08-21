@@ -4,7 +4,8 @@ public enum WorkspaceCode
 {
     M,
     T,
-    YM
+    YM,
+    YT
 }
 
 public static class WorkspaceCodes
@@ -13,12 +14,14 @@ public static class WorkspaceCodes
     public static readonly IReadOnlyList<string> YmStations = Enumerable.Range(6, 14).Select(x => $"Y{x:D2}").ToArray();
 
     public static bool IsStation(this WorkspaceCode workspace) => workspace is WorkspaceCode.M or WorkspaceCode.YM;
+    public static bool IsMaintenance(this WorkspaceCode workspace) => workspace is WorkspaceCode.T or WorkspaceCode.YT;
 
     public static string DisplayName(this WorkspaceCode workspace) => workspace switch
     {
-        WorkspaceCode.M => "三鷹站務 M",
-        WorkspaceCode.T => "三鷹檢修 T",
-        WorkspaceCode.YM => "環狀站務 M",
+        WorkspaceCode.M => "三鷹線站務 M",
+        WorkspaceCode.T => "三鷹線檢修 T",
+        WorkspaceCode.YM => "環狀線站務 M",
+        WorkspaceCode.YT => "環狀線檢修 T",
         _ => workspace.ToString()
     };
 
@@ -116,7 +119,8 @@ public sealed record ConfigurationRevisionDto(
     IReadOnlyList<NonStandardShiftDto> NonStandardShifts,
     WorkspaceShiftTimesDto MShiftTimes,
     WorkspaceShiftTimesDto TShiftTimes,
-    WorkspaceShiftTimesDto YmShiftTimes);
+    WorkspaceShiftTimesDto YmShiftTimes,
+    WorkspaceShiftTimesDto YtShiftTimes);
 
 public sealed record StaffingRangeDto(int Minimum, int Maximum);
 public sealed record MStationSettingDto(

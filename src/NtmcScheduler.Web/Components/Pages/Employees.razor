@@ -64,7 +64,7 @@
         <label>姓名<InputText @bind-Value="form.Name"/></label>
         <label>所屬<InputText @bind-Value="form.Affiliation" placeholder="@(workspaceCode.IsStation() ? workspaceCode.Stations()[0] : "專業分組")"/></label>
         <label>月中開始排班日<InputDate @bind-Value="form.EmploymentStartDate"/></label>
-        @if (workspaceCode == WorkspaceCode.T)
+        @if (workspaceCode.IsMaintenance())
         {
             <label>能力<InputNumber @bind-Value="form.Ability" min="1" max="5"/></label>
         }
@@ -99,7 +99,7 @@
                     <span>月中開始排班日</span><span class="sort-indicator" aria-hidden="true"></span>
                 </button>
             </th>
-            @if (workspaceCode == WorkspaceCode.T && canEdit)
+            @if (workspaceCode.IsMaintenance() && canEdit)
             {
                 <th class="sortable" aria-sort='@AriaSort("ability")'>
                     <button class="sort-button" @onclick='() => SortBy("ability")'>
@@ -115,7 +115,7 @@
         {
             <tr>
                 <td>@employee.EmployeeCode</td><td>@employee.Name</td><td>@employee.Affiliation</td><td>@employee.EmploymentStartDate?.ToString("yyyy-MM-dd")</td>
-                @if (workspaceCode == WorkspaceCode.T && canEdit)
+                @if (workspaceCode.IsMaintenance() && canEdit)
                 {
                     <td>@employee.Ability</td>
                 }
@@ -205,7 +205,7 @@
     private async Task SaveAsync() => await RunAsync(async () =>
     {
         await Service.SaveAsync(new(form.Id, workspaceCode, form.EmployeeCode, form.Name, form.Affiliation, form.EmploymentStartDate,
-            workspaceCode == WorkspaceCode.T ? form.Ability : null, form.RevisionToken), await CurrentActor.GetAsync());
+            workspaceCode.IsMaintenance() ? form.Ability : null, form.RevisionToken), await CurrentActor.GetAsync());
         ClearForm();
         await ReloadAsync();
     }, "員工資料已儲存。");
