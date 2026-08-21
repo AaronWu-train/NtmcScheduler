@@ -163,7 +163,8 @@ button.danger { color: #9e1c1c; border-color: #c45a5a; }
 
 .workspace-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 24rem)); gap: 1rem; }
 .workspace-card { display: grid; gap: .4rem; background: #fff; border: 1px solid #cfd8e3; border-radius: .7rem; padding: 1.5rem; text-decoration: none; color: #172033; }
-.workspace-card strong { font-size: 2rem; }
+.workspace-card strong { display: flex; align-items: center; gap: .4rem; font-size: 2rem; }
+.workspace-card strong img { height: 1em; width: auto; }
 .dashboard-title { margin-top: 3rem; text-align: left; }
 .month-list { display: flex; flex-wrap: wrap; gap: .7rem; margin-bottom: 1rem; }
 .month-card { display: grid; text-align: left; min-width: 13rem; }
