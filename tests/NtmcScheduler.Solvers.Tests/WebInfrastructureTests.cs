@@ -263,6 +263,15 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
+    public void RuleDefinitions_SoftRulesHaveExplicitFormulas()
+    {
+        var service = new ScheduleRunService(null!, null!);
+        foreach (var workspace in new[] { WorkspaceCode.M, WorkspaceCode.T })
+            foreach (var rule in service.GetRules(workspace).Where(x => !x.IsHard))
+                Assert.DoesNotContain("依目前規格", rule.Description, $"{workspace}.{rule.Key}");
+    }
+
+    [TestMethod]
     public async Task EmployeeDemandSubmission_ViewerCanFillEditorCanReimport()
     {
         await using var database = await TestDatabase.CreateAsync();

@@ -31,7 +31,7 @@ public sealed class ScheduleRunService(IDbContextFactory<NtmcDbContext> dbFactor
                 new("ExternalSupport", "外援使用範圍", "不允許站不建立外援；其他站的外援只補最低需求差額。", 0, true, null)
             ]).ToArray();
         var defaults = workspace == WorkspaceCode.M ? SolverRuleWeights.M : SolverRuleWeights.T;
-        return hard.Concat(defaults.Select(pair => new SolverRuleDefinitionDto(pair.Key, RuleName(pair.Key), RuleDescription(pair.Key), RulePriority(workspace, pair.Key), false, pair.Value))).ToArray();
+        return hard.Concat(defaults.Select(pair => new SolverRuleDefinitionDto(pair.Key, RuleName(pair.Key), RuleDescription(workspace, pair.Key), RulePriority(workspace, pair.Key), false, pair.Value))).ToArray();
     }
 
     public async Task<ScheduleRunDto> QueueAsync(Guid demandId, Guid revisionToken, ScheduleRunOptions options, ActorContext actor, CancellationToken cancellationToken = default)
@@ -202,11 +202,30 @@ public sealed class ScheduleRunService(IDbContextFactory<NtmcDbContext> dbFactor
         "WeekdayRestFairness" => "平日休假公平", _ => key
     };
 
-    private static string RuleDescription(string key) => key switch
+    private static string RuleDescription(WorkspaceCode workspace, string key) => key switch
     {
-        "RequestedRest" => "R* 最後未排成任何實際休假。", "UnusedLeaveRest" => "未用完每人輸入的 R休 上限。",
-        "ExternalStaffing" => "允許站超過 70 人次與盡量不要站的外援人次。", "MonthlyRest" => "實際 R 與本月自訂基準的平方偏差。",
-        "SpecialRestBalance" => "截至月底的 56 日累積 R1 餘額。", "WorkStreak" => "連續實際工作區段的長度品質。",
+        "RequestedRest" => "每個未排成 R、R1 或 R休的 R* 格計 1。",
+        "UnusedLeaveRest" => "每人上限減實際 R休數後加總。",
+        "ExternalStaffing" => "允許站外援超過 70 的人次，加上盡量不要站的全部人次。",
+        "MonthlyRest" => "每人實際 R 與基準的差額平方後加總（差 1／2／3 日＝1／4／9）。",
+        "SpecialRestBalance" => "累積 R1 多休按超額平方；欠 1 日免罰，再欠按超出日數平方。",
+        "WorkStreak" when workspace == WorkspaceCode.M => "已結束工作段：1 天計 4；2–5 天不計；6 天以上計 2×(天數−4)。",
+        "WorkStreak" => "已結束工作段：1 天計 4；2 與 5 天計 1；3–4 天不計；6 天以上計 2×(天數−4)。",
+        "MixedShiftWorkStreak" => "每個含兩種以上正常班型的已結束工作段計 1。",
+        "NightRestEarly" => "每出現一次「夜班→休假→早班」計 1。",
+        "NightRestAfternoon" => "每出現一次「夜班→休假→午班」計 1。",
+        "ShiftChangeWithoutRest" => "兩個正常班之間沒有休假且班別不同，每次計 1。",
+        "HolidayRestFairness" when workspace == WorkspaceCode.M => "同站群組假日休假偏離平均超過 1.5 天後，每多偏 1 天計 1。",
+        "HolidayRestFairness" => "同一月班別假日休假偏離平均超過 1.5 天後，每多偏 1 天計 1。",
+        "EarlyAfternoonImbalance" => "每人早班與小班差超過 4 的部分加總（差 5 計 1）。",
+        "NightShiftTarget" => "每人夜班 3–4 天不計；0／1／2 天計 10／5／1；5 天起計 4×(夜班數−4)。",
+        "NonMonthlyShift" => "每個正常班不同於當日月班別的格計 1。",
+        "Attendance" => "每日各班出勤低於該組在職人數一半的缺額加總。",
+        "Specialty" => "每日各班應有專業無人出勤，每組計 1。",
+        "Ability" => "每日各班能力 4–5 人員：滿 2 人不計、1 人計 1、0 人計 10。",
+        "NightToEarlyRest" => "上月最後夜班到本月首次早班，不足 2 日休假的缺額加總。",
+        "MonthBoundaryRestBalance" => "夜轉早人員在上月末日與本月首日的休假人數差。",
+        "WeekdayRestFairness" => "同一月班別內，平日休假次數最多與最少的差。",
         _ => "依目前規格計算此軟規則的違反量。"
     };
 
