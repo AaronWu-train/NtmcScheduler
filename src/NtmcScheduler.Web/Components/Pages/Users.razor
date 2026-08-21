@@ -8,7 +8,7 @@
 <div class="page-title">
     <div>
         <h1>帳號與權限</h1>
-        <p>建立、停用與分別配置三鷹 M、三鷹 T、環狀 M、環狀 T 編輯權。</p>
+        <p>建立、停用與分別配置三鶯 M、三鶯 T、環狀 M、環狀 T 編輯權。</p>
     </div>
     <PageHelp Title="帳號管理說明">
         <p>系統不開放註冊。一次性密碼至少 8 字元、至少 2 種不同字元，並包含數字；使用者首次登入必須修改，之後可從頁首自行更換。停用帳號會在最長五分鐘內中止既有登入狀態。</p>
@@ -23,8 +23,8 @@
     <label>帳號<InputText @bind-Value="newUser.UserName"/></label>
     <label>一次性密碼<InputText type="password" @bind-Value="newUser.Password"/></label>
     <label><InputCheckbox @bind-Value="newUser.Administrator"/> Administrator</label>
-    <label><InputCheckbox @bind-Value="newUser.M"/> 三鷹線站務 M 編輯</label>
-    <label><InputCheckbox @bind-Value="newUser.T"/> 三鷹線檢修 T 編輯</label>
+    <label><InputCheckbox @bind-Value="newUser.M"/> 三鶯線站務 M 編輯</label>
+    <label><InputCheckbox @bind-Value="newUser.T"/> 三鶯線檢修 T 編輯</label>
     <label><InputCheckbox @bind-Value="newUser.YM"/> 環狀線站務 M 編輯</label>
     <label><InputCheckbox @bind-Value="newUser.YT"/> 環狀線檢修 T 編輯</label>
     <button type="submit" class="primary" disabled="@isBusy">@(isBusy ? "處理中…" : "建立帳號")</button>
@@ -33,7 +33,7 @@
     <table>
         <thead>
         <tr>
-            <th>帳號</th><th>狀態</th><th>管理者</th><th>三鷹 M</th><th>三鷹 T</th><th>環狀 M</th><th>環狀 T</th><th>一次性密碼</th><th>操作</th>
+            <th>帳號</th><th>狀態</th><th>管理者</th><th>三鶯 M</th><th>三鶯 T</th><th>環狀 M</th><th>環狀 T</th><th>一次性密碼</th><th>操作</th>
         </tr>
         </thead>
         <tbody>

@@ -29,7 +29,7 @@ TSolveResult TSolver.Solve(
 
 ## 原始碼流程
 
-站務模型與 T 完全分開建模，各自保留 `Main / Input / Rules` partial 檔案。三鷹 M 與環狀 YM 目前規則完全相同，因此共用同一個 `MSolver`；工作區層負責傳入並驗證各自站點與班別時間，不複製 `YMSolver`。未來兩者若有不同硬規則、軟目標或權重，必須先更新規格與決策，再評估顯式分支或拆分 solver。每個 `Solve` 的主幹依序為：
+站務模型與 T 完全分開建模，各自保留 `Main / Input / Rules` partial 檔案。三鶯 M 與環狀 YM 目前規則完全相同，因此共用同一個 `MSolver`；工作區層負責傳入並驗證各自站點與班別時間，不複製 `YMSolver`。未來兩者若有不同硬規則、軟目標或權重，必須先更新規格與決策，再評估顯式分支或拆分 solver。每個 `Solve` 的主幹依序為：
 
 ```text
 複製並驗證 ScheduleInput

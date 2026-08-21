@@ -18,8 +18,8 @@ public static class WorkspaceCodes
 
     public static string DisplayName(this WorkspaceCode workspace) => workspace switch
     {
-        WorkspaceCode.M => "三鷹線站務 M",
-        WorkspaceCode.T => "三鷹線檢修 T",
+        WorkspaceCode.M => "三鶯線站務 M",
+        WorkspaceCode.T => "三鶯線檢修 T",
         WorkspaceCode.YM => "環狀線站務 M",
         WorkspaceCode.YT => "環狀線檢修 T",
         _ => workspace.ToString()

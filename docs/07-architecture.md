@@ -5,7 +5,7 @@
 ## 1. 總體形態
 
 單一 ASP.NET Core Blazor Web App（Interactive Server）＋單一資料庫＋單一背景求解佇列。
-站務與 T 的 Solver 分開；三鷹 M 與環狀 YM 共用同一個 `MSolver`。**不使用**微服務、CQRS、Message Bus 或另一套 JavaScript SPA。
+站務與 T 的 Solver 分開；三鶯 M 與環狀 YM 共用同一個 `MSolver`。**不使用**微服務、CQRS、Message Bus 或另一套 JavaScript SPA。
 
 - **.NET 10**（決策 D-08）。
 - 資安要求：**只允許 Microsoft 與 Google 官方套件**，不得隨意引入第三方套件。

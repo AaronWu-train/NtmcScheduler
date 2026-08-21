@@ -191,7 +191,7 @@ public sealed class WebInfrastructureTests
         var service = new EmployeeService(database);
         var tEditor = Editor(WorkspaceCode.T);
         var ytEditor = Editor(WorkspaceCode.YT);
-        await service.SaveAsync(new(null, WorkspaceCode.T, "T001", "三鷹員工", "號誌", null, 5, null), tEditor);
+        await service.SaveAsync(new(null, WorkspaceCode.T, "T001", "三鶯員工", "號誌", null, 5, null), tEditor);
         await service.SaveAsync(new(null, WorkspaceCode.YT, "YT001", "環狀員工", "車輛", null, 4, null), ytEditor);
 
         Assert.AreEqual("T001", (await service.ListAsync(WorkspaceCode.T, tEditor)).Single().EmployeeCode);
