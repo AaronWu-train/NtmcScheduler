@@ -989,6 +989,42 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
+    public async Task TDemandMonthlyShift_UpdatePersistsAndRoundTrips()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var actor = Editor(WorkspaceCode.T);
+        var revision = new ConfigurationRevision { Version = 1, CreatedByUserId = actor.UserId };
+        var demand = new DemandDraft
+        {
+            Workspace = WorkspaceCode.T,
+            Month = new DateOnly(2026, 8, 1),
+            ConfigurationRevision = revision,
+            CreatedByUserId = actor.UserId,
+            UpdatedByUserId = actor.UserId,
+            Employees =
+            [
+                new DemandEmployee
+                {
+                    EmployeeCode = "T001",
+                    Name = "王小明",
+                    Affiliation = "號誌",
+                    Ability = 5
+                }
+            ]
+        };
+        database.Context.Add(demand);
+        await database.Context.SaveChangesAsync();
+
+        var result = await DemandService(database).UpdateEmployeeAsync(demand.Id, "T001", null, "Early",
+            null, null, 0, null, demand.RevisionToken, actor);
+
+        Assert.AreEqual("Early", result.Employees.Single().MonthlyShift);
+        await using var persisted = database.NewContext();
+        Assert.AreEqual("Early", await persisted.DemandEmployees.AsNoTracking()
+            .Where(x => x.DemandDraftId == demand.Id).Select(x => x.MonthlyShift).SingleAsync());
+    }
+
+    [TestMethod]
     public async Task PerpetualUpload_StoresMetadataAndCanBeDownloaded()
     {
         await using var database = await TestDatabase.CreateAsync();

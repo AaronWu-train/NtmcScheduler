@@ -71,6 +71,10 @@
                         </td>
                         <td>
                             <span class="status @RunStatusClass(run)">@RunStatusText(run)</span>
+                            @if (run.Status == ScheduleRunStatus.InvalidInput && !string.IsNullOrWhiteSpace(run.Error))
+                            {
+                                <div class="error-text">原因：@run.Error</div>
+                            }
                             @if (run.CompletedAtUtc is not null)
                             {
                                 <small>@Taipei(run.CompletedAtUtc.Value)</small>

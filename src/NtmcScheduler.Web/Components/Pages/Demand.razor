@@ -357,6 +357,7 @@
                                 {
                                     <td>
                                         <select class="inline-field" disabled="@(!canEdit || isBusy)" value="@edit.MonthlyShift" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "monthlyShift", args.Value?.ToString())'>
+                                            <option value="" disabled>請選擇</option>
                                             <option value="Early">早</option><option value="Afternoon">午</option><option value="Night">夜</option>
                                         </select>
                                     </td>
@@ -960,7 +961,7 @@
     {
         employeeEdits = demand?.Employees.ToDictionary(x => x.EmployeeCode, x => new EmployeeEdit
         {
-            EmploymentStartDate = x.EmploymentStartDate, MonthlyShift = x.MonthlyShift ?? "Early", OpeningRest = x.OpeningRest, OpeningSpecialRest = x.OpeningSpecialRest,
+            EmploymentStartDate = x.EmploymentStartDate, MonthlyShift = x.MonthlyShift ?? "", OpeningRest = x.OpeningRest, OpeningSpecialRest = x.OpeningSpecialRest,
             LeaveRest = x.RequestedLeaveRestCount, PerpetualId = x.PerpetualScheduleId ?? ""
         }) ?? [];
     }
@@ -980,7 +981,7 @@
             switch (field)
             {
                 case "employmentStart": edit.EmploymentStartDate = ParseDate(value); break;
-                case "monthlyShift": edit.MonthlyShift = value ?? "Early"; break;
+                case "monthlyShift": edit.MonthlyShift = value ?? ""; break;
                 case "openingRest": edit.OpeningRest = ParseNullableNonNegative(value, "月初 R"); break;
                 case "openingSpecialRest": edit.OpeningSpecialRest = ParseNullableNonNegative(value, "月初 R1"); break;
                 case "leaveRest": edit.LeaveRest = ParseNullableNonNegative(value, "當月指定 R休") ?? 0; break;
@@ -1116,7 +1117,7 @@
     private sealed class EmployeeEdit
     {
         public DateOnly? EmploymentStartDate { get; set; }
-        public string MonthlyShift { get; set; } = "Early";
+        public string MonthlyShift { get; set; } = "";
         public int? OpeningRest { get; set; }
         public int? OpeningSpecialRest { get; set; }
         public int LeaveRest { get; set; }
