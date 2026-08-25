@@ -25,6 +25,7 @@ public static class AuditPresentation
         ["PasswordReset"] = "重設密碼",
         ["InitialAdministratorCreated"] = "建立初始管理者",
         ["UserCreated"] = "建立帳號",
+        ["UserDeleted"] = "刪除帳號",
         ["UserPermissionsChanged"] = "變更權限",
         ["EmployeeCreated"] = "新增員工",
         ["EmployeeUpdated"] = "修改員工",

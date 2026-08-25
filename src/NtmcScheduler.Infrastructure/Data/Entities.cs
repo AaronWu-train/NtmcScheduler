@@ -7,6 +7,7 @@ public sealed class ApplicationUser : IdentityUser<Guid>
 {
     public bool MustChangePassword { get; set; } = true;
     public bool IsDisabled { get; set; }
+    public bool IsDeleted { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public List<WorkspacePermission> WorkspacePermissions { get; set; } = [];
 }

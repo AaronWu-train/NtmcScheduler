@@ -4,6 +4,8 @@ public interface IUserAdministrationService
 {
     Task<IReadOnlyList<UserAccountDto>> ListAsync(ActorContext actor, CancellationToken cancellationToken = default);
     Task<UserAccountDto> CreateAsync(CreateUserCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task CreateBatchAsync(Stream csv, ActorContext actor, CancellationToken cancellationToken = default);
+    Task DeleteAsync(Guid userId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task ResetPasswordAsync(Guid userId, string temporaryPassword, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task UpdateAsync(Guid userId, bool isDisabled, bool isAdministrator, IReadOnlySet<WorkspaceCode> workspaces, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
 }

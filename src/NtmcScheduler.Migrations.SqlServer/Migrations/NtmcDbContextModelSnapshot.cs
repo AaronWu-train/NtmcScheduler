@@ -202,6 +202,9 @@ namespace NtmcScheduler.Migrations.SqlServer.Migrations
                     b.Property<bool>("EmailConfirmed")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("IsDisabled")
                         .HasColumnType("bit");
 

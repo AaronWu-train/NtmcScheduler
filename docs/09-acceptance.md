@@ -9,6 +9,8 @@
 ## Web 身分與授權
 
 - 不存在註冊、忘記密碼與電子郵件重設路徑；管理者 CLI 建立首位管理者，管理頁建立其餘帳號與一次性密碼。
+- Administrator 可下載含 UTF-8 BOM 與固定表頭的 `users-template.csv`，並以同格式 CSV 批次建立帳號；範本不含示範帳號，下載只允許 Administrator。Administrator 與 M/T/YM/YT 權限欄只接受 `1`/`0`。合法檔案逐帳號產生不含密碼的 `UserCreated` AuditLog；任一列無效、重複或不符密碼政策時整批回滾。
+- Administrator 可軟刪除其他帳號，不可刪除自己。刪除後帳號不出現於管理列表、無法登入，既有登入狀態最長五分鐘內失效；Identity 列、帳號名稱與既有 AuditLog 保留，並新增不含密碼的 `UserDeleted` AuditLog。
 - 首次登入強制修改至少 8 字元、至少 2 種不同字元且包含數字的密碼；之後可從頁首「修改密碼」自行更換，須驗證目前密碼。五次失敗鎖定 15 分鐘，另以帳號與 IP 做登入限流，錯誤訊息不揭露帳號是否存在。正式上線前須重新檢視並提高密碼政策。
 - Viewer、M Editor、T Editor、YM Editor、複數工作區 Editor 與 Administrator 的頁面及 application service 寫入授權一致；既有 M Editor 不自動取得 YM 權限，猜測資源 GUID 不可越權修改。
 - 個別 T 能力值只回傳給 T Editor 與 Administrator；Viewer 與只有 M 編輯權的帳號在員工主檔及既有班表快照都取得空值。
@@ -35,7 +37,7 @@
 
 ## 稽核、Log 與部署
 
-- 登入、權限、設定、人員新增／修改／刪除、需求、匯入、求解、逐格修改、採用、班表封存與下載均寫入 AuditLog；成功資料異動與 AuditLog 同 transaction。
+- 登入、帳號建立／權限／軟刪除、設定、人員新增／修改／刪除、需求、匯入、求解、逐格修改、採用、班表封存與下載均寫入 AuditLog；成功資料異動與 AuditLog 同 transaction。
 - AuditLog 有 UTC、actor snapshot、before/after、SessionId、IP、User-Agent、CorrelationId，且不含密碼、Cookie、token、連線字串或 CSV 原文；應用程式沒有更新／刪除 AuditLog 的路徑。
 - 所有路由頁面右上有鍵盤可操作 `?`；上傳前顯示 UTF-8、5 MB、固定表頭、日期時間、合法值及僅接受 CSV。
 - SQLite 與 SQL Server 都能產生 migration SQL；開發用 SQLite 啟動後採 WAL journal，背景保存班表與 UI 讀取不得互相造成長時間鎖定；Linux 測試環境需另完成 migration、備份／還原、持久化且加密的 Data Protection key ring、反向代理可信清單與一年 Log 保留驗收。
@@ -43,6 +45,7 @@
 ## CSV
 
 - 月班表可 round-trip，且支援 UTF-8、逗號／雙引號 quoted field 與 1–31 號欄。
+- 帳號批次 CSV 支援 UTF-8、逗號與雙引號 quoted field；表頭、欄數、`1`/`0` 權限值與檔內重複帳號均有失敗案例。
 - 需求列 `當月指定R休` 空白視為 0；歷史／候選列會核對實際 R休數；`R休`、`R休*` 與舊格式 `R*[R休]` 可 round-trip，需求月未標示 R* 的 R休會失敗。
 - 非存在日期非空白、非法格值、M/T 欄位混用、T 能力／月班別錯誤會失敗。
 - X 同日與跨午夜時間可讀寫；`X[HH:mm-HH:mm|註記]` 可 round-trip 保留註記；錯誤時區、日期、超過 24 小時或空註記會失敗。

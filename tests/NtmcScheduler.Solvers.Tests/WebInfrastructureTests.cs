@@ -1,4 +1,6 @@
+using System.Text;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -53,6 +55,110 @@ public sealed class WebInfrastructureTests
             new IdentityRedirectManager(navigation).RedirectTo(returnUrl);
             return navigation.Target ?? throw new InvalidOperationException("RedirectTo did not navigate.");
         }
+    }
+
+    [TestMethod]
+    public void UserBatchCsv_ParsesQuotedPasswordsAndWorkspacePermissions()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"ntmc-users-{Guid.NewGuid():N}.csv");
+        try
+        {
+            File.WriteAllText(path,
+                "帳號,一次性密碼,Administrator,三鶯M,三鶯T,環狀M,環狀T\nuser01,\"temp,1234\",0,1,0,1,0\n");
+
+            var command = UserAdministrationService.ParseBatchCsv(path).Single();
+
+            Assert.AreEqual("user01", command.UserName);
+            Assert.AreEqual("temp,1234", command.TemporaryPassword);
+            Assert.IsFalse(command.IsAdministrator);
+            CollectionAssert.AreEquivalent(
+                new[] { WorkspaceCode.M, WorkspaceCode.YM },
+                command.EditableWorkspaces.ToArray());
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public void UserBatchCsv_RejectsInvalidFlagsAndDuplicateUserNames()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"ntmc-users-{Guid.NewGuid():N}.csv");
+        try
+        {
+            File.WriteAllText(path,
+                "帳號,一次性密碼,Administrator,三鶯M,三鶯T,環狀M,環狀T\nuser01,temp1234,true,1,0,0,0\n");
+            Assert.ThrowsExactly<DomainValidationException>(() => UserAdministrationService.ParseBatchCsv(path));
+
+            File.WriteAllText(path,
+                "帳號,一次性密碼,Administrator,三鶯M,三鶯T,環狀M,環狀T\nuser01,temp1234,0,1,0,0,0\nUSER01,temp5678,0,0,1,0,0\n");
+            Assert.ThrowsExactly<DomainValidationException>(() => UserAdministrationService.ParseBatchCsv(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public async Task UserAdministration_BatchCreateAndSoftDeleteAreAtomicAndAudited()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddDbContext<NtmcDbContext>(options => options.UseSqlite(connection));
+        services.AddIdentityCore<ApplicationUser>(options =>
+            {
+                options.Password.RequiredLength = 8;
+                options.Password.RequiredUniqueChars = 2;
+                options.Password.RequireDigit = true;
+                options.Password.RequireLowercase = false;
+                options.Password.RequireUppercase = false;
+                options.Password.RequireNonAlphanumeric = false;
+            })
+            .AddRoles<IdentityRole<Guid>>()
+            .AddEntityFrameworkStores<NtmcDbContext>();
+        await using var provider = services.BuildServiceProvider();
+        await using (var setup = provider.CreateAsyncScope())
+            await setup.ServiceProvider.GetRequiredService<NtmcDbContext>().Database.EnsureCreatedAsync();
+
+        var service = new UserAdministrationService(provider.GetRequiredService<IServiceScopeFactory>());
+        var actor = new ActorContext(Guid.NewGuid(), "admin", true, new HashSet<WorkspaceCode>(), "user-batch-test");
+        await Assert.ThrowsExactlyAsync<DomainValidationException>(() => service.CreateBatchAsync(
+            Csv("帳號,一次性密碼,Administrator,三鶯M,三鶯T,環狀M,環狀T\nuser01,temp1234,0,1,0,0,0\nuser02,short,0,0,1,0,0\n"), actor));
+        Assert.HasCount(0, await service.ListAsync(actor));
+
+        await service.CreateBatchAsync(
+            Csv("帳號,一次性密碼,Administrator,三鶯M,三鶯T,環狀M,環狀T\nuser01,temp1234,0,1,0,1,0\nadmin02,temp5678,1,0,0,0,0\n"), actor);
+        var users = await service.ListAsync(actor);
+
+        Assert.HasCount(2, users);
+        Assert.IsTrue(users.Single(x => x.UserName == "admin02").IsAdministrator);
+        CollectionAssert.AreEquivalent(
+            new[] { WorkspaceCode.M, WorkspaceCode.YM },
+            users.Single(x => x.UserName == "user01").EditableWorkspaces.ToArray());
+        var deleted = users.Single(x => x.UserName == "user01");
+        await service.DeleteAsync(deleted.Id, deleted.RevisionToken, actor);
+        Assert.AreEqual("admin02", (await service.ListAsync(actor)).Single().UserName);
+        await Assert.ThrowsExactlyAsync<DomainValidationException>(() =>
+            service.ResetPasswordAsync(deleted.Id, "temp9999", deleted.RevisionToken, actor));
+        await Assert.ThrowsExactlyAsync<DomainValidationException>(() =>
+            service.UpdateAsync(deleted.Id, false, false, new HashSet<WorkspaceCode>(), deleted.RevisionToken, actor));
+        var administrator = users.Single(x => x.UserName == "admin02");
+        var self = actor with { UserId = administrator.Id };
+        await Assert.ThrowsExactlyAsync<DomainValidationException>(() => service.DeleteAsync(administrator.Id, administrator.RevisionToken, self));
+
+        await using var verification = provider.CreateAsyncScope();
+        var db = verification.ServiceProvider.GetRequiredService<NtmcDbContext>();
+        var deletedEntity = await db.Users.SingleAsync(x => x.Id == deleted.Id);
+        Assert.IsTrue(deletedEntity.IsDeleted);
+        Assert.IsTrue(deletedEntity.IsDisabled);
+        Assert.AreEqual(2, await db.AuditLogs.CountAsync(x => x.Action == "UserCreated"));
+        Assert.AreEqual(1, await db.AuditLogs.CountAsync(x => x.Action == "UserDeleted"));
+
+        static MemoryStream Csv(string text) => new(Encoding.UTF8.GetBytes(text));
     }
 
     [TestMethod]

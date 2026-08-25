@@ -3,6 +3,7 @@
 @attribute [Authorize(Roles = "Administrator")]
 @inject IUserAdministrationService Service
 @inject CurrentActorService CurrentActor
+@inject IJSRuntime JS
 
 <PageTitle>帳號與權限</PageTitle>
 <div class="page-title">
@@ -12,6 +13,7 @@
     </div>
     <PageHelp Title="帳號管理說明">
         <p>系統不開放註冊。一次性密碼至少 8 字元、至少 2 種不同字元，並包含數字；使用者首次登入必須修改，之後可從頁首自行更換。停用帳號會在最長五分鐘內中止既有登入狀態。</p>
+        <p>批次 CSV 必須為 UTF-8、不超過 5 MB，表頭固定為「帳號,一次性密碼,Administrator,三鶯M,三鶯T,環狀M,環狀T」，權限欄只填 1 或 0。任一列失敗時整批不建立；檔案含一次性密碼，請妥善保管並在匯入後刪除。</p>
     </PageHelp>
 </div>
 @if (message is not null)
@@ -29,6 +31,14 @@
     <label><InputCheckbox @bind-Value="newUser.YT"/> 環狀線檢修 T 編輯</label>
     <button type="submit" class="primary" disabled="@isBusy">@(isBusy ? "處理中…" : "建立帳號")</button>
 </EditForm>
+<div class="card">
+    <h2>批次建立帳號</h2>
+    <p>上傳固定表頭的 UTF-8 CSV；權限欄以 1 表示授權、0 表示不授權。</p>
+    <div class="toolbar">
+        <a class="button-link" href="/download/templates/users.csv">下載範本</a>
+        <label class="button-link primary file-upload-button">匯入帳號 CSV<InputFile OnChange="CreateBatchAsync" accept=".csv,text/csv" disabled="@isBusy" aria-label="匯入帳號 CSV"/></label>
+    </div>
+</div>
 <div class="table-scroll">
     <table>
         <thead>
@@ -63,7 +73,7 @@
                     <input aria-label="@row.UserName 新的一次性密碼" type="password" disabled="@isBusy" @bind="row.ResetPassword" autocomplete="new-password"/>
                 </td>
                 <td>
-                    <button disabled="@isBusy" @onclick="() => SaveAsync(row)">儲存權限</button> <button @onclick="() => ResetAsync(row)" disabled="@(isBusy || string.IsNullOrWhiteSpace(row.ResetPassword))">重設密碼</button>
+                    <button disabled="@isBusy" @onclick="() => SaveAsync(row)">儲存權限</button> <button @onclick="() => ResetAsync(row)" disabled="@(isBusy || string.IsNullOrWhiteSpace(row.ResetPassword))">重設密碼</button> <button class="danger" @onclick="() => DeleteAsync(row)" disabled="@isBusy">刪除帳號</button>
                 </td>
             </tr>
         }
@@ -96,6 +106,13 @@
         }, "帳號已建立。");
     }
 
+    private Task CreateBatchAsync(InputFileChangeEventArgs args) => RunAsync(async () =>
+    {
+        await using var stream = args.File.OpenReadStream(5 * 1024 * 1024);
+        await Service.CreateBatchAsync(stream, await CurrentActor.GetAsync());
+        await ReloadAsync();
+    }, "批次帳號已建立。");
+
     private Task SaveAsync(UserRow row) => RunAsync(async () =>
     {
         await Service.UpdateAsync(row.Id, row.IsDisabled, row.IsAdministrator, Workspaces(row.M, row.T, row.YM, row.YT), row.RevisionToken, await CurrentActor.GetAsync());
@@ -108,6 +125,16 @@
         row.ResetPassword = "";
         await ReloadAsync();
     }, "一次性密碼已重設。");
+
+    private async Task DeleteAsync(UserRow row)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"確定要刪除帳號「{row.UserName}」嗎？\n\n刪除後使用者將無法登入，且無法還原。")) return;
+        await RunAsync(async () =>
+        {
+            await Service.DeleteAsync(row.Id, row.RevisionToken, await CurrentActor.GetAsync());
+            await ReloadAsync();
+        }, "帳號已刪除。");
+    }
 
     private async Task RunAsync(Func<Task> action, string success)
     {

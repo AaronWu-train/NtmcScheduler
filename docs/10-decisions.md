@@ -691,3 +691,19 @@
 - 選擇性匯入後，Demand 最近匯入時間無法表示個別員工列是否已匯入；因此移除 `IsLate`、逾期警告與預覽逾期數量，不再由時間比較推導同步狀態。
 - 員工填報頁只顯示填報最後更新時間與操作者；Demand 需求編輯器只顯示本月最近匯入時間與匯入者。
 - `DemandSubmissionImport` 繼續保存最近一次匯入資訊，AuditLog 繼續保存每次匯入事件與已選員工代碼。
+
+## 2026-08-25：Administrator 可以 CSV 批次建立帳號
+
+- 帳號管理頁新增 UTF-8 CSV 批次建立，固定表頭為 `帳號,一次性密碼,Administrator,三鶯M,三鶯T,環狀M,環狀T`；五個權限欄只使用 `1` 與 `0`，不引入另一套角色或權限語意。
+- 批次與單筆建立共用 Identity 密碼政策、首次改密碼、Administrator 角色、M/T/YM/YT 編輯權與每帳號 `UserCreated` 稽核。不建立批次專用的帳號狀態。
+- 整批使用單一 transaction；任一列解析、重複或 Identity 驗證失敗時全部回滾。CSV 原文與密碼不寫入 AuditLog。
+
+## 2026-08-25：帳號刪除為隱藏且不可登入的軟刪除
+
+- Administrator 可刪除其他帳號，不可刪除自己。刪除將 `IsDeleted` 與 `IsDisabled` 設為 true、更新 security stamp，並新增 `UserDeleted` AuditLog。
+- 帳號管理查詢排除軟刪除帳號；第一版不提供還原頁面。Identity 資料、工作區權限與稽核資料保留，原帳號名稱不得重新使用，避免混淆歷史操作者。
+
+## 2026-08-25：批次帳號 CSV 提供空白範本下載
+
+- 帳號管理頁在批次建立區塊提供 `users-template.csv`；內容為 UTF-8 BOM、固定表頭與結尾換行，不放入可能被誤匯入的示範帳號。
+- 範本下載端點只允許 Administrator；匯入格式、密碼政策、權限與 transaction 行為不變。

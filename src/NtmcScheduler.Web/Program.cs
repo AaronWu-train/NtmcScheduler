@@ -279,6 +279,13 @@ app.MapGet("/download/{workspace}/perpetual.csv", async (
     return Results.File(file.Content, "text/csv; charset=utf-8", file.FileName);
 }).RequireAuthorization();
 
+app.MapGet("/download/templates/users.csv", () =>
+    Results.File(
+        Encoding.UTF8.GetBytes('\uFEFF' + "帳號,一次性密碼,Administrator,三鶯M,三鶯T,環狀M,環狀T" + Environment.NewLine),
+        "text/csv; charset=utf-8",
+        "users-template.csv"))
+    .RequireAuthorization(policy => policy.RequireRole("Administrator"));
+
 app.MapGet("/download/templates/{workspace}/{kind}.csv", (string workspace, string kind) =>
 {
     if (!Enum.TryParse<WorkspaceCode>(workspace, true, out var workspaceCode)) return Results.NotFound();
