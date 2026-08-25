@@ -353,6 +353,7 @@ public sealed class WebInfrastructureTests
         await new CommonConfigurationService(database).CreateRevisionAsync(
             [new RestIntervalDto(intervalStart, intervalStart.AddDays(55), [])], [], null, editor);
         await employees.SaveAsync(new SaveEmployeeCommand(null, WorkspaceCode.M, "M001", "王小明", "LB01", null, null, null), editor);
+        await employees.SaveAsync(new SaveEmployeeCommand(null, WorkspaceCode.M, "M002", "陳小華", "LB01", null, null, null), editor);
         var demand = await demands.CreateAsync(WorkspaceCode.M, month, editor);
 
         await submissions.UpdateLeaveRestAsync(WorkspaceCode.M, month, "M001", 2, null, viewer);
@@ -363,23 +364,39 @@ public sealed class WebInfrastructureTests
         var preview = await submissions.PreviewImportAsync(demand.Id, editor);
         Assert.IsTrue(preview.IsValid);
         Assert.AreEqual(1, preview.MatchedEmployeeCount);
+        Assert.AreEqual("M001", preview.Employees.Single().EmployeeCode);
+        await Assert.ThrowsExactlyAsync<DomainValidationException>(() =>
+            submissions.ImportToDemandAsync(demand.Id, [], demand.RevisionToken, editor));
 
         demand = (await demands.GetAsync(WorkspaceCode.M, month, editor))!;
-        demand = await submissions.ImportToDemandAsync(demand.Id, demand.RevisionToken, editor);
+        demand = await submissions.ImportToDemandAsync(demand.Id, ["M001"], demand.RevisionToken, editor);
         var importedEmployee = demand.Employees.Single(x => x.EmployeeCode == "M001");
         Assert.AreEqual(2, importedEmployee.RequestedLeaveRestCount);
         Assert.HasCount(1, importedEmployee.Assignments);
+        var firstImport = await submissions.GetImportStatusAsync(demand.Id, editor);
+        Assert.IsNotNull(firstImport);
+        Assert.AreEqual(editor.UserName, firstImport.ImportedByName);
+
+        demand = await demands.UpdateAssignmentAsync(demand.Id, "M001", month.AddDays(4), "Rest", false,
+            null, null, null, null, null, demand.RevisionToken, editor);
 
         await submissions.UpdateLeaveRestAsync(WorkspaceCode.M, month, "M001", 3, saved.RevisionToken, viewer);
-        var late = await submissions.GetAsync(WorkspaceCode.M, month, "M001", viewer);
-        Assert.IsTrue(late!.IsLate);
+        await submissions.UpdateLeaveRestAsync(WorkspaceCode.M, month, "M002", 4, null, viewer);
+        preview = await submissions.PreviewImportAsync(demand.Id, editor);
+        Assert.HasCount(2, preview.Employees);
 
         var reloaded = (await demands.GetAsync(WorkspaceCode.M, month, editor))!;
         Assert.AreEqual(2, reloaded.Employees.Single(x => x.EmployeeCode == "M001").RequestedLeaveRestCount);
 
-        reloaded = await submissions.ImportToDemandAsync(reloaded.Id, reloaded.RevisionToken, editor);
-        Assert.AreEqual(3, reloaded.Employees.Single(x => x.EmployeeCode == "M001").RequestedLeaveRestCount);
-        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => submissions.ImportToDemandAsync(reloaded.Id, reloaded.RevisionToken, viewer));
+        reloaded = await submissions.ImportToDemandAsync(reloaded.Id, ["M002"], reloaded.RevisionToken, editor);
+        var preservedEmployee = reloaded.Employees.Single(x => x.EmployeeCode == "M001");
+        Assert.AreEqual(2, preservedEmployee.RequestedLeaveRestCount);
+        Assert.AreEqual("Rest", preservedEmployee.Assignments.Single(x => x.Date == month.AddDays(4)).Kind);
+        Assert.AreEqual(4, reloaded.Employees.Single(x => x.EmployeeCode == "M002").RequestedLeaveRestCount);
+        var latestImport = await submissions.GetImportStatusAsync(reloaded.Id, editor);
+        Assert.IsNotNull(latestImport);
+        Assert.IsGreaterThanOrEqualTo(firstImport.ImportedAtUtc, latestImport.ImportedAtUtc);
+        await Assert.ThrowsExactlyAsync<ForbiddenOperationException>(() => submissions.ImportToDemandAsync(reloaded.Id, ["M001"], reloaded.RevisionToken, viewer));
         Assert.AreEqual(2, await database.Context.AuditLogs.CountAsync(x => x.Action == "DemandSubmissionImported"));
         Assert.IsTrue(await database.Context.AuditLogs.AnyAsync(x => x.Action == "EmployeeDemandSubmissionUpdated"));
     }

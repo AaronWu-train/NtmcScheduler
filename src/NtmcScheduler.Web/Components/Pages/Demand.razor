@@ -196,6 +196,10 @@
                 <div>
                     <h2>需求編輯器</h2>
                     <p>直接編輯 demand.csv 的人員欄位與每日需求。</p>
+                    @if (submissionImport is not null)
+                    {
+                        <p>員工填報最近匯入：@Taipei(submissionImport.ImportedAtUtc)　匯入者：@submissionImport.ImportedByName</p>
+                    }
                 </div>
                 <div class="toolbar">
                     <a class="button-link" href="/download/templates/@Workspace.ToLowerInvariant()/demand.csv">下載需求範本</a>
@@ -245,11 +249,22 @@
                 {
                     <p>@difference</p>
                 }
+                @foreach (var employee in submissionPreview.Employees)
+                {
+                    <div>
+                        <label>
+                            <input type="checkbox"
+                                   checked="@selectedSubmissionEmployees.Contains(employee.EmployeeCode)"
+                                   @onchange="args => SetSubmissionEmployeeSelected(employee.EmployeeCode, args.Value is true)"/>
+                            @employee.Description
+                        </label>
+                    </div>
+                }
                 <div class="step-actions">
                     <button disabled="@isBusy" @onclick="CancelSubmissionPreview">取消</button>
                     @if (submissionPreview.IsValid)
                     {
-                        <button class="primary" disabled="@isBusy" @onclick="ConfirmSubmissionImportAsync">@(isBusy ? "處理中…" : "確認匯入員工填報")</button>
+                        <button class="primary" disabled="@(isBusy || selectedSubmissionEmployees.Count == 0)" @onclick="ConfirmSubmissionImportAsync">@(isBusy ? "處理中…" : "確認匯入員工填報")</button>
                     }
                 </div>
             </section>
@@ -564,6 +579,8 @@
     private byte[]? pendingDemand;
     private ImportPreviewDto? preview;
     private SubmissionImportPreviewDto? submissionPreview;
+    private DemandSubmissionImportDto? submissionImport;
+    private readonly HashSet<string> selectedSubmissionEmployees = new(StringComparer.Ordinal);
     private bool isBusy;
     private int solveTimeLimitSeconds = 300;
     private int solveWorkerCount = 8;
@@ -603,6 +620,7 @@
             selectedMonth = "new";
             demand = null;
             configuration = null;
+            submissionImport = null;
             previousVersion = null;
             previousOptions = [];
             runs = [];
@@ -626,6 +644,7 @@
         {
             demand = null;
             configuration = null;
+            submissionImport = null;
             previousVersion = null;
             previousOptions = [];
             runs = [];
@@ -645,6 +664,7 @@
         var actor = await CurrentActor.GetAsync();
         demand = await DemandService.GetAsync(workspaceCode, Month(), actor);
         configuration = demand is null ? null : await ConfigurationService.GetRevisionAsync(demand.ConfigurationRevisionId, actor);
+        submissionImport = demand is null ? null : await SubmissionService.GetImportStatusAsync(demand.Id, actor);
         globalPerpetual = workspaceCode.IsStation() ? await PerpetualService.GetAsync(workspaceCode, actor) : null;
         previousOptions = demand is null ? [] : await ScheduleService.ListVersionsAsync(workspaceCode, demand.Month.AddMonths(-1), actor);
         previousVersion = demand?.PreviousScheduleVersionId is { } selectedId
@@ -679,6 +699,7 @@
             availableMonths = await DemandService.ListMonthsAsync(workspaceCode, actor);
             demand = null;
             configuration = null;
+            submissionImport = null;
             previousVersion = null;
             previousOptions = [];
             runs = [];
@@ -909,14 +930,29 @@
     private async Task PreviewSubmissionImportAsync() => await RunUiAsync(async () =>
     {
         submissionPreview = await SubmissionService.PreviewImportAsync(demand!.Id, await CurrentActor.GetAsync());
+        selectedSubmissionEmployees.Clear();
+        selectedSubmissionEmployees.UnionWith(submissionPreview.Employees.Select(x => x.EmployeeCode));
     }, "已產生填報匯入預覽。");
 
-    private void CancelSubmissionPreview() => submissionPreview = null;
+    private void CancelSubmissionPreview()
+    {
+        submissionPreview = null;
+        selectedSubmissionEmployees.Clear();
+    }
+
+    private void SetSubmissionEmployeeSelected(string employeeCode, bool selected)
+    {
+        if (selected) selectedSubmissionEmployees.Add(employeeCode);
+        else selectedSubmissionEmployees.Remove(employeeCode);
+    }
 
     private async Task ConfirmSubmissionImportAsync() => await RunUiAsync(async () =>
     {
-        demand = await SubmissionService.ImportToDemandAsync(demand!.Id, demand.RevisionToken, await CurrentActor.GetAsync());
+        var actor = await CurrentActor.GetAsync();
+        demand = await SubmissionService.ImportToDemandAsync(demand!.Id, selectedSubmissionEmployees, demand.RevisionToken, actor);
+        submissionImport = await SubmissionService.GetImportStatusAsync(demand.Id, actor);
         submissionPreview = null;
+        selectedSubmissionEmployees.Clear();
         InitializeEmployeeEdits();
     }, "員工填報已匯入 Demand。");
 

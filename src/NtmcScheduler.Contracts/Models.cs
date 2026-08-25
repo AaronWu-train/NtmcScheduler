@@ -216,7 +216,6 @@ public sealed record EmployeeDemandSubmissionDto(
     Guid RevisionToken,
     DateTimeOffset UpdatedAtUtc,
     string UpdatedByName,
-    bool IsLate,
     IReadOnlyList<EmployeeDemandSubmissionAssignmentDto> Assignments);
 
 public sealed record DemandSubmissionImportDto(
@@ -224,13 +223,17 @@ public sealed record DemandSubmissionImportDto(
     DateTimeOffset ImportedAtUtc,
     string ImportedByName);
 
+public sealed record SubmissionImportEmployeePreviewDto(
+    string EmployeeCode,
+    string Description);
+
 public sealed record SubmissionImportPreviewDto(
     bool IsValid,
     IReadOnlyList<string> Errors,
     IReadOnlyList<string> Differences,
+    IReadOnlyList<SubmissionImportEmployeePreviewDto> Employees,
     int SubmissionCount,
-    int MatchedEmployeeCount,
-    int LateSubmissionCount);
+    int MatchedEmployeeCount);
 
 public sealed record ScheduleVersionDto(
     Guid Id,

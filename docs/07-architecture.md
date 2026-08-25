@@ -47,7 +47,7 @@
 | `ConfigurationRevision` | 不可變的 56 日區間、國定假日、非常態班型與 M/T/YM/YT 各三班起訖時間版本；`CurrentConfiguration` 指向目前版 |
 | `DemandDraft`／`DemandEmployee`／`DemandAssignment` | 每單位每月一份草稿、月份人員快照、R／R1 軟目標；M/YM 另存各自固定站點的群組、班位上下限與外援等級快照；並含 T 月班別、期初額度、R\* 與 X |
 | `EmployeeDemandSubmission`／`EmployeeDemandSubmissionAssignment` | 每工作區／月份／員工一份目前填報；任何登入者可代填，AuditLog 保留每次覆蓋 |
-| `DemandSubmissionImport` | 記錄 Demand 最近一次從填報匯入的時間與操作者；重複匯入時更新此紀錄；填報頁以之判斷晚於截止的填報 |
+| `DemandSubmissionImport` | 記錄 Demand 最近一次從填報匯入的時間與操作者；重複匯入時更新此紀錄，需求編輯器只作資訊顯示 |
 | `UploadedPreviousSchedule` | 解析後的上月班表 typed JSON，不保存原始上傳檔；僅屬該 Demand，不建立 `ScheduleVersion` |
 | `MPerpetualScheduleTemplate` | M 與 YM 各自一份全域 56 日萬年班表；Demand 可另存暫用模板快照，兩個工作區以 `Workspace` 隔離 |
 | `ScheduleRun` | 排班請求、狀態、完整 typed input JSON（人員、事件、歷史、設定、seed、程式版本）與 SHA-256 hash |

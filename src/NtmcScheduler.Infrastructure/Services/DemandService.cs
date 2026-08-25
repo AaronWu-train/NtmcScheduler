@@ -515,7 +515,8 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         await SaveDemandChangesAsync(db, cancellationToken);
     }
 
-    public async Task<DemandDraftDto> ImportEmployeeSubmissionsAsync(Guid demandId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default)
+    public async Task<DemandDraftDto> ImportEmployeeSubmissionsAsync(Guid demandId, IReadOnlyCollection<string> employeeCodes, Guid revisionToken,
+        ActorContext actor, CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var demand = await db.DemandDrafts
@@ -524,13 +525,17 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
             ?? throw new DomainValidationException("找不到本月需求。");
         ServiceSupport.RequireEditor(actor, demand.Workspace);
         if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
+        var selectedCodes = employeeCodes.Where(x => !string.IsNullOrWhiteSpace(x)).ToHashSet(StringComparer.Ordinal);
+        if (selectedCodes.Count == 0) throw new DomainValidationException("至少選擇一位要匯入的員工。");
+        var demandByCode = demand.Employees.ToDictionary(x => x.EmployeeCode, StringComparer.Ordinal);
+        if (selectedCodes.Any(code => !demandByCode.ContainsKey(code)))
+            throw new DomainValidationException("選取的員工不在本月 Demand。");
         var submissions = await db.EmployeeDemandSubmissions.AsNoTracking()
             .Include(x => x.Assignments)
-            .Where(x => x.Workspace == demand.Workspace && x.Month == demand.Month)
+            .Where(x => x.Workspace == demand.Workspace && x.Month == demand.Month && selectedCodes.Contains(x.EmployeeCode))
             .ToListAsync(cancellationToken);
-        if (submissions.Count == 0) throw new DomainValidationException("目前沒有任何員工填報可匯入。");
+        if (submissions.Count != selectedCodes.Count) throw new DomainValidationException("選取的員工填報不存在或不屬於本月。");
 
-        var demandByCode = demand.Employees.ToDictionary(x => x.EmployeeCode, StringComparer.Ordinal);
         var importedEmployees = 0;
         var importedAssignments = 0;
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
@@ -578,7 +583,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         }
         Touch(demand, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "DemandSubmissionImported", demand.Workspace, "DemandDraft", demand.Id, null,
-            new { demand.Month, ImportedEmployees = importedEmployees, ImportedAssignments = importedAssignments });
+            new { demand.Month, EmployeeCodes = selectedCodes.Order().ToArray(), ImportedEmployees = importedEmployees, ImportedAssignments = importedAssignments });
         await SaveDemandChangesAsync(db, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return await DemandDtoAsync(demand.Id, cancellationToken);

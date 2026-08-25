@@ -48,10 +48,6 @@
                 @if (submission is not null)
                 {
                     <p>最後更新：@Taipei(submission.UpdatedAtUtc)　操作者：@submission.UpdatedByName</p>
-                    @if (submission.IsLate)
-                    {
-                        <p class="error-text">此填報晚於 Demand 匯入截止，不會再套用至正式 Demand。</p>
-                    }
                 }
             </div>
         </div>

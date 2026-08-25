@@ -48,7 +48,7 @@ public interface IDemandService
     Task ClearPerpetualScheduleAsync(Guid demandId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task UseEmptyPerpetualScheduleAsync(Guid demandId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task<PerpetualScheduleFileDto> ExportPerpetualScheduleAsync(Guid demandId, ActorContext actor, CancellationToken cancellationToken = default);
-    Task<DemandDraftDto> ImportEmployeeSubmissionsAsync(Guid demandId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<DemandDraftDto> ImportEmployeeSubmissionsAsync(Guid demandId, IReadOnlyCollection<string> employeeCodes, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
 }
 
 public interface IEmployeeDemandSubmissionService
@@ -58,7 +58,7 @@ public interface IEmployeeDemandSubmissionService
     Task<EmployeeDemandSubmissionDto> UpdateAssignmentAsync(WorkspaceCode workspace, DateOnly month, string employeeCode, DateOnly date, string? kind, bool requestedRest, string? station, string? shift, DateTimeOffset? eventStart, DateTimeOffset? eventEnd, string? eventDescription, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task<DemandSubmissionImportDto?> GetImportStatusAsync(Guid demandDraftId, ActorContext actor, CancellationToken cancellationToken = default);
     Task<SubmissionImportPreviewDto> PreviewImportAsync(Guid demandDraftId, ActorContext actor, CancellationToken cancellationToken = default);
-    Task<DemandDraftDto> ImportToDemandAsync(Guid demandDraftId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<DemandDraftDto> ImportToDemandAsync(Guid demandDraftId, IReadOnlyCollection<string> employeeCodes, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
 }
 
 public interface IScheduleRunService
