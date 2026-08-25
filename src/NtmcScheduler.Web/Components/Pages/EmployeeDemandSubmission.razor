@@ -125,7 +125,7 @@
 @if (editingDate is not null)
 {
     <div class="modal-backdrop"></div>
-    <section class="card modal">
+    <section class="editor-dialog" role="dialog" aria-modal="true">
             <h2>編輯 X（@editingDate.Value.ToString("yyyy-MM-dd")）</h2>
             <label>開始<InputText type="datetime-local" @bind-Value="cellEditStart"/></label>
             <label>結束<InputText type="datetime-local" @bind-Value="cellEditEnd"/></label>
