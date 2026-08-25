@@ -24,7 +24,7 @@
 
 ### 2.1 帳號批次建立
 
-- Administrator 可在帳號管理頁下載空白範本，再上傳 UTF-8 CSV 批次建立帳號。範本為含 UTF-8 BOM 的 `users-template.csv`，只含固定表頭，不放示範帳號。固定表頭為
+- Administrator 可在帳號管理頁下載範本，再上傳 UTF-8 CSV 批次建立帳號。範本為含 UTF-8 BOM 的 `users-template.csv`，包含固定表頭與一筆可供改寫的合法範例帳號。固定表頭為
   `帳號,一次性密碼,Administrator,三鶯M,三鶯T,環狀M,環狀T`，後五欄只接受 `1`（授權）或 `0`（不授權）。
 - 匯入沿用單筆建立的帳號長度、Identity 密碼政策、首次登入強制改密碼、角色、工作區權限與稽核規則。檔內或資料庫已有同名帳號時失敗。
 - 整份 CSV 在單一 transaction 內建立；任一列失敗時全部回滾，不保留部分帳號。CSV 原文與一次性密碼不寫入 AuditLog。

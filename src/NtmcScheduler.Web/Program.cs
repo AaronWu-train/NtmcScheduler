@@ -13,8 +13,8 @@ using Microsoft.EntityFrameworkCore;
 using NtmcScheduler.Infrastructure;
 using NtmcScheduler.Contracts;
 using NtmcScheduler.Infrastructure.Data;
-using NtmcScheduler.Infrastructure.Csv;
 using NtmcScheduler.Infrastructure.Services;
+using NtmcScheduler.Web;
 using NtmcScheduler.Web.Components;
 using NtmcScheduler.Web.Services;
 
@@ -281,7 +281,7 @@ app.MapGet("/download/{workspace}/perpetual.csv", async (
 
 app.MapGet("/download/templates/users.csv", () =>
     Results.File(
-        Encoding.UTF8.GetBytes('\uFEFF' + "帳號,一次性密碼,Administrator,三鶯M,三鶯T,環狀M,環狀T" + Environment.NewLine),
+        CsvTemplates.Users(),
         "text/csv; charset=utf-8",
         "users-template.csv"))
     .RequireAuthorization(policy => policy.RequireRole("Administrator"));
@@ -289,19 +289,10 @@ app.MapGet("/download/templates/users.csv", () =>
 app.MapGet("/download/templates/{workspace}/{kind}.csv", (string workspace, string kind) =>
 {
     if (!Enum.TryParse<WorkspaceCode>(workspace, true, out var workspaceCode)) return Results.NotFound();
-    var header = kind.ToLowerInvariant() switch
-    {
-        "employees" when workspaceCode.IsStation() => "ID,姓名,所屬車站,月中開始排班日",
-        "employees" when workspaceCode.IsMaintenance() => "ID,姓名,所屬,月中開始排班日,能力",
-        "demand" or "previous" => ScheduleCsv.MonthlyDownloadHeader(workspaceCode),
-        "perpetual" when workspaceCode.IsStation() => ScheduleCsv.MPerpetualHeader,
-        "rest-intervals" => "區間開始日期,區間結束日期,國定假日日期",
-        "non-standard-shifts" => "班型,時間,代碼",
-        _ => null
-    };
-    return header is null
+    var content = CsvTemplates.Create(workspaceCode, kind);
+    return content is null
         ? Results.NotFound()
-        : Results.File(Encoding.UTF8.GetBytes('\uFEFF' + header + Environment.NewLine), "text/csv; charset=utf-8", $"{workspaceCode.ToString().ToLowerInvariant()}-{kind}-template.csv");
+        : Results.File(content, "text/csv; charset=utf-8", $"{workspaceCode.ToString().ToLowerInvariant()}-{kind}-template.csv");
 }).RequireAuthorization();
 
 app.MapStaticAssets();

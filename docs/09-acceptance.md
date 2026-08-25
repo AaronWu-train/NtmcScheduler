@@ -9,7 +9,7 @@
 ## Web 身分與授權
 
 - 不存在註冊、忘記密碼與電子郵件重設路徑；管理者 CLI 建立首位管理者，管理頁建立其餘帳號與一次性密碼。
-- Administrator 可下載含 UTF-8 BOM 與固定表頭的 `users-template.csv`，並以同格式 CSV 批次建立帳號；範本不含示範帳號，下載只允許 Administrator。Administrator 與 M/T/YM/YT 權限欄只接受 `1`/`0`。合法檔案逐帳號產生不含密碼的 `UserCreated` AuditLog；任一列無效、重複或不符密碼政策時整批回滾。
+- Administrator 可下載含 UTF-8 BOM、固定表頭與一筆合法範例列的 `users-template.csv`，並以同格式 CSV 批次建立帳號；下載只允許 Administrator。Administrator 與 M/T/YM/YT 權限欄只接受 `1`/`0`。合法檔案逐帳號產生不含密碼的 `UserCreated` AuditLog；任一列無效、重複或不符密碼政策時整批回滾。
 - Administrator 可軟刪除其他帳號，不可刪除自己。刪除後帳號不出現於管理列表、無法登入，既有登入狀態最長五分鐘內失效；Identity 列、帳號名稱與既有 AuditLog 保留，並新增不含密碼的 `UserDeleted` AuditLog。
 - 首次登入強制修改至少 8 字元、至少 2 種不同字元且包含數字的密碼；之後可從頁首「修改密碼」自行更換，須驗證目前密碼。五次失敗鎖定 15 分鐘，另以帳號與 IP 做登入限流，錯誤訊息不揭露帳號是否存在。正式上線前須重新檢視並提高密碼政策。
 - Viewer、M Editor、T Editor、YM Editor、複數工作區 Editor 與 Administrator 的頁面及 application service 寫入授權一致；既有 M Editor 不自動取得 YM 權限，猜測資源 GUID 不可越權修改。
@@ -19,6 +19,7 @@
 ## 共同設定、人員與 Demand
 
 - 共同設定各區間恰為 56 日且連續；假日合法，儲存建立不可變版本，current pointer 使用 revision token，舊 Demand／班表仍可讀取原快照。
+- 所有可下載的 CSV 匯入範本都含 UTF-8 BOM、固定表頭與至少一筆欄數正確且可解析的合法範例資料列。
 - M/T/YM/YT 員工主檔可新增、修改與刪除；刪除後可用相同 ID 重新建立回任人員，刪除前內容保存在 AuditLog，既有月份不因主檔異動而改變。M 僅接受 LB01–LB12，YM 僅接受 Y06–Y19，T/YT 能力為 1–5。
 - 每單位月份僅一份 Demand 草稿；重開仍保留，所有寫入以 revision token 拒絕陳舊更新。Demand 可刪除並以同月份重建；既有求解輸入快照、求解紀錄與班表保持可讀且不受影響。
 - 任何已登入者可在 M/T 填報頁代填任一員工的 R*、R休 上限、固定班與 X；選取已有填報的員工可讀取並覆蓋，AuditLog 含操作者與被填員工。Editor 在 Demand 寬表預覽填報時，所有可匯入的員工列預設全部勾選，並可逐列調整；確認後只覆蓋已勾選員工的 R休 上限與日格，未勾選員工的正式 Demand 內容保持不變，並可重複預覽與匯入。填報頁只顯示該員工填報的最後更新時間與操作者；需求編輯器只顯示本月最近匯入時間與匯入者，不顯示逾期或已同步狀態。

@@ -13,6 +13,7 @@ using NtmcScheduler.Infrastructure.Data;
 using NtmcScheduler.Infrastructure.Background;
 using NtmcScheduler.Infrastructure.Csv;
 using NtmcScheduler.Infrastructure.Services;
+using NtmcScheduler.Web;
 using NtmcScheduler.Web.Services;
 
 namespace NtmcScheduler.Solvers.Tests;
@@ -78,6 +79,61 @@ public sealed class WebInfrastructureTests
         finally
         {
             File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public void DownloadTemplates_ContainBomAndAParsableExampleRow()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"ntmc-templates-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var users = CsvTemplates.Users();
+            AssertTemplate(users);
+            var usersPath = Write("users.csv", users);
+            Assert.HasCount(1, UserAdministrationService.ParseBatchCsv(usersPath));
+
+            foreach (var workspace in Enum.GetValues<WorkspaceCode>())
+            {
+                foreach (var kind in new[] { "employees", "demand", "previous", "rest-intervals", "non-standard-shifts" })
+                {
+                    var content = CsvTemplates.Create(workspace, kind);
+                    Assert.IsNotNull(content, $"{workspace}/{kind}");
+                    AssertTemplate(content);
+                    var path = Write($"{workspace}-{kind}.csv", content);
+                    if (kind == "demand" || kind == "previous")
+                        Assert.HasCount(1, ScheduleCsv.ReadMonthly(path, new(2026, 9, 1), historical: kind == "previous", workspace: workspace).Employees);
+                    if (kind == "rest-intervals") Assert.HasCount(1, ScheduleCsv.ReadRestIntervals(path));
+                    if (kind == "non-standard-shifts") Assert.HasCount(1, ScheduleCsv.ReadNonStandardShifts(path).Shifts);
+                }
+
+                if (!workspace.IsStation()) continue;
+                var perpetual = CsvTemplates.Create(workspace, "perpetual");
+                Assert.IsNotNull(perpetual);
+                AssertTemplate(perpetual);
+                Assert.HasCount(1, ScheduleCsv.ReadMPerpetualSchedule(Write($"{workspace}-perpetual.csv", perpetual), workspace).Patterns);
+            }
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+
+        string Write(string fileName, byte[] content)
+        {
+            var path = Path.Combine(root, fileName);
+            File.WriteAllBytes(path, content);
+            return path;
+        }
+
+        static void AssertTemplate(byte[] content)
+        {
+            CollectionAssert.AreEqual(new byte[] { 0xef, 0xbb, 0xbf }, content[..3]);
+            var lines = Encoding.UTF8.GetString(content).TrimStart('\uFEFF')
+                .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+            Assert.IsGreaterThanOrEqualTo(2, lines.Length);
+            Assert.HasCount(lines[0].Split(',').Length, lines[1].Split(','));
         }
     }
 
