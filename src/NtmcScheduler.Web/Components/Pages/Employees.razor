@@ -29,7 +29,7 @@
             <p class="format-help">
                 <strong>固定表頭：</strong>@EmployeeCsvColumns
             </p>
-            <p class="format-help">UTF-8（可含 BOM），最大 5 MB。既有人員的月中開始排班日可留空；有填寫時使用 yyyy-MM-dd。匯入會新增或更新員工，未出現的既有員工不會刪除。</p>
+            <p class="format-help">UTF-8，最大 5 MB。既有人員的月中開始排班日可留空；有填寫時使用 yyyy-MM-dd。匯入會新增或更新員工，未出現的既有員工不會刪除。</p>
             <div class="toolbar">
                 <a class="button-link" href="/download/templates/@Workspace/employees.csv">下載 @workspaceCode.DisplayName() 範本</a>
                 <label class="button-link primary file-upload-button">匯入員工 CSV<InputFile OnChange="PreviewImportAsync" accept=".csv,text/csv" aria-label="匯入員工 CSV" disabled="@isBusy"/></label>

@@ -37,12 +37,12 @@
 
 - 登入、權限、設定、人員新增／修改／刪除、需求、匯入、求解、逐格修改、採用、班表封存與下載均寫入 AuditLog；成功資料異動與 AuditLog 同 transaction。
 - AuditLog 有 UTC、actor snapshot、before/after、SessionId、IP、User-Agent、CorrelationId，且不含密碼、Cookie、token、連線字串或 CSV 原文；應用程式沒有更新／刪除 AuditLog 的路徑。
-- 所有路由頁面右上有鍵盤可操作 `?`；上傳前顯示 UTF-8/BOM、5 MB、固定表頭、日期時間、合法值及僅接受 CSV。
+- 所有路由頁面右上有鍵盤可操作 `?`；上傳前顯示 UTF-8、5 MB、固定表頭、日期時間、合法值及僅接受 CSV。
 - SQLite 與 SQL Server 都能產生 migration SQL；開發用 SQLite 啟動後採 WAL journal，背景保存班表與 UI 讀取不得互相造成長時間鎖定；Linux 測試環境需另完成 migration、備份／還原、持久化且加密的 Data Protection key ring、反向代理可信清單與一年 Log 保留驗收。
 
 ## CSV
 
-- 月班表可 round-trip，且支援 UTF-8 BOM、逗號／雙引號 quoted field 與 1–31 號欄。
+- 月班表可 round-trip，且支援 UTF-8、逗號／雙引號 quoted field 與 1–31 號欄。
 - 需求列 `當月指定R休` 空白視為 0；歷史／候選列會核對實際 R休數；`R休`、`R休*` 與舊格式 `R*[R休]` 可 round-trip，需求月未標示 R* 的 R休會失敗。
 - 非存在日期非空白、非法格值、M/T 欄位混用、T 能力／月班別錯誤會失敗。
 - X 同日與跨午夜時間可讀寫；`X[HH:mm-HH:mm|註記]` 可 round-trip 保留註記；錯誤時區、日期、超過 24 小時或空註記會失敗。
