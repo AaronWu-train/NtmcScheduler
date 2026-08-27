@@ -16,8 +16,8 @@ public static class CsvTemplates
     public static byte[]? Create(WorkspaceCode workspace, string kind) => kind.ToLowerInvariant() switch
     {
         "employees" => Employees(workspace),
-        "demand" => ScheduleCsv.WriteMonthlyDownload(Monthly(workspace, historical: false), workspace),
-        "previous" => ScheduleCsv.WriteMonthlyDownload(Monthly(workspace, historical: true), workspace),
+        "demand" => ScheduleCsv.WriteMonthlyTemplate(Monthly(workspace, historical: false), workspace, historical: false),
+        "previous" => ScheduleCsv.WriteMonthlyTemplate(Monthly(workspace, historical: true), workspace, historical: true),
         "perpetual" when workspace.IsStation() => WithBom(ScheduleCsv.WriteMPerpetualSchedule(Perpetual(workspace), workspace)),
         "rest-intervals" => Text(
             "區間開始日期,區間結束日期,國定假日日期",

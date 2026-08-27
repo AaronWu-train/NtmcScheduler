@@ -359,6 +359,42 @@ public sealed class TSolverTests
     }
 
     [TestMethod]
+    public void MonthlyTemplateHeaders_OmitFieldsUsersDoNotFill()
+    {
+        string[] calculated = ["當月R", "當月R1", "月底區間累計R", "月底區間累計R1", "本月班數"];
+
+        CollectionAssert.IsSubsetOf(calculated, ScheduleCsv.MonthlyHeaders.Except(ScheduleCsv.MonthlyTemplateHeaders(WorkspaceCode.T, false)).ToArray());
+        Assert.IsTrue(ScheduleCsv.MonthlyTemplateHeaders(WorkspaceCode.T, false).Contains("能力"));
+        Assert.IsTrue(ScheduleCsv.MonthlyTemplateHeaders(WorkspaceCode.T, false).Contains("當月指定R休"));
+
+        var previous = ScheduleCsv.MonthlyTemplateHeaders(WorkspaceCode.T, true);
+        foreach (var header in calculated.Append("當月指定R休").Append("能力"))
+            Assert.IsFalse(previous.Contains(header), header);
+        Assert.IsTrue(previous.Contains("T月班別"));
+    }
+
+    [TestMethod]
+    public void HistoricalTemplate_AcceptsAnyCanonicalCombinationOfOmittedLegacyFields()
+    {
+        var schedule = ValidInput().PreviousMonth;
+        var headers = ScheduleCsv.MonthlyTemplateHeaders(WorkspaceCode.T, true).ToList();
+        headers.Insert(4, "能力");
+        var fullRow = ScheduleCsv.MonthlyRow(schedule, schedule.Employees[0]);
+        var values = headers.Select(header => fullRow[ScheduleCsv.MonthlyHeaders.ToList().IndexOf(header)]);
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, string.Join(',', headers) + Environment.NewLine + string.Join(',', values));
+            Assert.HasCount(1, ScheduleCsv.ReadMonthly(path, schedule.MonthStart, historical: true, workspace: WorkspaceCode.T,
+                ignoreDerivedHistoricalFields: true).Employees);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
     public void Csv_NonStandardShiftNameAndCodeBecomeEvents()
     {
         var root = Path.Combine(Path.GetTempPath(), $"ntmc-{Guid.NewGuid():N}");

@@ -29,17 +29,20 @@ public static partial class ScheduleCsv
     public static string MonthlyDownloadHeader(WorkspaceCode workspace) => Join(MonthlyDownloadHeaders(workspace));
     public static IReadOnlyList<string> MonthlyDownloadHeaders(WorkspaceCode workspace) =>
         Headers.Where(header => !IsExcludedFromDownload(header, workspace)).ToArray();
+    public static IReadOnlyList<string> MonthlyTemplateHeaders(WorkspaceCode workspace, bool historical) =>
+        Headers.Where(header => !IsExcludedFromTemplate(header, workspace, historical)).ToArray();
     public static string MPerpetualHeader => Join(["萬年班表", .. Enumerable.Range(1, 56).Select(day => day.ToString(CultureInfo.InvariantCulture))]);
 
     private static readonly TimeSpan TaipeiOffset = TimeSpan.FromHours(8);
 
-    public static MonthlySchedule ReadMonthly(string path, DateOnly monthStart, NonStandardShiftTable? nonStandardShifts = null, bool historical = false, WorkspaceCode workspace = WorkspaceCode.M)
+    public static MonthlySchedule ReadMonthly(string path, DateOnly monthStart, NonStandardShiftTable? nonStandardShifts = null, bool historical = false,
+        WorkspaceCode workspace = WorkspaceCode.M, bool ignoreDerivedHistoricalFields = false)
     {
         if (monthStart.Day != 1) throw new ScheduleCsvException(nameof(monthStart), "Month must start on day one.");
         var rows = ReadRows(path);
         if (rows.Count == 0) throw new ScheduleCsvException(path, "CSV is empty.");
         var header = IgnoreTrailingEmptyFields(rows[0], Headers.Length);
-        if (!TryResolveHeaderFormat(header, out var sourceHeaders))
+        if (!TryResolveHeaderFormat(header, workspace, historical, out var sourceHeaders))
             throw new ScheduleCsvException(path, "Monthly schedule headers do not match the required format.");
         var hasPerpetualSchedule = sourceHeaders.Contains("萬年班表");
         var fieldCount = sourceHeaders.Count;
@@ -52,7 +55,8 @@ public static partial class ScheduleCsv
             if (row.All(string.IsNullOrWhiteSpace)) continue;
             row = IgnoreTrailingEmptyFields(row, fieldCount);
             if (row.Length != fieldCount) throw new ScheduleCsvException($"{path}:{rowNumber + 1}", $"Expected {fieldCount} fields but found {row.Length}.");
-            employees.Add(ParseEmployee(NormalizeMonthlyRow(sourceHeaders, row), rowNumber + 1, monthStart, nonStandardShiftLookup, historical, hasPerpetualSchedule, workspace));
+            employees.Add(ParseEmployee(NormalizeMonthlyRow(sourceHeaders, row), rowNumber + 1, monthStart, nonStandardShiftLookup,
+                historical, hasPerpetualSchedule, workspace, ignoreDerivedHistoricalFields));
         }
         return new(monthStart, employees);
     }
@@ -77,6 +81,19 @@ public static partial class ScheduleCsv
         return Encoding.UTF8.GetBytes('\uFEFF' + string.Join(Environment.NewLine, lines) + Environment.NewLine);
     }
 
+    public static byte[] WriteMonthlyTemplate(MonthlySchedule schedule, WorkspaceCode workspace, bool historical)
+    {
+        var included = MonthlyTemplateHeaders(workspace, historical).ToHashSet(StringComparer.Ordinal);
+        var indexes = Headers.Select((header, index) => (header, index)).Where(x => included.Contains(x.header)).Select(x => x.index).ToArray();
+        var lines = new List<string> { Join(indexes.Select(index => Headers[index])) };
+        foreach (var employee in schedule.Employees)
+        {
+            var row = MonthlyRow(schedule, employee);
+            lines.Add(Join(indexes.Select(index => row[index])));
+        }
+        return Encoding.UTF8.GetBytes('\uFEFF' + string.Join(Environment.NewLine, lines) + Environment.NewLine);
+    }
+
     public static IReadOnlyList<string> MonthlyRow(MonthlySchedule schedule, EmployeeMonthlySchedule employee)
     {
         var values = new List<string>
@@ -91,12 +108,13 @@ public static partial class ScheduleCsv
             employee.OpeningUsage?.SpecialRest.ToString(CultureInfo.InvariantCulture) ?? ""
         };
         values.AddRange(Enumerable.Range(1, 31).Select(day => CellText(schedule, employee, day)));
-        var monthlyUsage = employee.ClosingUsage is null ? null : CountRestUsage(employee.Assignments.Values);
+        var completed = employee.ClosingUsage is not null || employee.NormalWorkCount is not null;
+        var monthlyUsage = completed ? CountRestUsage(employee.Assignments.Values) : null;
         values.Add(monthlyUsage?.Rest.ToString(CultureInfo.InvariantCulture) ?? "");
         values.Add(monthlyUsage?.SpecialRest.ToString(CultureInfo.InvariantCulture) ?? "");
-        values.Add((employee.ClosingUsage is null
-            ? employee.RequestedLeaveRestCount
-            : employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.LeaveRest))?.ToString(CultureInfo.InvariantCulture) ?? "");
+        values.Add((completed
+            ? employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.LeaveRest)
+            : employee.RequestedLeaveRestCount)?.ToString(CultureInfo.InvariantCulture) ?? "");
         values.Add(employee.ClosingUsage?.Rest.ToString(CultureInfo.InvariantCulture) ?? "");
         values.Add(employee.ClosingUsage?.SpecialRest.ToString(CultureInfo.InvariantCulture) ?? "");
         values.Add(employee.NormalWorkCount?.ToString(CultureInfo.InvariantCulture) ?? "");
@@ -199,14 +217,15 @@ public static partial class ScheduleCsv
         IReadOnlyDictionary<string, NonStandardShift> nonStandardShifts,
         bool historical,
         bool hasPerpetualSchedule,
-        WorkspaceCode workspace)
+        WorkspaceCode workspace,
+        bool ignoreDerivedHistoricalFields)
     {
         var field = $"row {rowNumber}";
-        var ability = NullableInt(row[4], $"{field} 能力");
+        var ability = ignoreDerivedHistoricalFields ? null : NullableInt(row[4], $"{field} 能力");
         var monthlyShift = NullableShift(row[5], $"{field} T月班別");
-        var monthlyUsage = Usage(row[39], row[40], $"{field} monthly");
-        var monthlyLeaveRest = NullableInt(row[41], $"{field} 當月指定R休");
-        var closingUsage = Usage(row[42], row[43], $"{field} closing");
+        var monthlyUsage = ignoreDerivedHistoricalFields ? null : Usage(row[39], row[40], $"{field} monthly");
+        var monthlyLeaveRest = ignoreDerivedHistoricalFields ? null : NullableInt(row[41], $"{field} 當月指定R休");
+        var closingUsage = ignoreDerivedHistoricalFields ? null : Usage(row[42], row[43], $"{field} closing");
         var employee = new EmployeeMonthlySchedule
         {
             EmployeeId = row[0].Trim(),
@@ -220,7 +239,7 @@ public static partial class ScheduleCsv
             OpeningUsage = Usage(row[6], row[7], $"{field} opening"),
             Assignments = new Dictionary<DateOnly, ScheduleCell>(),
             ClosingUsage = closingUsage,
-            NormalWorkCount = NullableInt(row[44], $"{field} 本月班數")
+            NormalWorkCount = ignoreDerivedHistoricalFields ? null : NullableInt(row[44], $"{field} 本月班數")
         };
 
         var assignments = (Dictionary<DateOnly, ScheduleCell>)employee.Assignments;
@@ -238,14 +257,17 @@ public static partial class ScheduleCsv
             assignments[date] = ParseCell(text, date, monthlyShift, nonStandardShifts, historical || closingUsage is not null, $"{field} day {day}", workspace);
         }
         var expectedMonthlyUsage = CountRestUsage(assignments.Values);
-        if (closingUsage is null && monthlyUsage is not null)
-            throw new ScheduleCsvException(field, "Monthly R/R1 must be blank when closing interval totals are blank.");
-        if (closingUsage is not null && monthlyUsage is null)
-            throw new ScheduleCsvException(field, "Monthly R/R1 is required when closing interval totals are filled.");
-        if (monthlyUsage is not null && monthlyUsage != expectedMonthlyUsage)
-            throw new ScheduleCsvException(field, $"Monthly R/R1 must be {expectedMonthlyUsage.Rest} and {expectedMonthlyUsage.SpecialRest} from the daily cells.");
+        if (!ignoreDerivedHistoricalFields)
+        {
+            if (closingUsage is null && monthlyUsage is not null)
+                throw new ScheduleCsvException(field, "Monthly R/R1 must be blank when closing interval totals are blank.");
+            if (closingUsage is not null && monthlyUsage is null)
+                throw new ScheduleCsvException(field, "Monthly R/R1 is required when closing interval totals are filled.");
+            if (monthlyUsage is not null && monthlyUsage != expectedMonthlyUsage)
+                throw new ScheduleCsvException(field, $"Monthly R/R1 must be {expectedMonthlyUsage.Rest} and {expectedMonthlyUsage.SpecialRest} from the daily cells.");
+        }
         var expectedMonthlyLeaveRest = assignments.Values.Count(cell => cell.Kind == AssignmentKind.LeaveRest);
-        if (closingUsage is not null && monthlyLeaveRest != expectedMonthlyLeaveRest)
+        if (!ignoreDerivedHistoricalFields && closingUsage is not null && monthlyLeaveRest != expectedMonthlyLeaveRest)
             throw new ScheduleCsvException(field, $"Monthly R休 must be {expectedMonthlyLeaveRest} from the daily cells.");
         return employee;
     }
@@ -472,13 +494,18 @@ public static partial class ScheduleCsv
         _ => throw new ArgumentOutOfRangeException(nameof(workspace))
     };
 
+    private static bool IsExcludedFromTemplate(string header, WorkspaceCode workspace, bool historical) =>
+        IsExcludedFromDownload(header, workspace) ||
+        historical && header is "能力" or "當月R" or "當月R1" or "當月指定R休" or "月底區間累計R" or "月底區間累計R1" or "本月班數" ||
+        !historical && header is "當月R" or "當月R1" or "月底區間累計R" or "月底區間累計R1" or "本月班數";
+
     private static HashSet<int> ExcludedDownloadColumnIndexes(WorkspaceCode workspace) =>
         Headers.Select((header, index) => (header, index))
             .Where(x => IsExcludedFromDownload(x.header, workspace))
             .Select(x => x.index)
             .ToHashSet();
 
-    private static bool TryResolveHeaderFormat(string[] header, out IReadOnlyList<string> sourceHeaders)
+    private static bool TryResolveHeaderFormat(string[] header, WorkspaceCode workspace, bool historical, out IReadOnlyList<string> sourceHeaders)
     {
         header = IgnoreTrailingEmptyFields(header, Headers.Length);
         if (header.Length > 3 && header[3] == "到職日期") header[3] = "月中開始排班日";
@@ -496,6 +523,25 @@ public static partial class ScheduleCsv
         if (header.SequenceEqual(mDownloadHeaders))
         {
             sourceHeaders = mDownloadHeaders;
+            return true;
+        }
+        var templateHeaders = MonthlyTemplateHeaders(workspace, historical);
+        if (header.SequenceEqual(templateHeaders))
+        {
+            sourceHeaders = templateHeaders;
+            return true;
+        }
+        var required = new HashSet<string>(["ID", "姓名", "所屬", .. Enumerable.Range(1, 31).Select(x => x.ToString(CultureInfo.InvariantCulture))], StringComparer.Ordinal);
+        if (workspace.IsMaintenance())
+        {
+            required.Add("T月班別");
+            if (!historical) required.Add("能力");
+        }
+        var supplied = header.ToHashSet(StringComparer.Ordinal);
+        if (supplied.Count == header.Length && required.IsSubsetOf(supplied) &&
+            header.SequenceEqual(Headers.Where(supplied.Contains)))
+        {
+            sourceHeaders = header;
             return true;
         }
         sourceHeaders = Array.Empty<string>();

@@ -138,6 +138,43 @@ internal static class SolverScheduleMapper
     public static NonStandardShiftTable ToNonStandardShifts(ConfigurationRevision revision) => new(
         revision.NonStandardShifts.Select(x => new NonStandardShift(x.Name, x.StartTime, x.EndTime, x.Code)).ToArray());
 
+    public static MonthlySchedule CompleteHistoricalImport(
+        MonthlySchedule schedule,
+        WorkspaceCode workspace,
+        IReadOnlyDictionary<string, int?> employeeAbilities,
+        IReadOnlyDictionary<string, RestUsage> adoptedClosingUsage,
+        IReadOnlyList<RestInterval> intervals)
+    {
+        var monthEnd = schedule.MonthStart.AddMonths(1).AddDays(-1);
+        var closingInterval = intervals.SingleOrDefault(x => monthEnd >= x.Start && monthEnd <= x.End)
+            ?? throw new DomainValidationException($"八週區間沒有涵蓋 {monthEnd:yyyy-MM-dd}，無法計算月底區間累計 R/R1。");
+
+        return schedule with
+        {
+            Employees = schedule.Employees.Select(employee =>
+            {
+                var employmentStart = employee.EmploymentStartDate;
+                var newThisMonth = employmentStart is not null && employmentStart.Value >= schedule.MonthStart;
+                var opening = closingInterval.Start >= schedule.MonthStart || newThisMonth
+                    ? new RestUsage(0, 0)
+                    : employee.OpeningUsage ?? adoptedClosingUsage.GetValueOrDefault(employee.EmployeeId)
+                      ?? throw new DomainValidationException($"員工 {employee.EmployeeId} 無法推算 {schedule.MonthStart:yyyy-MM} 月初區間累計 R/R1：CSV 未提供，且找不到前月採用班表的月底累計。");
+                var activeStart = newThisMonth ? employmentStart!.Value : schedule.MonthStart;
+                if (closingInterval.Start > activeStart) activeStart = closingInterval.Start;
+                var cells = employee.Assignments.Where(x => x.Key >= activeStart && x.Key <= monthEnd).Select(x => x.Value).ToArray();
+                return employee with
+                {
+                    Ability = workspace.IsMaintenance() ? employeeAbilities.GetValueOrDefault(employee.EmployeeId) ?? 1 : null,
+                    RequestedLeaveRestCount = null,
+                    ClosingUsage = new RestUsage(
+                        opening.Rest + cells.Count(x => x.Kind == SolverAssignmentKind.Rest),
+                        opening.SpecialRest + cells.Count(x => x.Kind == SolverAssignmentKind.SpecialRest)),
+                    NormalWorkCount = employee.Assignments.Values.Count(x => x.Kind == SolverAssignmentKind.Work)
+                };
+            }).ToArray()
+        };
+    }
+
     public static StandardShiftTimes ToStandardShiftTimes(ConfigurationRevision revision, WorkspaceCode workspace) => new(
         ToWorkspaceShiftTimes(revision, workspace.IsStation() ? workspace.ToString() : "M", WorkspaceShiftTimes.DefaultM),
         ToWorkspaceShiftTimes(revision, workspace.IsMaintenance() ? workspace.ToString() : "T", WorkspaceShiftTimes.DefaultT));

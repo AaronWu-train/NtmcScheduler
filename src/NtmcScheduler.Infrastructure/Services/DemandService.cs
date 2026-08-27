@@ -202,7 +202,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         ServiceSupport.RequireEditor(actor, demand.Workspace);
         try
         {
-            var schedule = await ParseMonthlyAsync(csv, demand, false, cancellationToken);
+            var schedule = await ParseMonthlyAsync(db, csv, demand, false, cancellationToken);
             ValidateWorkspace(schedule, demand.Workspace);
             var currentCodes = demand.Employees.Select(x => x.EmployeeCode).ToHashSet(StringComparer.Ordinal);
             var incomingCodes = schedule.Employees.Select(x => x.EmployeeId).ToHashSet(StringComparer.Ordinal);
@@ -284,7 +284,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
             ?? throw new DomainValidationException("找不到本月需求。");
         ServiceSupport.RequireEditor(actor, demand.Workspace);
         if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
-        var schedule = await ParseMonthlyAsync(csv, demand, false, cancellationToken);
+        var schedule = await ParseMonthlyAsync(db, csv, demand, false, cancellationToken);
         ValidateWorkspace(schedule, demand.Workspace);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var before = new { demand.Month, Employees = demand.Employees.Count, Assignments = demand.Employees.Sum(x => x.Assignments.Count) };
@@ -307,7 +307,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
             ?? throw new DomainValidationException("找不到本月需求。");
         ServiceSupport.RequireEditor(actor, demand.Workspace);
         if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
-        var schedule = await ParseMonthlyAsync(csv, demand, true, cancellationToken);
+        var schedule = await ParseMonthlyAsync(db, csv, demand, true, cancellationToken);
         ValidateWorkspace(schedule, demand.Workspace);
         var upload = new UploadedPreviousSchedule
         {
@@ -602,11 +602,23 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         return ServiceSupport.ToDto(demand);
     }
 
-    private async Task<MonthlySchedule> ParseMonthlyAsync(Stream csv, DemandDraft demand, bool historical, CancellationToken cancellationToken)
+    private static async Task<MonthlySchedule> ParseMonthlyAsync(NtmcDbContext db, Stream csv, DemandDraft demand, bool historical, CancellationToken cancellationToken)
     {
         var shifts = SolverScheduleMapper.ToNonStandardShifts(demand.ConfigurationRevision);
         var month = historical ? demand.Month.AddMonths(-1) : demand.Month;
-        return await UploadFile.ParseAsync(csv, path => ScheduleCsv.ReadMonthly(path, month, shifts, historical, demand.Workspace), cancellationToken);
+        var schedule = await UploadFile.ParseAsync(csv,
+            path => ScheduleCsv.ReadMonthly(path, month, shifts, historical, demand.Workspace, ignoreDerivedHistoricalFields: historical), cancellationToken);
+        if (!historical) return schedule;
+        var abilities = await db.Employees.AsNoTracking().Where(x => x.Workspace == demand.Workspace)
+            .ToDictionaryAsync(x => x.EmployeeCode, x => x.Ability, StringComparer.Ordinal, cancellationToken);
+        var adopted = await db.AdoptedSchedules.AsNoTracking().Include(x => x.ScheduleVersion).ThenInclude(x => x.Employees)
+            .SingleOrDefaultAsync(x => x.Workspace == demand.Workspace && x.Month == month.AddMonths(-1), cancellationToken);
+        var adoptedClosing = adopted?.ScheduleVersion.Employees
+            .Where(x => x.ClosingRest is not null && x.ClosingSpecialRest is not null)
+            .ToDictionary(x => x.EmployeeCode, x => new RestUsage(x.ClosingRest!.Value, x.ClosingSpecialRest!.Value), StringComparer.Ordinal)
+            ?? new Dictionary<string, RestUsage>(StringComparer.Ordinal);
+        return SolverScheduleMapper.CompleteHistoricalImport(schedule, demand.Workspace, abilities, adoptedClosing,
+            SolverScheduleMapper.ToRestIntervals(demand.ConfigurationRevision));
     }
 
     private static async Task<MonthlySchedule> GetPreviousScheduleAsync(NtmcDbContext db, DemandDraft demand, CancellationToken cancellationToken)

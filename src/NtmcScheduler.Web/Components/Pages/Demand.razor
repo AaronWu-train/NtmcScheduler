@@ -20,6 +20,8 @@
     </div>
     <PageHelp Title="建立班表說明">
         <p>每次求解只讀取當下需求，產生的班表會獨立保存。系統優先使用上月已採用班表；若不存在，請上傳完整上月班表。</p>
+        <h3>需求 CSV</h3>
+        <p><strong>必填：</strong>ID、姓名、所屬@(workspaceCode.IsMaintenance() ? "、能力、T 月班別" : "")。月中開始排班日只在本月新進且沒有上月歷史時必填。日格可留空；當月指定 R休留空視為 0。</p>
     </PageHelp>
 </div>
 @if (message is not null)

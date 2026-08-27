@@ -274,10 +274,23 @@ public sealed class ScheduleService(
         var configurationId = await db.CurrentConfigurations.AsNoTracking().Where(x => x.Id == 1)
             .Select(x => (Guid?)x.ConfigurationRevisionId).SingleOrDefaultAsync(cancellationToken)
             ?? throw new DomainValidationException("請先建立共同設定。");
-        var configuration = await db.ConfigurationRevisions.AsNoTracking().Include(x => x.NonStandardShifts)
+        var configuration = await db.ConfigurationRevisions.AsNoTracking()
+            .Include(x => x.NonStandardShifts)
+            .Include(x => x.RestIntervals).ThenInclude(x => x.NationalHolidays)
             .SingleAsync(x => x.Id == configurationId, cancellationToken);
         var shifts = SolverScheduleMapper.ToNonStandardShifts(configuration);
-        var schedule = await UploadFile.ParseAsync(csv, path => ScheduleCsv.ReadMonthly(path, month, shifts, true, workspace), cancellationToken);
+        var schedule = await UploadFile.ParseAsync(csv,
+            path => ScheduleCsv.ReadMonthly(path, month, shifts, true, workspace, ignoreDerivedHistoricalFields: true), cancellationToken);
+        var abilities = await db.Employees.AsNoTracking().Where(x => x.Workspace == workspace)
+            .ToDictionaryAsync(x => x.EmployeeCode, x => x.Ability, StringComparer.Ordinal, cancellationToken);
+        var adopted = await db.AdoptedSchedules.AsNoTracking().Include(x => x.ScheduleVersion).ThenInclude(x => x.Employees)
+            .SingleOrDefaultAsync(x => x.Workspace == workspace && x.Month == month.AddMonths(-1), cancellationToken);
+        var adoptedClosing = adopted?.ScheduleVersion.Employees
+            .Where(x => x.ClosingRest is not null && x.ClosingSpecialRest is not null)
+            .ToDictionary(x => x.EmployeeCode, x => new RestUsage(x.ClosingRest!.Value, x.ClosingSpecialRest!.Value), StringComparer.Ordinal)
+            ?? new Dictionary<string, RestUsage>(StringComparer.Ordinal);
+        schedule = SolverScheduleMapper.CompleteHistoricalImport(schedule, workspace, abilities, adoptedClosing,
+            SolverScheduleMapper.ToRestIntervals(configuration));
         var isT = schedule.Employees.Any(x => x.Ability is not null || x.MonthlyShift is not null);
         if (isT != workspace.IsMaintenance()) throw new DomainValidationException("CSV 的站務／檢修欄位與目前工作區不符。");
         var version = SolverScheduleMapper.ToImportedVersion(schedule, workspace, configurationId, actor.UserId);

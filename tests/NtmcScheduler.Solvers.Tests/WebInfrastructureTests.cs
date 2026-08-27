@@ -158,6 +158,62 @@ public sealed class WebInfrastructureTests
     }
 
     [TestMethod]
+    public void HistoricalImport_RecalculatesStatisticsAndUsesEmployeeAbilityOrOne()
+    {
+        var month = new DateOnly(2026, 9, 1);
+        var assignments = new Dictionary<DateOnly, ScheduleCell>
+        {
+            [month] = new() { Kind = AssignmentKind.Rest },
+            [month.AddDays(1)] = new() { Kind = AssignmentKind.SpecialRest },
+            [month.AddDays(2)] = new() { Kind = AssignmentKind.LeaveRest },
+            [month.AddDays(3)] = new() { Kind = AssignmentKind.Work, Shift = Shift.Early }
+        };
+        var schedule = new MonthlySchedule(month,
+        [
+            new EmployeeMonthlySchedule
+            {
+                EmployeeId = "T001", Name = "王小明", Affiliation = "號誌", MonthlyShift = Shift.Early,
+                Assignments = assignments
+            },
+            new EmployeeMonthlySchedule
+            {
+                EmployeeId = "T002", Name = "陳小華", Affiliation = "電力", MonthlyShift = Shift.Early,
+                EmploymentStartDate = month, Assignments = assignments
+            }
+        ]);
+        var result = SolverScheduleMapper.CompleteHistoricalImport(schedule, WorkspaceCode.T,
+            new Dictionary<string, int?> { ["T001"] = 5 },
+            new Dictionary<string, RestUsage> { ["T001"] = new(3, 1) },
+            [new RestInterval(new DateOnly(2026, 8, 17), new DateOnly(2026, 10, 11), new HashSet<DateOnly>())]);
+
+        Assert.AreEqual(5, result.Employees[0].Ability);
+        Assert.AreEqual(1, result.Employees[1].Ability);
+        Assert.AreEqual(new RestUsage(4, 2), result.Employees[0].ClosingUsage);
+        Assert.AreEqual(1, result.Employees[0].NormalWorkCount);
+        Assert.AreEqual(1, result.Employees[0].Assignments.Values.Count(x => x.Kind == AssignmentKind.LeaveRest));
+        Assert.IsNull(result.Employees[0].RequestedLeaveRestCount);
+    }
+
+    [TestMethod]
+    public void HistoricalImport_BlocksOnlyWhenOpeningUsageCannotBeDerived()
+    {
+        var month = new DateOnly(2026, 9, 1);
+        var schedule = new MonthlySchedule(month,
+        [
+            new EmployeeMonthlySchedule
+            {
+                EmployeeId = "T001", Name = "王小明", Affiliation = "號誌", MonthlyShift = Shift.Early,
+                Assignments = new Dictionary<DateOnly, ScheduleCell>()
+            }
+        ]);
+
+        var error = Assert.ThrowsExactly<DomainValidationException>(() => SolverScheduleMapper.CompleteHistoricalImport(
+            schedule, WorkspaceCode.T, new Dictionary<string, int?>(), new Dictionary<string, RestUsage>(),
+            [new RestInterval(new DateOnly(2026, 8, 17), new DateOnly(2026, 10, 11), new HashSet<DateOnly>())]));
+        StringAssert.Contains(error.Message, "找不到前月採用班表");
+    }
+
+    [TestMethod]
     public async Task UserAdministration_BatchCreateAndSoftDeleteAreAtomicAndAudited()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
@@ -810,7 +866,16 @@ public sealed class WebInfrastructureTests
             ScheduleCsv.WriteMonthly(path, input.DemandMonth);
             await service.ImportDemandAsync(demand.Id, new MemoryStream(await File.ReadAllBytesAsync(path)), demand.RevisionToken, actor);
             demand = (await service.GetAsync(WorkspaceCode.M, demand.Month, actor))!;
-            ScheduleCsv.WriteMonthly(path, input.PreviousMonth);
+            var previous = input.PreviousMonth with
+            {
+                Employees = input.PreviousMonth.Employees.Select(x => x with
+                {
+                    OpeningUsage = new RestUsage(
+                        x.ClosingUsage!.Rest - x.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Rest),
+                        x.ClosingUsage.SpecialRest - x.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.SpecialRest))
+                }).ToArray()
+            };
+            ScheduleCsv.WriteMonthly(path, previous);
             await service.UploadPreviousAsync(demand.Id, "previous.csv", new MemoryStream(await File.ReadAllBytesAsync(path)), demand.RevisionToken, actor);
         }
         finally { File.Delete(path); }
@@ -910,11 +975,17 @@ public sealed class WebInfrastructureTests
             Assert.AreEqual(System.Text.Json.JsonValueKind.Null, requestedLeaveRestCount.ValueKind);
         }
 
-        var uploadEmployee = previousEmployee with { PerpetualScheduleId = "P-UPLOAD" };
         var upload = input.PreviousMonth with
         {
-            Employees = input.PreviousMonth.Employees.Select(x => x.EmployeeId == uploadEmployee.EmployeeId ? uploadEmployee : x).ToArray()
+            Employees = input.PreviousMonth.Employees.Select(x => x with
+            {
+                PerpetualScheduleId = x.EmployeeId == previousEmployee.EmployeeId ? "P-UPLOAD" : x.PerpetualScheduleId,
+                OpeningUsage = new RestUsage(
+                    x.ClosingUsage!.Rest - x.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Rest),
+                    x.ClosingUsage.SpecialRest - x.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.SpecialRest))
+            }).ToArray()
         };
+        var uploadEmployee = upload.Employees.Single(x => x.EmployeeId == previousEmployee.EmployeeId);
         var path = Path.GetTempFileName();
         try
         {
@@ -1169,7 +1240,16 @@ public sealed class WebInfrastructureTests
         var path = Path.GetTempFileName();
         try
         {
-            ScheduleCsv.WriteMonthly(path, input.PreviousMonth);
+            var previous = input.PreviousMonth with
+            {
+                Employees = input.PreviousMonth.Employees.Select(x => x with
+                {
+                    OpeningUsage = new RestUsage(
+                        x.ClosingUsage!.Rest - x.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.Rest),
+                        x.ClosingUsage.SpecialRest - x.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.SpecialRest))
+                }).ToArray()
+            };
+            ScheduleCsv.WriteMonthly(path, previous);
             await using var csv = File.OpenRead(path);
             var imported = await new ScheduleService(database, new ScheduleValidationService(database))
                 .ImportAsync(WorkspaceCode.M, input.PreviousMonth.MonthStart, "history.csv", csv, actor);
@@ -1293,7 +1373,7 @@ public sealed class WebInfrastructureTests
         var path = Path.GetTempFileName();
         try
         {
-            ScheduleCsv.WriteMonthly(path, previous);
+            File.WriteAllBytes(path, ScheduleCsv.WriteMonthlyTemplate(previous, WorkspaceCode.T, historical: true));
             await using var stream = File.OpenRead(path);
             await demandService.UploadPreviousAsync(demand.Id, "previous.csv", stream, demand.RevisionToken, actor);
         }
@@ -1305,6 +1385,11 @@ public sealed class WebInfrastructureTests
         var preview = await demandService.GetPreviousSchedulePreviewAsync(demand.Id, actor);
         Assert.AreEqual(month, preview.Month);
         Assert.AreEqual("T001", preview.Employees.Single().EmployeeCode);
+        Assert.AreEqual("5", preview.Employees.Single().MonthlyCsvValues[4]);
+        Assert.AreEqual("4", preview.Employees.Single().MonthlyCsvValues[39]);
+        Assert.AreEqual("0", preview.Employees.Single().MonthlyCsvValues[41]);
+        Assert.AreEqual("4", preview.Employees.Single().MonthlyCsvValues[42]);
+        Assert.AreEqual("27", preview.Employees.Single().MonthlyCsvValues[44]);
         var file = await demandService.ExportPreviousScheduleAsync(demand.Id, actor);
         Assert.AreEqual("previous.csv", file.FileName);
         Assert.AreEqual(0xEF, file.Content[0]);
