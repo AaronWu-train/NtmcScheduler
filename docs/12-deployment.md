@@ -319,6 +319,15 @@ NtmcScheduler tables 與 `__EFMigrationsHistory` 的空資料庫。script 為 id
 
 ## 11. 升級既有部署
 
+先完成第 12 節備份，再取得新版並執行 repository 內的部署腳本：
+
+```bash
+git pull
+bash rebuild_and_deploy.sh
+```
+
+部署腳本執行的等效指令如下：
+
 ```bash
 dotnet publish src/NtmcScheduler.Web -c Release -r linux-x64 --self-contained false -o /tmp/ntmsy-schedule-publish
 sudo systemctl stop ntmsy-schedule
@@ -360,9 +369,8 @@ sudo journalctl -u ntmsy-schedule -n 100
 | 找不到 OR-Tools native library | publish 時未指定 `-r linux-x64`，或缺 `libstdc++6` |
 | AuditLog 來源 IP 都是 `127.0.0.1` 或明顯錯誤 | 誤設了 `KnownProxies`；本架構沒有反向代理，應留空 |
 
-## 14. 上線前尚待確認事項
+## 14. 上線驗收清單
 
-- **密碼政策**目前是開發階段暫行值（8 字元、2 種不同字元、含數字），程式中已標註 TODO。
-  正式上線前須依公司資安要求調整，屬程式修改，並須同步更新 `docs/10-decisions.md`。
-- 資料庫備份／還原演練、Data Protection key ring 還原演練、journald 一年保留，須在本環境實際驗收。
-- Microsoft Playwright 端對端與基準規模互動測試需在具備瀏覽器 runtime 的環境執行。
+- 依公司資安要求確認密碼政策；若調整目前的 8 字元、2 種不同字元且含數字規則，須同步更新程式、驗收案例與 `docs/10-decisions.md`。
+- 在正式環境完成資料庫備份／還原、Data Protection key ring 還原與 journald 一年保留驗收。
+- 在具備瀏覽器 runtime 的環境完成 Microsoft Playwright 端對端與基準規模互動測試。

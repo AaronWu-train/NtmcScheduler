@@ -1,107 +1,162 @@
-# 系統實作結構
+# 11. 開發指南與實作結構
 
-## 專案
+本文件提供從規格定位、修改實作到驗證交付的最短路徑。業務規則以 [`01`–`09`](01-scope-and-workflow.md) 與 [`tex/main2.tex`](tex/main2.tex) 為準，決策沿革集中在 [`10-decisions.md`](10-decisions.md)；遇到未定義的業務情況，先回報規格缺口，不自行補上假設。
+
+## 1. 開始開發
+
+需要 .NET 10 SDK。從 repository 根目錄執行：
+
+```bash
+dotnet tool restore
+dotnet restore NtmcScheduler.slnx
+dotnet build NtmcScheduler.slnx
+```
+
+開發環境預設使用 SQLite。建立首位管理者並啟動 Web：
+
+```bash
+dotnet run --project src/NtmcScheduler.Web -- --init-admin admin
+dotnet run --project src/NtmcScheduler.Web
+```
+
+啟動位址為 `https://localhost:7189` 與 `http://localhost:5109`。本機 SQLite、Data Protection keys 與 `appsettings.Development.json` 已由 `.gitignore` 排除；不得提交密碼、連線字串、CLI 求解輸出、真實人員資料或正式班表。
+
+## 2. 修改前先定位真相來源
+
+| 修改內容 | 先讀文件 | 主要程式入口 | 主要測試 |
+|---|---|---|---|
+| CSV 欄位、日格與歷史 | [`02`](02-glossary.md)、[`03`](03-data-and-validation.md) | `src/NtmcScheduler.Infrastructure/Csv/ScheduleCsv.cs`、相關 service | `MSolverTests`、`TSolverTests`、`WebInfrastructureTests` |
+| 硬規則 | [`04`](04-hard-rules.md)、[數學模型](tex/main2.tex) | `src/NtmcScheduler.Solvers/*Solver.HardRules.cs` | `MSolverTests`、`TSolverTests` |
+| 軟規則、Priority、權重 | [`05`](05-soft-rules.md)、[數學模型](tex/main2.tex) | `src/NtmcScheduler.Solvers/*Solver.SoftRules.cs` | Solver tests、rule-definition tests |
+| 求解狀態與候選 | [`06`](06-solver-and-output.md) | `src/NtmcScheduler.Solvers/*Solver.cs`、`src/NtmcScheduler.Infrastructure/Background/ScheduleRunWorker.cs` | Solver tests、worker tests |
+| 資料庫與 application service | [`07`](07-architecture.md) | `src/NtmcScheduler.Contracts/Services.cs`、`src/NtmcScheduler.Infrastructure/Data`、`src/NtmcScheduler.Infrastructure/Services` | `WebInfrastructureTests` |
+| Blazor 畫面與文字 | [`08`](08-frontend.md) | `src/NtmcScheduler.Web/Components/Pages`、`src/NtmcScheduler.Web/Components/Shared` | `WebInfrastructureTests` 加登入後瀏覽器驗收 |
+| 驗收案例 | [`09`](09-acceptance.md) | 對應功能 | 對應自動化測試與人工驗收 |
+| 正式環境 | [`12`](12-deployment.md) | `src/NtmcScheduler.Web/Program.cs`、`rebuild_and_deploy.sh` | publish、migration、部署環境驗收 |
+
+若文件、測試與程式互相衝突，先釐清適用工作區、月份、資料來源與目前 branch；不要用放寬驗證或改 fixture 掩蓋規格差異。
+
+## 3. 標準修改流程
+
+1. 執行 `git status --short`，分辨既有 staged／unstaged 修改與本次範圍；不要覆蓋其他人的變更。
+2. 沿上表讀取規格、介面、實作與既有測試，確認 UI、DTO、service、資料庫與 solver 的實際資料流。
+3. 修改規則行為時，先更新對應規格與 `tex/main2.tex`，並在 `10-decisions.md` 文末追加決策，再修改程式與測試。
+4. 只改完成需求所需的最少檔案；共用路徑已有實作時直接沿用，不新增規則 catalog、encoder、Rule ID map 或單一實作的抽象層。
+5. 先跑最接近變更的測試，再跑 solution build 與完整測試；需要登入狀態的 UI 流程另做瀏覽器驗收。
+6. 交付前檢查 `git diff --check`、`git diff` 與 `git status --short`，確認沒有真實資料、secret、產物或無關修改。
+
+純 Markdown 或 TeX 修改可依文件類型做格式、連結、編譯與版面驗證，不必為未動到的程式宣稱完成 .NET 驗收。
+
+## 4. 專案與相依邊界
 
 ```text
 src/
-├── NtmcScheduler.Contracts/
-│   ├── Models.cs
-│   └── Services.cs
-├── NtmcScheduler.Infrastructure/
-│   ├── Background/
-│   ├── Csv/
-│   ├── Data/
-│   └── Services/
-├── NtmcScheduler.Solvers/
-│   ├── SolverContracts.cs
-│   ├── MContracts.cs
-│   ├── MSolver.cs
-│   ├── MSolver.Input.cs
-│   ├── MSolver.HardRules.cs
-│   ├── MSolver.SoftRules.cs
-│   ├── TContracts.cs
-│   ├── TSolver.cs
-│   ├── TSolver.Input.cs
-│   ├── TSolver.HardRules.cs
-│   └── TSolver.SoftRules.cs
-├── NtmcScheduler.Cli/
-│   └── Program.cs
-└── NtmcScheduler.Web/
-    ├── Components/
-    ├── Services/
-    └── Program.cs
+├── NtmcScheduler.Contracts/             provider-neutral DTO 與 application service 介面
+├── NtmcScheduler.Solvers/               OR-Tools、M/T 模型與求解契約
+├── NtmcScheduler.Infrastructure/        EF Core、CSV、service、稽核與背景工作
+├── NtmcScheduler.Migrations.Sqlite/     SQLite migrations 與 model snapshot
+├── NtmcScheduler.Migrations.SqlServer/  SQL Server migrations 與 model snapshot
+├── NtmcScheduler.Cli/                   CLI 入口
+└── NtmcScheduler.Web/                   Blazor UI、Identity 與 HTTP 入口
+tests/
+└── NtmcScheduler.Solvers.Tests/         Solver、CLI、Infrastructure 與 Web 測試
 ```
 
-`NtmcScheduler.Contracts` 只有 provider-neutral domain DTO 與 application service contracts，不參考 EF 或 OR-Tools。`Infrastructure` 實作 Identity／EF、CSV adapter、快照轉換、直接工作區驗證器與單一背景佇列。`Web` 是 .NET 10 Blazor Interactive Server，元件只呼叫 application services。CSV 使用 .NET `TextFieldParser`，CLI 與 Web 共用同一 adapter。
+必須維持以下邊界：
 
-## Web 頁面與服務
+- `Contracts` 不參考 EF Core 或 OR-Tools；含 `CpModel`、`BoolVar`、`IntVar`、`LinearExpr` 的介面只能位於 `Solvers`。
+- Blazor 元件只呼叫 application service，不直接建立 OR-Tools 模型或操作 `NtmcDbContext`。
+- Infrastructure 將資料庫與 CSV 轉為 typed solver input；solver 不知道 CSV 路徑、HTTP、Identity 或 EF entity。
+- M／YM 共用 `MSolver`，T／YT 共用 `TSolver`；M 與 T 保持分離且明白的 source-as-spec partial 檔。
+- 程式使用有意義的英文規則與違反量名稱，不保存文件用的短 Rule ID；UI 與輸出使用繁體中文說明。
+- 所有時間以台北時間處理，夜班與跨午夜 X 歸開始日期。
 
-- 共同頁：登入／修改密碼、Dashboard、需求填寫、共同設定版本、管理者帳號權限、只讀稽核紀錄。
-- M 頁：員工主檔、建立班表、班表列表、萬年班表、互動寬表班表編輯器。
-- T 頁：員工主檔、建立班表、班表列表、互動寬表班表編輯器。
-- YM 頁：與 M 相同功能的獨立工作區，使用 Y06–Y19、獨立資料與權限。
-- 每頁使用共用 `PageHelp` 顯示說明；編輯器固定人員欄、日期表頭、右側統計與底部 coverage 品質列。
-- 所有寫入 service command 接收 `ActorContext` 與資源 revision token；服務層再次驗證工作區權限，資料與 AuditLog 在同一 transaction。
-- Blazor circuit 內的 application service 不以 scoped `NtmcDbContext` 長期持有連線；每次操作經 `IDbContextFactory` 建立 context。帳號管理每個操作建立短生命週期 scope，讓 Identity 與 EF 共用同一 context。
-- `ScheduleRunWorker` 單一讀取者執行 M／YM 共用的 `MSolver` 或 T／YT 共用的 `TSolver`，從 immutable typed input JSON 重現；重啟恢復未完成工作且不重複處理終態 run。若同模型的工作區後續規則不同，再依新決策調整或拆分 solver。
+## 5. 實作導覽
 
-## 資料庫與 migration
+### Web 與 application service
 
-- Identity、WorkspacePermission、Employee、不可變 ConfigurationRevision、DemandDraft／快照、EmployeeDemandSubmission、ScheduleRun、ScheduleVersion／assignments、AdoptedSchedule、M／YM 各自的全域 MPerpetualScheduleTemplate 與 append-only AuditLog（含 SessionId）。
-- 所有 domain 主鍵與 revision token 使用應用程式產生 GUID；`AdoptedSchedule(Workspace, Month)` 主鍵保證每月唯一 `★`。
-- repository-local `dotnet-ef` 管理兩套 provider-specific migration：現有歷史保留在 `NtmcScheduler.Migrations.Sqlite`，SQL Server 由 `NtmcScheduler.Migrations.SqlServer` 的 `InitialCreate` 起始。每次 model 變更必須對兩個 project 各新增一份 migration：
+- `Web/Program.cs`：主機、Identity、授權、CSP、下載端點、資料庫與 DI。
+- `Web/Components/Pages`：頁面；`Components/Shared`：共用導覽與說明。
+- `Contracts/Models.cs`、`Services.cs`：UI 與 Infrastructure 共用的 DTO、command 與 service 介面。
+- `Infrastructure/Services`：授權後的讀寫、revision token、transaction、AuditLog 與 solver 呼叫。
+- `Infrastructure/Background`：單一求解佇列、取消與重啟恢復。
+
+Blazor circuit 生命週期長，application service 每次資料庫操作都透過 `IDbContextFactory<NtmcDbContext>` 建立新 context。Identity 帳號操作則以短生命週期 scope 讓 `UserManager`、EF 與 transaction 共用同一 context。
+
+### Solver
+
+- `SolverContracts.cs`：`ScheduleInput`、月班表、日格、區間、選項、狀態與 Objective 輸出，不含建模函數。
+- `MContracts.cs`、`TContracts.cs`：候選與結果契約；M 另含外派輸出。
+- `MSolver.cs`、`TSolver.cs`：公開 `Solve`、字典序求解、候選差異與結果讀取。
+- `*.Input.cs`：輸入複製、月份／歷史／區間驗證與跨月累積推導。
+- `*.HardRules.cs`：OR-Tools 變數與不可關閉的硬限制。
+- `*.SoftRules.cs`：具名違反量、固定 Priority 群組與權重。
+
+不要因測試時間或單一 fixture 無解而放寬硬限制、時限或斷言。`TimeLimit` 可帶合法 incumbent，與 `Infeasible` 必須分開處理；`ObjectiveScore` 也不代表每個 Priority 都已證明最佳。
+
+### CSV 與 CLI
+
+`Infrastructure/Csv/ScheduleCsv.cs` 是文字格式與 typed model 的邊界。修改 CSV 時同時核對 parser、Web 上傳／下載 service、範本、實際 HTTP 回應與 round-trip 測試；畫面接受上傳不等於資料可供 solver 正常求解。
+
+`Cli/Program.cs` 只負責互動輸入、建立 `ScheduleInput`、選擇 M/T、傳遞取消信號及寫出候選。可用以下範例做 smoke test：
 
 ```bash
-dotnet ef migrations add <Name> -p src/NtmcScheduler.Migrations.Sqlite -s src/NtmcScheduler.Web
-NTMC_MIGRATION_PROVIDER=SqlServer dotnet ef migrations add <Name> \
-  -p src/NtmcScheduler.Migrations.SqlServer -s src/NtmcScheduler.Web
+cd examples/m-2026-09
+dotnet run --project ../../src/NtmcScheduler.Cli
+
+cd ../t-2026-09
+dotnet run --project ../../src/NtmcScheduler.Cli
 ```
 
-## 資安邊界
+## 6. 資料庫與 migrations
 
-- ASP.NET Core Identity 處理密碼雜湊、鎖定與 Cookie；頁面授權與 application service 授權同時執行。
-- HTTPS/HSTS、antiforgery、嚴格 CSP、frame-ancestors none、nosniff、可信 forwarded proxy、持久化 Data Protection key ring。
-- CSV 限 UTF-8、5 MB、固定表頭，先完整解析再 transaction 寫入；匯出對 spreadsheet formula 起始字元加單引號。
-- Production 沒有 Data Protection 加密憑證即拒絕啟動；secret 由部署端注入，不放 repository。
+EF model 位於 `Infrastructure/Data/Entities.cs` 與 `NtmcDbContext.cs`。SQLite、SQL Server 使用獨立 migration project；每次 model 變更必須產生語意相同的兩份 migration：
 
-## Solver 檔案責任
+```bash
+dotnet tool restore
+dotnet ef migrations add <Name> \
+  -p src/NtmcScheduler.Migrations.Sqlite \
+  -s src/NtmcScheduler.Web
 
-- `SolverContracts.cs`：共用的 `ScheduleInput`、月班表、日格、區間、選項、狀態與 Objective 輸出。無建模函數。
-- `MContracts.cs` / `TContracts.cs`：候選與求解結果；M 另有外派輸出。
-- `MSolver.cs` / `TSolver.cs`：公開 `Solve`、固定 Priority 群組的字典序 CP-SAT 呼叫、候選差異與結果讀取。M 與 YM 共用 `MSolver`，T 與 YT 共用 `TSolver`，由 Infrastructure 傳入各自的工作區資料與班別時間；不建立重複的 `YMSolver` 或 `YTSolver`。未來規則若分歧，須另案更新規格、決策、實作與測試。
-- `*.Input.cs`：快照複製、月份／人員／日格／區間驗證、歷史查詢與 R/R1 累積推導。
-- `*.HardRules.cs`：OR-Tools 變數與不可關閉的硬限制。
-- `*.SoftRules.cs`：軟違反量、固定群組及權重；M 為 J1 與直接加權合併的 `J4+J5`，T 為 J1–J5。
+NTMC_MIGRATION_PROVIDER=SqlServer dotnet ef migrations add <Name> \
+  -p src/NtmcScheduler.Migrations.SqlServer \
+  -s src/NtmcScheduler.Web
+```
 
-站務模型與 T 不共用任何建模邏輯。M 與 YM 因規則完全相同而共用站務模型；每個 solver 只有一個 private `Variables` record 收納 OR-Tools 變數，不建 `Variables/Constraints/Objectives/Candidates` class 層。
+新增後逐一檢查 migration、model snapshot 與 SQL，不以其中一個 provider 成功推論另一個也正確。查詢必須維持 provider-neutral；資料變更與 AuditLog 必須在同一 transaction。
 
-## CLI 責任
+安全性或批次匯入相關寫入要沿用 Identity、工作區權限、revision token 與 AuditLog。批次 CSV 必須先完整驗證再一次提交；任一列失敗時整批回滾，密碼與 CSV 原文不得進入 Log。
 
-`NtmcScheduler.Infrastructure/Csv/ScheduleCsv.cs` 是 CSV 邊界：讀寫月班表，讀取八週區間、M 萬年班表與非常態班型，並把文字格值轉為 solver contracts。`Program.cs` 只做：
+## 7. 驗證層級
 
-1. 詢問五個共用輸入；M 再詢問可留白的萬年班表 CSV。
-2. 建立 `ScheduleInput`。
-3. 依能力／T 月班別判斷 M 或 T。
-4. 傳入 Ctrl+C cancellation token。
-5. 顯示狀態與具名分數，寫出候選。
+| 變更 | 最低驗證 |
+|---|---|
+| Markdown | `git diff --check`、本機連結存在、內容與權威規格一致 |
+| `docs/tex/main2.tex` | XeLaTeX 編譯、warning 檢查、PDF 同步與頁面版面檢視 |
+| Solver／CSV | 對應 `MSolverTests` 或 `TSolverTests`，再 build solution |
+| Service／EF／Identity | `WebInfrastructureTests`，再 build solution |
+| EF model | 兩套 migration 與 snapshot 檢查、相關 persistence tests |
+| Blazor UI | build、相關 service tests、登入後瀏覽器操作與重新載入確認 |
+| 交付前完整驗證 | `dotnet test NtmcScheduler.slnx` |
 
-CLI 不包含業務規則，solver 不知道 CSV 路徑。
+常用指令：
 
-## 測試
+```bash
+dotnet test NtmcScheduler.slnx --filter FullyQualifiedName~MSolverTests
+dotnet test NtmcScheduler.slnx --filter FullyQualifiedName~TSolverTests
+dotnet test NtmcScheduler.slnx --filter FullyQualifiedName~WebInfrastructureTests
+dotnet build NtmcScheduler.slnx
+dotnet test NtmcScheduler.slnx
+```
 
-`tests/NtmcScheduler.Solvers.Tests` 使用 MSTest，涵蓋 solver／CLI 與 Web Infrastructure。測試重點為：
+Solver 測試刻意不平行執行，完整案例可能超過一分鐘。若 sandbox 出現 `SocketException (13): Permission denied` 或 named-pipe 錯誤，先在允許本機 IPC 的環境重跑；這類環境錯誤不是程式測試失敗。
 
-- typed input 與 InvalidInput 邊界。
-- M／YM 與 T／YT 各至少一個可求解主要案例，並驗證同模型工作區之資料、權限與設定互不混用。
-- CSV round-trip、舊表頭相容、M 萬年班表、BOM、quoted field、非常態班型、跨午夜 X 與非法格值。
-- 新進人員、A/B 區間累積、八週區間驗證。
-- timeout、cancellation、CLI redirected stdin 與 examples smoke test。
-- 登入限流、設定版本凍結與驗證、service 工作區授權、revision token 及每月唯一 `★`。
+Build 與測試通過不代表登入後 UI、下載內容或正式 SQL Server 部署已驗收。CSV 下載需檢查實際回應位元組；畫面設定需追到 DTO、service、資料庫，再用新的 DbContext 或重新載入確認 round-trip persistence。
 
-## 可執行範例
+## 8. 交付檢查
 
-`examples/m-2026-09` 與 `examples/t-2026-09` 都包含 `previous.csv`、`demand.csv`、`rest-intervals.csv`、`non-standard-shifts.csv` 與最小 README。兩組均由 solver 生成已驗證的合成需求，可直接交給 CLI 做快速 smoke test。範例假日不代表正式政府行事曆。
-
-## 尚待部署環境驗收
-
-部署步驟見 [`12-deployment.md`](12-deployment.md)。正式 Linux＋SQL Server migration、資料庫備份／還原、Data Protection X.509 憑證與 volume、journald／container driver 一年保留、反向代理可信來源，以及 Microsoft Playwright 端對端與基準規模互動測試，必須在部署環境取得連線與瀏覽器 runtime 後執行。
+- 規格、數學模型、程式、測試與 UI 文字同步，且沒有未定義的業務假設。
+- 僅修改本次任務所需檔案，保留工作樹既有變更與原始檔案編碼。
+- Contracts、solver、Blazor 與資料庫相依邊界未被破壞。
+- Schema 變更包含 SQLite 與 SQL Server migrations；安全敏感寫入保留授權、transaction 與稽核。
+- 說明實際執行的驗證、未執行的瀏覽器／部署驗收及任何環境限制，不把 build 當成完整驗收。
