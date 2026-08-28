@@ -580,6 +580,39 @@ public sealed class MSolverTests
         Assert.AreEqual(SolveStatus.Infeasible, MSolver.Solve(input, ShortSolve).Status);
     }
 
+    [TestMethod]
+    public void ValidateInput_DemandOpeningUsageOverridesPreviousClosingUsage()
+    {
+        var input = ValidInput();
+        input = input with
+        {
+            MonthlySettings = MonthlySchedulingDefaults.Create(input.DemandMonth.MonthStart, input.RestIntervals, input.DemandMonth.Employees.Count)
+        };
+        var manual = new RestUsage(11, 0);
+        var employee = input.DemandMonth.Employees[0] with { OpeningUsage = manual };
+        input = input with
+        {
+            DemandMonth = input.DemandMonth with
+            {
+                Employees = [employee, .. input.DemandMonth.Employees.Skip(1)]
+            }
+        };
+
+        var errors = (List<InputError>)typeof(MSolver)
+            .GetMethod("ValidateInput", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+            .Invoke(null, [input, null, new SolverOptions()])!;
+        var opening = (RestUsage)typeof(MSolver)
+            .GetMethod("OpeningRestUsage", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+            .Invoke(null, [input, employee])!;
+        var prior = (RestUsage)typeof(MSolver)
+            .GetMethod("RestUsageBeforeModeledDates", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+            .Invoke(null, [input, employee, input.RestIntervals[0]])!;
+
+        Assert.IsFalse(errors.Any(error => error.Field == "OpeningUsage"), string.Join(Environment.NewLine, errors));
+        Assert.AreEqual(manual, opening);
+        Assert.AreEqual(manual, prior);
+    }
+
     internal static ScheduleInput ValidInput()
     {
         var month = new DateOnly(2026, 9, 1);

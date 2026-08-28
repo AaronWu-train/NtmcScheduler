@@ -1385,6 +1385,8 @@ public sealed class WebInfrastructureTests
         var preview = await demandService.GetPreviousSchedulePreviewAsync(demand.Id, actor);
         Assert.AreEqual(month, preview.Month);
         Assert.AreEqual("T001", preview.Employees.Single().EmployeeCode);
+        Assert.AreEqual(4, preview.Employees.Single().ClosingRest);
+        Assert.AreEqual(0, preview.Employees.Single().ClosingSpecialRest);
         Assert.AreEqual("5", preview.Employees.Single().MonthlyCsvValues[4]);
         Assert.AreEqual("4", preview.Employees.Single().MonthlyCsvValues[39]);
         Assert.AreEqual("0", preview.Employees.Single().MonthlyCsvValues[41]);

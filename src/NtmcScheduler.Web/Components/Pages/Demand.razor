@@ -367,13 +367,13 @@
                                 else if (header == "月初區間累計R")
                                 {
                                     <td>
-                                        <input class="inline-field number-field" type="number" min="0" disabled="@(!canEdit || isBusy)" value="@edit.OpeningRest" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "openingRest", args.Value?.ToString())'/>
+                                        <input class="@OpeningUsageClass(employee.EmployeeCode, edit.OpeningRest, false)" title="@OpeningUsageTitle(employee.EmployeeCode, edit.OpeningRest, false)" type="number" min="0" disabled="@(!canEdit || isBusy)" value="@edit.OpeningRest" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "openingRest", args.Value?.ToString())'/>
                                     </td>
                                 }
                                 else if (header == "月初區間累計R1")
                                 {
                                     <td>
-                                        <input class="inline-field number-field" type="number" min="0" disabled="@(!canEdit || isBusy)" value="@edit.OpeningSpecialRest" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "openingSpecialRest", args.Value?.ToString())'/>
+                                        <input class="@OpeningUsageClass(employee.EmployeeCode, edit.OpeningSpecialRest, true)" title="@OpeningUsageTitle(employee.EmployeeCode, edit.OpeningSpecialRest, true)" type="number" min="0" disabled="@(!canEdit || isBusy)" value="@edit.OpeningSpecialRest" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "openingSpecialRest", args.Value?.ToString())'/>
                                     </td>
                                 }
                                 else if (header == "當月指定R休")
@@ -597,6 +597,7 @@
     private bool sortDescending;
     private bool pendingUploadPreviousSource;
     private Dictionary<string, EmployeeEdit> employeeEdits = [];
+    private Dictionary<string, (int? GeneralRest, int? SpecialRest)> previousClosingUsage = new(StringComparer.Ordinal);
     private DemandEmployeeDto? editingCellEmployee;
     private DateOnly editingDate;
     private readonly CellEdit cellEdit = new();
@@ -673,6 +674,10 @@
         previousVersion = demand?.PreviousScheduleVersionId is { } selectedId
             ? previousOptions.FirstOrDefault(x => x.Id == selectedId)
             : null;
+        previousClosingUsage = demand is not null && CanRestorePreviousInheritedFields
+            ? (await DemandService.GetPreviousSchedulePreviewAsync(demand.Id, actor)).Employees.ToDictionary(
+                x => x.EmployeeCode, x => (x.ClosingRest, x.ClosingSpecialRest), StringComparer.Ordinal)
+            : new(StringComparer.Ordinal);
         InitializeEmployeeEdits();
         InitializeMonthlySettings();
         ruleDefinitions = RunService.GetRules(workspaceCode);
@@ -1016,6 +1021,16 @@
 
     private static DateOnly? ParseDate(string? value) => string.IsNullOrWhiteSpace(value) ? null : DateOnly.ParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture);
     private static string DateText(DateOnly? value) => value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "";
+
+    private bool OpeningUsageDiffers(string employeeCode, int? value, bool special) =>
+        value is not null && previousClosingUsage.TryGetValue(employeeCode, out var previous) &&
+        value != (special ? previous.SpecialRest : previous.GeneralRest);
+
+    private string OpeningUsageClass(string employeeCode, int? value, bool special) =>
+        $"inline-field number-field{(OpeningUsageDiffers(employeeCode, value, special) ? " field-warning" : "")}";
+
+    private string? OpeningUsageTitle(string employeeCode, int? value, bool special) =>
+        OpeningUsageDiffers(employeeCode, value, special) ? "手動值與所選上月班表的月底累計不同；求解將採用手動值。" : null;
 
     private async Task ChangeCellAsync(DemandEmployeeDto employee, DateOnly date, DemandAssignmentDto? cell, string? value)
     {

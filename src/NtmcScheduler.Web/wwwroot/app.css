@@ -191,6 +191,7 @@ thead th { background: #e9eef5; }
 .schedule-grid .sticky-affiliation { left: 13rem; min-width: 5 rem; max-width: 8.5rem; }
 .schedule-grid .sticky-monthly-shift { left: 13rem; min-width: 5.5rem; max-width: 6.5rem; text-align: center; }
 .inline-field { min-height: 2.3rem; }
+.inline-field.field-warning { border-color: #b77900; background: #fff8ce; box-shadow: 0 0 0 1px #b77900; }
 .number-field { width: 4.5rem; }
 .perpetual-field { width: 7rem; }
 .cell-editor { width: 3.2rem; min-width: 3.2rem; height: 1.9rem; padding-inline: 0; border: 1px solid #aab4c2; border-radius: .2rem; background: #fff; }

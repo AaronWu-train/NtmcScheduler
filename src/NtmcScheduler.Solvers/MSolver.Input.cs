@@ -107,12 +107,11 @@ public static partial class MSolver
 
             if (intervalsValid)
             {
-                var expected = OpeningRestUsage(input, employee);
+                var opening = OpeningRestUsage(input, employee);
                 var interval = RestIntervalContaining(input, monthStart);
-                if (expected.Rest is < 0 or > 16 || expected.SpecialRest < 0 || expected.SpecialRest > interval.NationalHolidays.Count)
-                    errors.Add(new("PreviousMonth.ClosingUsage", $"Employee '{employee.EmployeeId}' opening usage is outside the interval quota."));
-                if (employee.OpeningUsage is not null && employee.OpeningUsage != expected)
-                    errors.Add(new("OpeningUsage", $"Employee '{employee.EmployeeId}' opening usage must be {expected.Rest} R and {expected.SpecialRest} R1."));
+                if (opening.Rest is < 0 or > 16 || opening.SpecialRest < 0 || opening.SpecialRest > interval.NationalHolidays.Count)
+                    errors.Add(new(hasHistory && employee.OpeningUsage is not null ? "OpeningUsage" : "PreviousMonth.ClosingUsage",
+                        $"Employee '{employee.EmployeeId}' opening usage is outside the interval quota."));
             }
         }
 
@@ -339,8 +338,9 @@ public static partial class MSolver
     private static RestUsage OpeningRestUsage(ScheduleInput input, EmployeeMonthlySchedule employee)
     {
         var interval = RestIntervalContaining(input, input.DemandMonth.MonthStart);
-        if (interval.Start == input.DemandMonth.MonthStart) return new(0, 0);
         var history = input.PreviousMonth.Employees.FirstOrDefault(value => value.EmployeeId == employee.EmployeeId);
+        if (history is not null && employee.OpeningUsage is not null) return employee.OpeningUsage;
+        if (interval.Start == input.DemandMonth.MonthStart) return new(0, 0);
         return history?.ClosingUsage ?? StandardRestCredit(interval, interval.Start, input.DemandMonth.MonthStart.AddDays(-1));
     }
 
@@ -349,6 +349,8 @@ public static partial class MSolver
     {
         var monthStart = input.DemandMonth.MonthStart;
         var history = input.PreviousMonth.Employees.FirstOrDefault(value => value.EmployeeId == employee.EmployeeId);
+        if (history is not null && employee.OpeningUsage is not null && interval.Start <= monthStart && interval.End >= monthStart)
+            return employee.OpeningUsage;
         if (history is not null && interval.Start < monthStart && interval.End >= monthStart)
             return history.ClosingUsage!;
 

@@ -158,6 +158,29 @@ public sealed class TSolverTests
     }
 
     [TestMethod]
+    public void ValidateInput_DemandOpeningUsageOverridesPreviousClosingUsage()
+    {
+        var input = OnlyEmployee(ValidInput(), "T-E2");
+        var manual = new RestUsage(11, 0);
+        var employee = input.DemandMonth.Employees.Single() with { OpeningUsage = manual };
+        input = input with { DemandMonth = input.DemandMonth with { Employees = [employee] } };
+
+        var errors = (List<InputError>)typeof(TSolver)
+            .GetMethod("ValidateInput", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+            .Invoke(null, [input, new SolverOptions()])!;
+        var opening = (RestUsage)typeof(TSolver)
+            .GetMethod("OpeningRestUsage", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+            .Invoke(null, [input, employee])!;
+        var prior = (RestUsage)typeof(TSolver)
+            .GetMethod("RestUsageBeforeModeledDates", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+            .Invoke(null, [input, employee, input.RestIntervals[0]])!;
+
+        Assert.IsFalse(errors.Any(error => error.Field == "OpeningUsage"), string.Join(Environment.NewLine, errors));
+        Assert.AreEqual(manual, opening);
+        Assert.AreEqual(manual, prior);
+    }
+
+    [TestMethod]
     public void Solve_FixedCrossShiftIsWeightedSoftViolation()
     {
         var input = OnlyEmployee(ValidInput(), "T-E2");

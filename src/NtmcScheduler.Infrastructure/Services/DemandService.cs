@@ -432,7 +432,8 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         ServiceSupport.RequireEditor(actor, demand.Workspace);
         var schedule = await GetPreviousScheduleAsync(db, demand, cancellationToken);
         return new(demand.Workspace, schedule.MonthStart, schedule.Employees.Select(employee =>
-            new PreviousScheduleEmployeeDto(employee.EmployeeId, employee.Name, employee.Affiliation, ScheduleCsv.MonthlyRow(schedule, employee))).ToArray());
+            new PreviousScheduleEmployeeDto(employee.EmployeeId, employee.Name, employee.Affiliation,
+                employee.ClosingUsage?.Rest, employee.ClosingUsage?.SpecialRest, ScheduleCsv.MonthlyRow(schedule, employee))).ToArray());
     }
 
     public async Task<PreviousScheduleFileDto> ExportPreviousScheduleAsync(Guid demandId, ActorContext actor, CancellationToken cancellationToken = default)

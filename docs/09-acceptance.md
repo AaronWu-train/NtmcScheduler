@@ -26,6 +26,8 @@
 - 每單位月份僅一份 Demand 草稿；重開仍保留，所有寫入以 revision token 拒絕陳舊更新。Demand 可刪除並以同月份重建；既有求解輸入快照、求解紀錄與班表保持可讀且不受影響。
 - 任何已登入者可在 M/T 填報頁代填任一員工的 R*、R休 上限、固定班與 X；選取已有填報的員工可讀取並覆蓋，AuditLog 含操作者與被填員工。Editor 在 Demand 寬表預覽填報時，所有可匯入的員工列預設全部勾選，並可逐列調整；確認後只覆蓋已勾選員工的 R休 上限與日格，未勾選員工的正式 Demand 內容保持不變，並可重複預覽與匯入。填報頁只顯示該員工填報的最後更新時間與操作者；需求編輯器只顯示本月最近匯入時間與匯入者，不顯示逾期或已同步狀態。
 - 建立 Demand 自動使用上月 `★`；不存在時求解前必須成功上傳 previous schedule。兩種來源都依員工 ID，將上月月底 R/R1 與萬年班表帶入本月月初 R/R1 與人員資料。求解建立 immutable JSON input snapshot、hash、seed、程式版本與人員月快照。
+- M／YM／T／YT 既有人員 Demand 明確填入的月初 R/R1 即使不同於上月月底累計，求解仍以手動值建模；兩欄皆留空才由上月推導。新進人員仍依到職日前日期折抵。
+- 月初 R 或 R1 手動值與目前所選上月班表的月底累計不同時，Demand 對應欄位顯示黃色警示框，但不產生 `InvalidInput` 或阻擋求解。
 - 背景佇列一次只執行一個 solver；重啟將 Queued／Running 安全回復為 Queued，終態正確區分 Optimal、TimeLimit、Infeasible、InvalidInput、Failed。
 
 ## 班表版本與編輯器

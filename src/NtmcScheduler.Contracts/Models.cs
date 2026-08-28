@@ -183,7 +183,13 @@ public sealed record DemandDraftDto(
 
 public sealed record PreviousUploadDto(string FileName, DateTimeOffset UploadedAtUtc);
 public sealed record PreviousSchedulePreviewDto(WorkspaceCode Workspace, DateOnly Month, IReadOnlyList<PreviousScheduleEmployeeDto> Employees);
-public sealed record PreviousScheduleEmployeeDto(string EmployeeCode, string Name, string Affiliation, IReadOnlyList<string> MonthlyCsvValues);
+public sealed record PreviousScheduleEmployeeDto(
+    string EmployeeCode,
+    string Name,
+    string Affiliation,
+    int? ClosingRest,
+    int? ClosingSpecialRest,
+    IReadOnlyList<string> MonthlyCsvValues);
 public sealed record PreviousScheduleFileDto(string FileName, byte[] Content);
 public sealed record PerpetualUploadDto(string FileName, DateTimeOffset UploadedAtUtc, bool IsEmpty);
 public sealed record PerpetualScheduleFileDto(string FileName, byte[] Content);
