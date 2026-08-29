@@ -111,9 +111,10 @@ public sealed class CommonConfigurationService(IDbContextFactory<NtmcDbContext> 
         var tokens = new HashSet<string>(StringComparer.Ordinal);
         foreach (var shift in shifts)
         {
-            if (string.IsNullOrWhiteSpace(shift.Code) || !tokens.Add(shift.Code.Trim()) ||
-                !string.IsNullOrWhiteSpace(shift.Name) && !tokens.Add(shift.Name.Trim()))
-                throw new DomainValidationException("非常態班型名稱與代碼必填／唯一，且不可互相重複。");
+            var names = ScheduleCsv.NonStandardShiftNames(shift.Name);
+            if (string.IsNullOrWhiteSpace(shift.Code) || !tokens.Add(shift.Code.Trim()) || ScheduleCsv.IsReservedShiftName(shift.Code.Trim()) ||
+                names.Any(name => !tokens.Add(name)) || names.Any(ScheduleCsv.IsReservedShiftName))
+                throw new DomainValidationException("非常態班型代碼與各名稱必須唯一且不可使用早、午、小、夜；多個名稱以分號分隔。");
         }
     }
 

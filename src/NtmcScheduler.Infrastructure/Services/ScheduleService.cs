@@ -335,9 +335,9 @@ public sealed class ScheduleService(
             version.Employees.OrderBy(x => x.EmployeeCode).Select(employee =>
             {
                 var row = ScheduleCsv.MonthlyRow(schedule, scheduleEmployees[employee.EmployeeCode]).ToArray();
-                if (!canViewAbility) row[4] = "";
+                if (!canViewAbility) row[5] = "";
                 return new ScheduleEmployeeInfoDto(
-                    employee.Id, employee.EmployeeCode, employee.Name, employee.Affiliation, employee.EmploymentStartDate,
+                    employee.Id, employee.EmployeeCode, employee.Name, employee.Affiliation, employee.EmploymentStartDate, employee.EmploymentEndDate,
                     canViewAbility ? employee.Ability : null, employee.MonthlyShift, employee.OpeningRest, employee.OpeningSpecialRest, row);
             }).ToArray(),
             version.Employees.OrderBy(x => x.EmployeeCode).SelectMany(employee => employee.Assignments.OrderBy(x => x.Date).Select(assignment => new ScheduleAssignmentDto(
@@ -462,6 +462,9 @@ public sealed class ScheduleService(
                 .Select(employee => new ScheduleSuggestionLocationDto($"{employee.EmployeeCode}（請比較同月班別休假統計）", employee.EmployeeCode)),
             "MonthlyRest" or "SpecialRestBalance" or "UnusedLeaveRest" => employees.Values
                 .Select(employee => new ScheduleSuggestionLocationDto($"{employee.EmployeeCode}（請查看右側月統計）", employee.EmployeeCode)),
+            "LeaveRestOutsideRequestedRest" => employees.Values.SelectMany(employee => employee.Assignments
+                .Where(cell => cell.Kind == "LeaveRest" && !cell.RequestedRest)
+                .Select(cell => new ScheduleSuggestionLocationDto($"{employee.EmployeeCode}／{cell.Date:M/d}", employee.EmployeeCode, cell.Date))),
             "RequestedRest" => employees.Values.SelectMany(employee => employee.Assignments.Where(cell => cell.RequestedRest && cell.Kind is not "Rest" and not "SpecialRest" and not "LeaveRest")
                 .Select(cell => new ScheduleSuggestionLocationDto($"{employee.EmployeeCode}／{cell.Date:M/d}", employee.EmployeeCode, cell.Date))),
             _ => days.Select(day => new ScheduleSuggestionLocationDto($"{day:M/d}（請檢視班別人力）", null, day))

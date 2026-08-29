@@ -211,6 +211,7 @@ public static class Program
     private static string ObjectiveText(string name) => name switch
     {
         "RequestedRest" => "指定休假",
+        "LeaveRestPreference" => "R休日期偏好",
         "ScheduleQualityAndFairness" => "排班品質與公平性",
         "StaffingQuality" => "班組人力品質",
         "RestDistribution" => "休假分布",
@@ -222,6 +223,7 @@ public static class Program
     private static string ComponentText(string name) => name switch
     {
         "RequestedRest" => "未滿足 R*",
+        "LeaveRestOutsideRequestedRest" => "非 R* 日期的 R休",
         "UnusedLeaveRest" => "未使用指定 R休額度",
         "ExternalStaffing" => "外援人力",
         "MonthlyRest" => "每月一般 R 偏差",
@@ -248,7 +250,8 @@ public static class Program
     private static string ComponentDescription(string name) => name switch
     {
         "RequestedRest" => "R* 最後未排成 R、R1 或 R休的格數",
-        "UnusedLeaveRest" => "各人指定 R休上限減去實際 R休數的合計",
+        "LeaveRestOutsideRequestedRest" => "排在非 R* 日期的 R休數",
+        "UnusedLeaveRest" => "舊版未使用 R休上限違反量",
         "ExternalStaffing" => "允許站外援超過 70 的部分，加上盡量不要站的全部外援人次",
         "MonthlyRest" => "各人實際 R 數與當月週末日目標差額平方的合計",
         "SpecialRestBalance" => "各人八週區間截至月底的累積 R1 超額，或超過一日容許量的欠額平方合計",

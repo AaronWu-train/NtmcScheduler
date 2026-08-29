@@ -106,6 +106,7 @@ public sealed class DemandDraft
     public DateTimeOffset? PerpetualScheduleUploadedAtUtc { get; set; }
     public int? GeneralRestTarget { get; set; }
     public int? SpecialRestTarget { get; set; }
+    public int RequestedRestLimit { get; set; } = 4;
     public string? MStationSettingsJson { get; set; }
     public Guid CreatedByUserId { get; set; }
     public Guid UpdatedByUserId { get; set; }
@@ -136,10 +137,12 @@ public sealed class DemandEmployee
     public string Name { get; set; } = "";
     public string Affiliation { get; set; } = "";
     public DateOnly? EmploymentStartDate { get; set; }
+    public DateOnly? EmploymentEndDate { get; set; }
     public int? Ability { get; set; }
     public string? MonthlyShift { get; set; }
     public int? OpeningRest { get; set; }
     public int? OpeningSpecialRest { get; set; }
+    public int RequestedLeaveRestMinimum { get; set; }
     public int RequestedLeaveRestCount { get; set; }
     public string? PerpetualScheduleId { get; set; }
     public DemandDraft DemandDraft { get; set; } = null!;
@@ -170,6 +173,7 @@ public sealed class EmployeeDemandSubmission
     public string Name { get; set; } = "";
     public string Affiliation { get; set; } = "";
     public DateOnly? EmploymentStartDate { get; set; }
+    public int RequestedLeaveRestMinimum { get; set; }
     public int RequestedLeaveRestCount { get; set; }
     public Guid UpdatedByUserId { get; set; }
     public string UpdatedByName { get; set; } = "";
@@ -278,10 +282,12 @@ public sealed class ScheduleEmployeeSnapshot
     public string Name { get; set; } = "";
     public string Affiliation { get; set; } = "";
     public DateOnly? EmploymentStartDate { get; set; }
+    public DateOnly? EmploymentEndDate { get; set; }
     public int? Ability { get; set; }
     public string? MonthlyShift { get; set; }
     public int? OpeningRest { get; set; }
     public int? OpeningSpecialRest { get; set; }
+    public int RequestedLeaveRestMinimum { get; set; }
     public int RequestedLeaveRestCount { get; set; }
     public int? ClosingRest { get; set; }
     public int? ClosingSpecialRest { get; set; }

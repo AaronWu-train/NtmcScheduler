@@ -153,7 +153,7 @@ else
                                     @CellText(cell)
                                 </button>
                             }
-                            else if (employee.EmploymentStartDate is { } start && day < start)
+                            else if (employee.EmploymentStartDate is { } start && day < start || employee.EmploymentEndDate is { } end && day > end)
                             {
                                 <span class="not-applicable">—</span>
                             }
@@ -272,7 +272,10 @@ else
                     <option value="">自行輸入</option>
                     @foreach (var shift in configuration?.NonStandardShifts ?? [])
                     {
-                        <option value="@shift.Code">@(shift.Name ?? shift.Code)</option>
+                        @foreach (var name in ShiftNames(shift))
+                        {
+                            <option value="@shift.Code:@name">@name</option>
+                        }
                     }
                 </select>
             </label>
@@ -513,13 +516,18 @@ else
 
     private void ApplyNonStandard(ChangeEventArgs args)
     {
-        var shift = configuration?.NonStandardShifts.FirstOrDefault(x => x.Code == args.Value?.ToString());
+        var parts = args.Value?.ToString()?.Split(':', 2);
+        var shift = configuration?.NonStandardShifts.FirstOrDefault(x => parts is not null && x.Code == parts[0]);
         if (shift is null || editingCell is null) return;
         var endDate = shift.EndTime <= shift.StartTime ? editingCell.Date.AddDays(1) : editingCell.Date;
         cellEdit.Start = editingCell.Date.ToDateTime(shift.StartTime);
         cellEdit.End = endDate.ToDateTime(shift.EndTime);
-        cellEdit.Description = shift.Name ?? shift.Code;
+        cellEdit.Description = detail!.Version.Workspace is WorkspaceCode.YM or WorkspaceCode.YT ? $"{parts![1]}({shift.Code})" : parts![1];
     }
+
+    private static IReadOnlyList<string> ShiftNames(NonStandardShiftDto shift) => string.IsNullOrWhiteSpace(shift.Name)
+        ? [shift.Code]
+        : shift.Name.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
     private static DateTimeOffset? Offset(DateTime? value) => value is null ? null : new DateTimeOffset(DateTime.SpecifyKind(value.Value, DateTimeKind.Unspecified), TimeSpan.FromHours(8));
     private static DateTime? LocalText(DateTimeOffset? value) => value?.ToOffset(TimeSpan.FromHours(8)).DateTime;

@@ -71,6 +71,7 @@
             <div class="toolbar">
                 <label>R 基準（@demand.MonthlySettings.GeneralRestMinimum–@demand.MonthlySettings.GeneralRestMaximum）<input class="number-field" type="number" min="@demand.MonthlySettings.GeneralRestMinimum" max="@demand.MonthlySettings.GeneralRestMaximum" @bind="generalRestTarget" disabled="@(!canEdit || isBusy)"/></label>
                 <label>R1 基準（@demand.MonthlySettings.SpecialRestMinimum–@demand.MonthlySettings.SpecialRestMaximum）<input class="number-field" type="number" min="@demand.MonthlySettings.SpecialRestMinimum" max="@demand.MonthlySettings.SpecialRestMaximum" @bind="specialRestTarget" disabled="@(!canEdit || isBusy)"/></label>
+                <label>每人 R* 上限<input class="number-field" type="number" min="0" @bind="requestedRestLimit" disabled="@(!canEdit || isBusy)"/></label>
             </div>
             @if (workspaceCode.IsStation())
             {
@@ -258,7 +259,11 @@
                             <input type="checkbox"
                                    checked="@selectedSubmissionEmployees.Contains(employee.EmployeeCode)"
                                    @onchange="args => SetSubmissionEmployeeSelected(employee.EmployeeCode, args.Value is true)"/>
-                            @employee.Description
+                            <span class="@(employee.ExceedsRequestedRestLimit ? "error-text" : "")">@employee.Description</span>
+                            @if (employee.ExceedsRequestedRestLimit)
+                            {
+                                <span class="error-text">（超過每人 R* 上限 @demand.MonthlySettings.RequestedRestLimit）</span>
+                            }
                         </label>
                     </div>
                 }
@@ -317,7 +322,7 @@
                                         var date = demand.Month.AddDays(day - 1);
                                         var cell = employee.Assignments.FirstOrDefault(x => x.Date == date);
                                         <td class="@DayClass(header)">
-                                            <select class="cell-editor @CellClass(cell)" title="@value" disabled="@(!canEdit || isBusy || employee.EmploymentStartDate is { } start && date < start)" value="@CellEditorValue(cell)" @onchange="args => ChangeCellAsync(employee, date, cell, args.Value?.ToString())">
+                                            <select class="cell-editor @CellClass(cell)" title="@value" disabled="@(!canEdit || isBusy || employee.EmploymentStartDate is { } start && date < start || employee.EmploymentEndDate is { } end && date > end)" value="@CellEditorValue(cell)" @onchange="args => ChangeCellAsync(employee, date, cell, args.Value?.ToString())">
                                                 <option value=""></option><option value="RStar">R*</option>
                                                 @if (workspaceCode.IsStation())
                                                 {
@@ -342,7 +347,10 @@
                                                     <option value="Other">自行輸入 X…</option>
                                                     @foreach (var shift in configuration?.NonStandardShifts ?? [])
                                                     {
-                                                        <option value="ns:@shift.Code">@(shift.Name ?? shift.Code)</option>
+                                                        @foreach (var name in ShiftNames(shift))
+                                                        {
+                                                            <option value="ns:@shift.Code:@name">@name</option>
+                                                        }
                                                     }
                                                 </optgroup>
                                             </select>
@@ -353,6 +361,12 @@
                                 {
                                     <td>
                                         <input class="inline-field date-field" type="date" disabled="@(!canEdit || isBusy)" value="@DateText(edit.EmploymentStartDate)" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "employmentStart", args.Value?.ToString())'/>
+                                    </td>
+                                }
+                                else if (header == "月間排班終止日")
+                                {
+                                    <td>
+                                        <input class="inline-field date-field" type="date" disabled="@(!canEdit || isBusy)" value="@DateText(edit.EmploymentEndDate)" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "employmentEnd", args.Value?.ToString())'/>
                                     </td>
                                 }
                                 else if (header == "T月班別" && workspaceCode.IsMaintenance())
@@ -376,7 +390,13 @@
                                         <input class="@OpeningUsageClass(employee.EmployeeCode, edit.OpeningSpecialRest, true)" title="@OpeningUsageTitle(employee.EmployeeCode, edit.OpeningSpecialRest, true)" type="number" min="0" disabled="@(!canEdit || isBusy)" value="@edit.OpeningSpecialRest" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "openingSpecialRest", args.Value?.ToString())'/>
                                     </td>
                                 }
-                                else if (header == "當月指定R休")
+                                else if (header == "R休下限")
+                                {
+                                    <td>
+                                        <input class="inline-field number-field" type="number" min="0" disabled="@(!canEdit || isBusy)" value="@edit.LeaveRestMinimum" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "leaveRestMinimum", args.Value?.ToString())'/>
+                                    </td>
+                                }
+                                else if (header == "R休上限")
                                 {
                                     <td>
                                         <input class="inline-field number-field" type="number" min="0" disabled="@(!canEdit || isBusy)" value="@edit.LeaveRest" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "leaveRest", args.Value?.ToString())'/>
@@ -485,10 +505,10 @@
                                         <summary>候選 @candidate.Number 詳細資訊</summary>
                                         @foreach (var objective in candidate.Objectives)
                                         {
-                                            <div>優先層級 @objective.Priority－@ObjectiveText(objective.Name)：總加權分 @objective.Value</div>
+                                            <div>優先層級 @objective.Priority－@CurrentObjectiveText(objective.Name)：總加權分 @objective.Value</div>
                                             @foreach (var component in objective.Components)
                                             {
-                                                <div class="solve-component">@ComponentText(component.Name)：違反量 @component.Value，權重 @component.Weight，加權分 @(component.Value * component.Weight)</div>
+                                                <div class="solve-component">@CurrentComponentText(component.Name)：違反量 @component.Value，權重 @component.Weight，加權分 @(component.Value * component.Weight)</div>
                                             }
                                         }
                                     </details>
@@ -590,6 +610,7 @@
     private int solveSeedCount = 1;
     private int generalRestTarget;
     private int specialRestTarget;
+    private int requestedRestLimit = 4;
     private readonly List<StationSettingEdit> stationSettings = [];
     private IReadOnlyList<SolverRuleDefinitionDto> ruleDefinitions = [];
     private Dictionary<string, int> ruleWeights = new(StringComparer.Ordinal);
@@ -749,7 +770,7 @@
     private static readonly HashSet<string> PostSolveHeaders = ["當月R", "當月R1", "月底區間累計R", "月底區間累計R1", "本月班數"];
     private static string StickyClass(string header) => header switch { "ID" => "sticky-col sticky-id", "姓名" => "sticky-col sticky-name", "所屬" => "sticky-col sticky-affiliation", _ => "" };
     private string HeaderClass(string header) => StickyClass(header) + (header is "ID" or "姓名" or "所屬" or "T月班別" ? " sortable" : "");
-    private static string HeaderText(string header) => header switch { "月初區間累計R" => "月初R", "月初區間累計R1" => "月初R1", "當月指定R休" => "R休上限", "T月班別" => "月班別", "萬年班表" => "萬年班表", _ => header };
+    private static string HeaderText(string header) => header switch { "月初區間累計R" => "月初R", "月初區間累計R1" => "月初R1", "T月班別" => "月班別", "萬年班表" => "萬年班表", _ => header };
 
     private string DayClass(string header)
     {
@@ -807,6 +828,7 @@
         if (demand is null) return;
         generalRestTarget = demand.MonthlySettings.GeneralRestTarget;
         specialRestTarget = demand.MonthlySettings.SpecialRestTarget;
+        requestedRestLimit = demand.MonthlySettings.RequestedRestLimit;
         stationSettings.AddRange(demand.MonthlySettings.MStations.Select(x => new StationSettingEdit
         {
             Code = x.Code, Group = x.Group, ExternalSupport = x.ExternalSupport,
@@ -820,7 +842,7 @@
     {
         var stations = stationSettings.Select(x => new MStationSettingDto(x.Code, x.Group, x.ExternalSupport,
             new(x.EarlyMinimum, x.EarlyMaximum), new(x.AfternoonMinimum, x.AfternoonMaximum), new(x.NightMinimum, x.NightMaximum))).ToArray();
-        demand = await DemandService.UpdateMonthlySettingsAsync(demand!.Id, generalRestTarget, specialRestTarget, stations, demand.RevisionToken, await CurrentActor.GetAsync());
+        demand = await DemandService.UpdateMonthlySettingsAsync(demand!.Id, generalRestTarget, specialRestTarget, requestedRestLimit, stations, demand.RevisionToken, await CurrentActor.GetAsync());
         InitializeMonthlySettings();
     }, "本月排班設定已儲存。");
 
@@ -968,8 +990,8 @@
     {
         employeeEdits = demand?.Employees.ToDictionary(x => x.EmployeeCode, x => new EmployeeEdit
         {
-            EmploymentStartDate = x.EmploymentStartDate, MonthlyShift = x.MonthlyShift ?? "", OpeningRest = x.OpeningRest, OpeningSpecialRest = x.OpeningSpecialRest,
-            LeaveRest = x.RequestedLeaveRestCount, PerpetualId = x.PerpetualScheduleId ?? ""
+            EmploymentStartDate = x.EmploymentStartDate, EmploymentEndDate = x.EmploymentEndDate, MonthlyShift = x.MonthlyShift ?? "", OpeningRest = x.OpeningRest, OpeningSpecialRest = x.OpeningSpecialRest,
+            LeaveRestMinimum = x.RequestedLeaveRestMinimum, LeaveRest = x.RequestedLeaveRestCount, PerpetualId = x.PerpetualScheduleId ?? ""
         }) ?? [];
     }
 
@@ -988,9 +1010,11 @@
             switch (field)
             {
                 case "employmentStart": edit.EmploymentStartDate = ParseDate(value); break;
+                case "employmentEnd": edit.EmploymentEndDate = ParseDate(value); break;
                 case "monthlyShift": edit.MonthlyShift = value ?? ""; break;
                 case "openingRest": edit.OpeningRest = ParseNullableNonNegative(value, "月初 R"); break;
                 case "openingSpecialRest": edit.OpeningSpecialRest = ParseNullableNonNegative(value, "月初 R1"); break;
+                case "leaveRestMinimum": edit.LeaveRestMinimum = ParseNullableNonNegative(value, "當月指定 R休下界") ?? 0; break;
                 case "leaveRest": edit.LeaveRest = ParseNullableNonNegative(value, "當月指定 R休") ?? 0; break;
                 case "perpetual": edit.PerpetualId = value ?? ""; break;
             }
@@ -1003,10 +1027,16 @@
         }
 
         if ((edit.OpeningRest is null) != (edit.OpeningSpecialRest is null)) return;
+        if (edit.LeaveRestMinimum > edit.LeaveRest)
+        {
+            messageClass = "error";
+            message = "R休下界不得大於上界。";
+            return;
+        }
         await RunUiAsync(async () =>
         {
-            demand = await DemandService.UpdateEmployeeAsync(demand!.Id, employee.EmployeeCode, edit.EmploymentStartDate, workspaceCode.IsMaintenance() ? edit.MonthlyShift : null,
-                edit.OpeningRest, edit.OpeningSpecialRest, edit.LeaveRest, edit.PerpetualId, demand.RevisionToken, await CurrentActor.GetAsync());
+            demand = await DemandService.UpdateEmployeeAsync(demand!.Id, employee.EmployeeCode, edit.EmploymentStartDate, edit.EmploymentEndDate, workspaceCode.IsMaintenance() ? edit.MonthlyShift : null,
+                edit.OpeningRest, edit.OpeningSpecialRest, edit.LeaveRestMinimum, edit.LeaveRest, edit.PerpetualId, demand.RevisionToken, await CurrentActor.GetAsync());
             InitializeEmployeeEdits();
         }, "月份欄位已自動儲存。");
     }
@@ -1053,10 +1083,11 @@
             string? description = null;
             if (value?.StartsWith("ns:", StringComparison.Ordinal) == true)
             {
-                var nonStandard = configuration!.NonStandardShifts.Single(x => x.Code == value[3..]);
+                var nsParts = value.Split(':', 3);
+                var nonStandard = configuration!.NonStandardShifts.Single(x => x.Code == nsParts[1]);
                 start = Offset(date.ToDateTime(nonStandard.StartTime));
                 end = Offset((nonStandard.EndTime <= nonStandard.StartTime ? date.AddDays(1) : date).ToDateTime(nonStandard.EndTime));
-                description = nonStandard.Name ?? nonStandard.Code;
+                description = workspaceCode is WorkspaceCode.YM or WorkspaceCode.YT ? $"{nsParts[2]}({nonStandard.Code})" : nsParts[2];
             }
 
             demand = await DemandService.UpdateAssignmentAsync(demand!.Id, employee.EmployeeCode, date, kind, requested,
@@ -1115,6 +1146,9 @@
     private static string ObjectiveText(string name) => name switch { "RequestedRest" => "指定休假", "ScheduleQualityAndFairness" => "排班品質與公平性", "StaffingQuality" => "班組人力品質", "RestDistribution" => "休假分布", "WorkPatternQuality" => "工作型態品質", "RestFairness" => "休假公平", _ => name };
     private static string ComponentText(string name) => name switch { "RequestedRest" => "未滿足 R*", "UnusedLeaveRest" => "未使用指定 R休額度", "ExternalStaffing" => "外援人力", "MonthlyRest" => "每月一般 R 偏差", "SpecialRestBalance" => "八週累積 R1 餘額", "WorkStreak" => "連續工作區段", "MixedShiftWorkStreak" => "連續工作區段混合班型", "NightRestEarly" => "夜R早", "NightRestAfternoon" => "夜R午", "ShiftChangeWithoutRest" => "未休假直接換班", "NonHomeStation" => "非所屬站指派", "WeekdayRestFairness" => "平日休假公平", "HolidayRestFairness" => "假日休假公平", "EarlyAfternoonImbalance" => "早午班差距", "NightShiftTarget" => "夜班 3, 4 天目標", "NonMonthlyShift" => "月班別不一致", "Attendance" => "班組出勤不足", "Specialty" => "專業缺席", "Ability" => "高能力人員不足", "NightToEarlyRest" => "跨月夜轉早休假不足", "MonthBoundaryRestBalance" => "月交界休假不平衡", _ => name };
 
+    private static string CurrentObjectiveText(string name) => name == "LeaveRestPreference" ? "R休日期偏好" : ObjectiveText(name);
+    private static string CurrentComponentText(string name) => name == "LeaveRestOutsideRequestedRest" ? "非 R* 日期的 R休" : ComponentText(name);
+
     private string CellEditorValue(DemandAssignmentDto? cell)
     {
         if (cell is null) return "";
@@ -1125,8 +1159,14 @@
         var end = LocalText(cell.EventEnd);
         var match = configuration?.NonStandardShifts.FirstOrDefault(x => start is not null && end is not null &&
                                                                          TimeOnly.FromDateTime(start.Value) == x.StartTime && TimeOnly.FromDateTime(end.Value) == x.EndTime);
-        return match is null ? "Other" : $"ns:{match.Code}";
+        if (match is null) return "Other";
+        var name = ShiftNames(match).FirstOrDefault(x => cell.EventDescription == x || cell.EventDescription == $"{x}({match.Code})");
+        return name is null ? "Other" : $"ns:{match.Code}:{name}";
     }
+
+    private static IReadOnlyList<string> ShiftNames(NonStandardShiftDto shift) => string.IsNullOrWhiteSpace(shift.Name)
+        ? [shift.Code]
+        : shift.Name.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
     private static string CellClass(DemandAssignmentDto? cell) => cell?.Kind switch { "Rest" or "SpecialRest" or "LeaveRest" => "rest", "Work" when cell.Shift == "Early" => "early", "Work" when cell.Shift == "Afternoon" => "afternoon", "Work" when cell.Shift == "Night" => "night", "WorkEvent" => "event", _ => cell?.RequestedRest == true ? "requested" : "" };
     private static string Taipei(DateTimeOffset value) => value.ToOffset(TimeSpan.FromHours(8)).ToString("yyyy-MM-dd HH:mm");
@@ -1134,9 +1174,11 @@
     private sealed class EmployeeEdit
     {
         public DateOnly? EmploymentStartDate { get; set; }
+        public DateOnly? EmploymentEndDate { get; set; }
         public string MonthlyShift { get; set; } = "";
         public int? OpeningRest { get; set; }
         public int? OpeningSpecialRest { get; set; }
+        public int LeaveRestMinimum { get; set; }
         public int LeaveRest { get; set; }
         public string PerpetualId { get; set; } = "";
     }

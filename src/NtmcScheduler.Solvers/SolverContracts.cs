@@ -110,6 +110,7 @@ public sealed record EmployeeMonthlySchedule
     public required string Affiliation { get; init; }
 
     public DateOnly? EmploymentStartDate { get; init; }
+    public DateOnly? EmploymentEndDate { get; init; }
 
     /// <summary>Required for T (1-5); null for M.</summary>
     public int? Ability { get; init; }
@@ -119,6 +120,9 @@ public sealed record EmployeeMonthlySchedule
 
     /// <summary>M eight-week template identifier; null for T.</summary>
     public string? PerpetualScheduleId { get; init; }
+
+    /// <summary>Minimum target-month R休 count. Null means zero; solved and historical schedules leave it null.</summary>
+    public int? RequestedLeaveRestMinimum { get; init; }
 
     /// <summary>Maximum target-month R休 count. Null means zero; solved and historical schedules leave it null.</summary>
     public int? RequestedLeaveRestCount { get; init; }
@@ -195,7 +199,7 @@ public static class SolverRuleWeights
 {
     public static readonly IReadOnlyDictionary<string, int> M = new Dictionary<string, int>(StringComparer.Ordinal)
     {
-        ["RequestedRest"] = 3, ["UnusedLeaveRest"] = 1, ["ExternalStaffing"] = 5,
+        ["RequestedRest"] = 10, ["LeaveRestOutsideRequestedRest"] = 1, ["ExternalStaffing"] = 5,
         ["MonthlyRest"] = 240, ["SpecialRestBalance"] = 120, ["WorkStreak"] = 20,
         ["MixedShiftWorkStreak"] = 15, ["NightRestEarly"] = 400, ["NightRestAfternoon"] = 300,
         ["ShiftChangeWithoutRest"] = 5, ["NonHomeStation"] = 1, ["HolidayRestFairness"] = 5,
@@ -204,7 +208,7 @@ public static class SolverRuleWeights
 
     public static readonly IReadOnlyDictionary<string, int> T = new Dictionary<string, int>(StringComparer.Ordinal)
     {
-        ["RequestedRest"] = 3, ["UnusedLeaveRest"] = 1, ["NonMonthlyShift"] = 9,
+        ["RequestedRest"] = 10, ["LeaveRestOutsideRequestedRest"] = 1, ["NonMonthlyShift"] = 9,
         ["Attendance"] = 9, ["Specialty"] = 3, ["Ability"] = 1, ["MonthlyRest"] = 1,
         ["SpecialRestBalance"] = 1, ["WorkStreak"] = 3, ["NightToEarlyRest"] = 12,
         ["MonthBoundaryRestBalance"] = 5, ["WeekdayRestFairness"] = 2, ["HolidayRestFairness"] = 4
@@ -214,6 +218,12 @@ public static class SolverRuleWeights
     {
         var defaults = isM ? M : T;
         if (requested is null) return defaults;
+        if (requested.TryGetValue("UnusedLeaveRest", out var legacyWeight) && !requested.ContainsKey("LeaveRestOutsideRequestedRest"))
+        {
+            requested = new(requested, StringComparer.Ordinal);
+            requested.Remove("UnusedLeaveRest");
+            requested["LeaveRestOutsideRequestedRest"] = legacyWeight;
+        }
         if (requested.Count != defaults.Count || requested.Any(pair => pair.Value < 0 || !defaults.ContainsKey(pair.Key)))
             throw new ArgumentException("Rule weights must contain every active rule exactly once and be non-negative.", nameof(requested));
         return requested;

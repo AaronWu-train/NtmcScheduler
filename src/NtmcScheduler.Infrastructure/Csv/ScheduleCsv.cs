@@ -17,12 +17,16 @@ public static partial class ScheduleCsv
 {
     private static readonly string[] LegacyHeaders =
     [
-        "ID", "姓名", "所屬", "月中開始排班日", "能力", "T月班別",
+        "ID", "姓名", "所屬", "月中開始排班日", "月間排班終止日", "能力", "T月班別",
         "月初區間累計R", "月初區間累計R1",
         .. Enumerable.Range(1, 31).Select(day => day.ToString(CultureInfo.InvariantCulture)),
-        "當月R", "當月R1", "當月指定R休", "月底區間累計R", "月底區間累計R1", "本月班數"
+        "當月R", "當月R1", "R休下限", "R休上限", "月底區間累計R", "月底區間累計R1", "本月班數"
     ];
     private static readonly string[] Headers = [.. LegacyHeaders, "萬年班表"];
+    private static readonly string[] OldLegacyHeaders = LegacyHeaders.Where(x => x is not "R休下限" and not "月間排班終止日").ToArray();
+    private static readonly string[] OldHeaders = [.. OldLegacyHeaders, "萬年班表"];
+    private static readonly string[] PreviousLegacyHeaders = LegacyHeaders.Where(x => x != "月間排班終止日").ToArray();
+    private static readonly string[] PreviousHeaders = [.. PreviousLegacyHeaders, "萬年班表"];
 
     public static string MonthlyHeader => Join(Headers);
     public static IReadOnlyList<string> MonthlyHeaders { get; } = Array.AsReadOnly(Headers);
@@ -102,6 +106,7 @@ public static partial class ScheduleCsv
             employee.Name,
             employee.Affiliation,
             employee.EmploymentStartDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
+            employee.EmploymentEndDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
             employee.Ability?.ToString(CultureInfo.InvariantCulture) ?? "",
             ShiftText(employee.MonthlyShift),
             employee.OpeningUsage?.Rest.ToString(CultureInfo.InvariantCulture) ?? "",
@@ -112,6 +117,7 @@ public static partial class ScheduleCsv
         var monthlyUsage = completed ? CountRestUsage(employee.Assignments.Values) : null;
         values.Add(monthlyUsage?.Rest.ToString(CultureInfo.InvariantCulture) ?? "");
         values.Add(monthlyUsage?.SpecialRest.ToString(CultureInfo.InvariantCulture) ?? "");
+        values.Add((completed ? null : employee.RequestedLeaveRestMinimum)?.ToString(CultureInfo.InvariantCulture) ?? "");
         values.Add((completed
             ? employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.LeaveRest)
             : employee.RequestedLeaveRestCount)?.ToString(CultureInfo.InvariantCulture) ?? "");
@@ -172,8 +178,9 @@ public static partial class ScheduleCsv
                 !TimeOnly.TryParseExact(times[0], "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var startTime) ||
                 !TimeOnly.TryParseExact(times[1], "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var endTime))
                 throw new ScheduleCsvException(field, "非常態班型時間必須使用 HH:mm~HH:mm。");
-            if (!tokens.Add(code) || name is not null && !tokens.Add(name))
-                throw new ScheduleCsvException(field, "非常態班型名稱與代碼不可重複。");
+            var names = NonStandardShiftNames(name);
+            if (!tokens.Add(code) || IsReservedShiftName(code) || names.Any(alias => !tokens.Add(alias)) || names.Any(IsReservedShiftName))
+                throw new ScheduleCsvException(field, "非常態班型名稱與代碼不可重複，且不可使用早、午、小、夜。");
             shifts.Add(new(name, startTime, endTime, code));
         }
         return new(shifts);
@@ -221,32 +228,35 @@ public static partial class ScheduleCsv
         bool ignoreDerivedHistoricalFields)
     {
         var field = $"row {rowNumber}";
-        var ability = ignoreDerivedHistoricalFields ? null : NullableInt(row[4], $"{field} 能力");
-        var monthlyShift = NullableShift(row[5], $"{field} T月班別");
-        var monthlyUsage = ignoreDerivedHistoricalFields ? null : Usage(row[39], row[40], $"{field} monthly");
-        var monthlyLeaveRest = ignoreDerivedHistoricalFields ? null : NullableInt(row[41], $"{field} 當月指定R休");
-        var closingUsage = ignoreDerivedHistoricalFields ? null : Usage(row[42], row[43], $"{field} closing");
+        var ability = ignoreDerivedHistoricalFields ? null : NullableInt(row[5], $"{field} 能力");
+        var monthlyShift = NullableShift(row[6], $"{field} T月班別");
+        var monthlyUsage = ignoreDerivedHistoricalFields ? null : Usage(row[40], row[41], $"{field} monthly");
+        int? monthlyLeaveRestMinimum = ignoreDerivedHistoricalFields ? null : NullableInt(row[42], $"{field} R休下限") ?? 0;
+        var monthlyLeaveRest = ignoreDerivedHistoricalFields ? null : NullableInt(row[43], $"{field} R休上限");
+        var closingUsage = ignoreDerivedHistoricalFields ? null : Usage(row[44], row[45], $"{field} closing");
         var employee = new EmployeeMonthlySchedule
         {
             EmployeeId = row[0].Trim(),
             Name = row[1].Trim(),
             Affiliation = row[2].Trim(),
             EmploymentStartDate = NullableDate(row[3], $"{field} 月中開始排班日"),
+            EmploymentEndDate = NullableDate(row[4], $"{field} 月間排班終止日"),
             Ability = ability,
             MonthlyShift = monthlyShift,
-            PerpetualScheduleId = hasPerpetualSchedule && !string.IsNullOrWhiteSpace(row[45]) ? row[45].Trim() : null,
+            PerpetualScheduleId = hasPerpetualSchedule && !string.IsNullOrWhiteSpace(row[47]) ? row[47].Trim() : null,
+            RequestedLeaveRestMinimum = closingUsage is null ? monthlyLeaveRestMinimum : null,
             RequestedLeaveRestCount = closingUsage is null ? monthlyLeaveRest : null,
-            OpeningUsage = Usage(row[6], row[7], $"{field} opening"),
+            OpeningUsage = Usage(row[7], row[8], $"{field} opening"),
             Assignments = new Dictionary<DateOnly, ScheduleCell>(),
             ClosingUsage = closingUsage,
-            NormalWorkCount = ignoreDerivedHistoricalFields ? null : NullableInt(row[44], $"{field} 本月班數")
+            NormalWorkCount = ignoreDerivedHistoricalFields ? null : NullableInt(row[46], $"{field} 本月班數")
         };
 
         var assignments = (Dictionary<DateOnly, ScheduleCell>)employee.Assignments;
         var days = DateTime.DaysInMonth(monthStart.Year, monthStart.Month);
         for (var day = 1; day <= 31; day++)
         {
-            var text = row[7 + day].Trim();
+            var text = row[8 + day].Trim();
             if (day > days)
             {
                 if (text.Length > 0) throw new ScheduleCsvException($"{field} day {day}", "A non-existent calendar day must be blank.");
@@ -254,6 +264,8 @@ public static partial class ScheduleCsv
             }
             if (text.Length == 0) continue;
             var date = monthStart.AddDays(day - 1);
+            if (employee.EmploymentStartDate is { } employmentStart && date < employmentStart || employee.EmploymentEndDate is { } employmentEnd && date > employmentEnd)
+                throw new ScheduleCsvException($"{field} day {day}", "A schedule cell outside the employee scheduling range must be blank.");
             assignments[date] = ParseCell(text, date, monthlyShift, nonStandardShifts, historical || closingUsage is not null, $"{field} day {day}", workspace);
         }
         var expectedMonthlyUsage = CountRestUsage(assignments.Values);
@@ -297,7 +309,8 @@ public static partial class ScheduleCsv
             "R*[R休]" => new() { Kind = AssignmentKind.LeaveRest, RequestedRest = true },
             _ when TryParseEventCell(text, date, field, out var eventCell) => eventCell,
             _ when monthlyShift is not null && ShiftFromText(text) is { } shift => new() { Kind = AssignmentKind.Work, Shift = shift },
-            _ when nonStandardShifts.GetValueOrDefault(text) is { } shift => EventCell(shift.StartTime, shift.EndTime, date, shift.Name ?? shift.Code),
+            _ when nonStandardShifts.GetValueOrDefault(text) is { } shift => EventCell(shift.StartTime, shift.EndTime, date,
+                workspace is WorkspaceCode.YM or WorkspaceCode.YT ? $"{shift.Name ?? shift.Code}({shift.Code})" : shift.Name ?? shift.Code),
             _ when MWorkCell(text, workspace) is { } cell => cell,
             _ => throw new ScheduleCsvException(field, $"Unsupported schedule cell '{text}'.")
         };
@@ -364,8 +377,12 @@ public static partial class ScheduleCsv
         var result = new Dictionary<string, NonStandardShift>(StringComparer.Ordinal);
         foreach (var shift in table?.Shifts ?? [])
         {
-            result[shift.Code] = shift;
-            if (!string.IsNullOrWhiteSpace(shift.Name)) result[shift.Name] = shift;
+            result[shift.Code] = shift with { Name = shift.Code };
+            foreach (var name in NonStandardShiftNames(shift.Name))
+            {
+                result[name] = shift with { Name = name };
+                result[$"{name}({shift.Code})"] = shift with { Name = name };
+            }
         }
         return result;
     }
@@ -374,7 +391,9 @@ public static partial class ScheduleCsv
     {
         if (day > DateTime.DaysInMonth(schedule.MonthStart.Year, schedule.MonthStart.Month)) return "";
         var date = schedule.MonthStart.AddDays(day - 1);
-        if ((employee.EmploymentStartDate is { } start && date < start) || !employee.Assignments.TryGetValue(date, out var cell)) return "";
+        if ((employee.EmploymentStartDate is { } start && date < start) ||
+            (employee.EmploymentEndDate is { } end && date > end) ||
+            !employee.Assignments.TryGetValue(date, out var cell)) return "";
         return cell.Kind switch
         {
             null when cell.RequestedRest => "R*",
@@ -496,7 +515,7 @@ public static partial class ScheduleCsv
 
     private static bool IsExcludedFromTemplate(string header, WorkspaceCode workspace, bool historical) =>
         IsExcludedFromDownload(header, workspace) ||
-        historical && header is "能力" or "當月R" or "當月R1" or "當月指定R休" or "月底區間累計R" or "月底區間累計R1" or "本月班數" ||
+        historical && header is "能力" or "當月R" or "當月R1" or "R休下限" or "R休上限" or "月底區間累計R" or "月底區間累計R1" or "本月班數" ||
         !historical && header is "當月R" or "當月R1" or "月底區間累計R" or "月底區間累計R1" or "本月班數";
 
     private static HashSet<int> ExcludedDownloadColumnIndexes(WorkspaceCode workspace) =>
@@ -509,6 +528,13 @@ public static partial class ScheduleCsv
     {
         header = IgnoreTrailingEmptyFields(header, Headers.Length);
         if (header.Length > 3 && header[3] == "到職日期") header[3] = "月中開始排班日";
+        for (var index = 0; index < header.Length; index++)
+            header[index] = header[index] switch
+            {
+                "當月指定R休下界" => "R休下限",
+                "當月指定R休" => "R休上限",
+                _ => header[index]
+            };
         if (header.SequenceEqual(Headers))
         {
             sourceHeaders = Headers;
@@ -517,6 +543,16 @@ public static partial class ScheduleCsv
         if (header.SequenceEqual(LegacyHeaders))
         {
             sourceHeaders = LegacyHeaders;
+            return true;
+        }
+        if (header.SequenceEqual(PreviousHeaders) || header.SequenceEqual(PreviousLegacyHeaders))
+        {
+            sourceHeaders = header.SequenceEqual(PreviousHeaders) ? PreviousHeaders : PreviousLegacyHeaders;
+            return true;
+        }
+        if (header.SequenceEqual(OldHeaders) || header.SequenceEqual(OldLegacyHeaders))
+        {
+            sourceHeaders = header.SequenceEqual(OldHeaders) ? OldHeaders : OldLegacyHeaders;
             return true;
         }
         var mDownloadHeaders = MonthlyDownloadHeaders(WorkspaceCode.M);
@@ -581,9 +617,18 @@ public static partial class ScheduleCsv
         return trimmed;
     }
 
+    internal static IReadOnlyList<string> NonStandardShiftNames(string? names) =>
+        string.IsNullOrWhiteSpace(names)
+            ? []
+            : names.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+    internal static bool IsReservedShiftName(string name) =>
+        name is "R" or "R1" or "R休" or "R休*" or "R*" or "R1*" or "R*[R]" or "R*[R1]" or "R*[R休]" or "早" or "午" or "小" or "夜" ||
+        name.StartsWith("X[", StringComparison.Ordinal) || MWorkPattern().IsMatch(name) || MWorkShortPattern().IsMatch(name);
+
     [GeneratedRegex(@"^(LB(?:0[1-9]|1[0-2])|Y(?:0[6-9]|1[0-9]))(早|午|小|夜)$", RegexOptions.CultureInvariant)]
     private static partial Regex MWorkPattern();
 
-    [GeneratedRegex(@"^([1-9]|1[0-9])(早|午|小|夜)$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^([1-9]|1[0-9])(早|午|小|夜)(?:SM)?$", RegexOptions.CultureInvariant)]
     private static partial Regex MWorkShortPattern();
 }

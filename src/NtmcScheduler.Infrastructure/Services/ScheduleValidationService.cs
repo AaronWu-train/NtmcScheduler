@@ -87,11 +87,13 @@ public sealed class ScheduleValidationService(IDbContextFactory<NtmcDbContext> d
         {
             var byDate = employee.Assignments.GroupBy(x => x.Date).ToDictionary(x => x.Key, x => x.ToArray());
             var leaveRest = employee.Assignments.Where(x => x.Date >= version.Month && x.Date <= monthEnd && x.Kind == "LeaveRest").ToArray();
+            if (leaveRest.Length < employee.RequestedLeaveRestMinimum)
+                issues.Add(new(ValidationSeverity.Error, "R休 下界", $"本月 R休 {leaveRest.Length} 日，少於下界 {employee.RequestedLeaveRestMinimum} 日。", employee.EmployeeCode));
             if (leaveRest.Length > employee.RequestedLeaveRestCount)
                 issues.Add(new(ValidationSeverity.Error, "R休 上限", $"本月 R休 {leaveRest.Length} 日，超過上限 {employee.RequestedLeaveRestCount} 日。", employee.EmployeeCode));
             for (var date = version.Month; date <= monthEnd; date = date.AddDays(1))
             {
-                if (employee.EmploymentStartDate is { } start && date < start) continue;
+                if (employee.EmploymentStartDate is { } start && date < start || employee.EmploymentEndDate is { } end && date > end) continue;
                 if (!byDate.TryGetValue(date, out var cells) || cells.Length != 1 || cells[0].Kind == "Unresolved")
                     issues.Add(new(ValidationSeverity.Error, "每日唯一指派", "每位在職員工每天必須有且只有一個已決定狀態。", employee.EmployeeCode, date));
             }
@@ -137,6 +139,7 @@ public sealed class ScheduleValidationService(IDbContextFactory<NtmcDbContext> d
             {
                 var start = end.AddDays(-6);
                 if (employee.EmploymentStartDate is { } employmentStart && start < employmentStart) continue;
+                if (employee.EmploymentEndDate is { } employmentEnd && end > employmentEnd) continue;
                 var window = Enumerable.Range(0, 7).Select(start.AddDays).ToArray();
                 if (window.All(cells.ContainsKey) && window.All(date => cells[date].Kind != "Rest"))
                     issues.Add(new(ValidationSeverity.Error, "連續七日至少一日一般 R", "這個七日區間沒有一般 R；R1 與 R休不會重置本規則。", employee.EmployeeCode, end, IsLaborLawViolation: true));

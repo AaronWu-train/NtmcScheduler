@@ -133,6 +133,7 @@ public sealed record MStationSettingDto(
 public sealed record MonthlySchedulingSettingsDto(
     int GeneralRestTarget,
     int SpecialRestTarget,
+    int RequestedRestLimit,
     int GeneralRestMinimum,
     int GeneralRestMaximum,
     int SpecialRestMinimum,
@@ -145,10 +146,12 @@ public sealed record DemandEmployeeDto(
     string Name,
     string Affiliation,
     DateOnly? EmploymentStartDate,
+    DateOnly? EmploymentEndDate,
     int? Ability,
     string? MonthlyShift,
     int? OpeningRest,
     int? OpeningSpecialRest,
+    int RequestedLeaveRestMinimum,
     int RequestedLeaveRestCount,
     string? PerpetualScheduleId,
     IReadOnlyList<string> MonthlyCsvValues,
@@ -218,6 +221,7 @@ public sealed record EmployeeDemandSubmissionDto(
     string Name,
     string Affiliation,
     DateOnly? EmploymentStartDate,
+    int RequestedLeaveRestMinimum,
     int RequestedLeaveRestCount,
     Guid RevisionToken,
     DateTimeOffset UpdatedAtUtc,
@@ -231,7 +235,11 @@ public sealed record DemandSubmissionImportDto(
 
 public sealed record SubmissionImportEmployeePreviewDto(
     string EmployeeCode,
-    string Description);
+    string Description,
+    int RequestedLeaveRestMinimum,
+    int RequestedLeaveRestCount,
+    int RequestedRestCount,
+    bool ExceedsRequestedRestLimit);
 
 public sealed record SubmissionImportPreviewDto(
     bool IsValid,
@@ -293,6 +301,7 @@ public sealed record ScheduleEmployeeInfoDto(
     string Name,
     string Affiliation,
     DateOnly? EmploymentStartDate,
+    DateOnly? EmploymentEndDate,
     int? Ability,
     string? MonthlyShift,
     int? OpeningRest,

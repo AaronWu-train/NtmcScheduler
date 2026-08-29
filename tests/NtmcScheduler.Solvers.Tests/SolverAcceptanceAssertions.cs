@@ -47,12 +47,12 @@ internal static class SolverAcceptanceAssertions
     {
         AssertObjectiveStructure(candidate.Objectives,
         [
-            (1, "RequestedRest", [("RequestedRest", 3), ("UnusedLeaveRest", 1)]),
+            (1, "RequestedRest", [("RequestedRest", 10), ("LeaveRestOutsideRequestedRest", 1)]),
             (2, "ScheduleQualityAndFairness", [("ExternalStaffing", 5), ("MonthlyRest", 240), ("SpecialRestBalance", 120), ("WorkStreak", 20), ("MixedShiftWorkStreak", 15), ("NightRestEarly", 400), ("NightRestAfternoon", 300), ("ShiftChangeWithoutRest", 5), ("NonHomeStation", 1), ("HolidayRestFairness", 5), ("EarlyAfternoonImbalance", 20), ("NightShiftTarget", 50)])
         ]);
 
         Expect(candidate.Objectives, "RequestedRest", RequestedRestViolations(input, candidate.Schedule));
-        Expect(candidate.Objectives, "UnusedLeaveRest", UnusedLeaveRest(input, candidate.Schedule));
+        Expect(candidate.Objectives, "LeaveRestOutsideRequestedRest", LeaveRestOutsideRequestedRest(input, candidate.Schedule));
         Expect(candidate.Objectives, "ExternalStaffing",
             Math.Max(0, candidate.ExternalAssignments.Where(item => item.Station != "LB09").Sum(item => item.Count) - 70) +
             candidate.ExternalAssignments.Where(item => item.Station == "LB09").Sum(item => item.Count));
@@ -85,7 +85,7 @@ internal static class SolverAcceptanceAssertions
     {
         AssertObjectiveStructure(candidate.Objectives,
         [
-            (1, "RequestedRest", [("RequestedRest", 3), ("UnusedLeaveRest", 1)]),
+            (1, "RequestedRest", [("RequestedRest", 10), ("LeaveRestOutsideRequestedRest", 1)]),
             (2, "StaffingQuality", [("NonMonthlyShift", 9), ("Attendance", 9), ("Specialty", 3), ("Ability", 1)]),
             (3, "RestDistribution", [("MonthlyRest", 1), ("SpecialRestBalance", 1)]),
             (4, "WorkPatternQuality", [("WorkStreak", 3), ("NightToEarlyRest", 12), ("MonthBoundaryRestBalance", 5)]),
@@ -93,7 +93,7 @@ internal static class SolverAcceptanceAssertions
         ]);
 
         Expect(candidate.Objectives, "RequestedRest", RequestedRestViolations(input, candidate.Schedule));
-        Expect(candidate.Objectives, "UnusedLeaveRest", UnusedLeaveRest(input, candidate.Schedule));
+        Expect(candidate.Objectives, "LeaveRestOutsideRequestedRest", LeaveRestOutsideRequestedRest(input, candidate.Schedule));
         Assert.IsGreaterThanOrEqualTo(Component(candidate.Objectives, "NonMonthlyShift").Value, TNonMonthlyShift(input, candidate.Schedule));
         Expect(candidate.Objectives, "Attendance", TAttendance(input, candidate.Schedule));
         Expect(candidate.Objectives, "Specialty", TSpecialty(input, candidate.Schedule));
@@ -124,8 +124,8 @@ internal static class SolverAcceptanceAssertions
                 AssertCell(fixedCell.Value, employee.Assignments[fixedCell.Key], $"Fixed cell changed for {employee.EmployeeId}/{fixedCell.Key:yyyy-MM-dd}.");
 
             var leaveDates = employee.Assignments.Where(pair => pair.Value.Kind == AssignmentKind.LeaveRest).ToArray();
+            Assert.IsGreaterThanOrEqualTo(source.RequestedLeaveRestMinimum ?? 0, leaveDates.Length, $"R休 minimum not reached for {employee.EmployeeId}.");
             Assert.IsLessThanOrEqualTo(source.RequestedLeaveRestCount ?? 0, leaveDates.Length, $"R休 limit exceeded for {employee.EmployeeId}.");
-            Assert.IsTrue(leaveDates.All(pair => source.Assignments.GetValueOrDefault(pair.Key)?.RequestedRest == true), $"R休 must use R* for {employee.EmployeeId}.");
 
             AssertSevenDayRestWindows(input, source, employee);
             AssertClosedRestQuotas(input, source, employee);
@@ -195,11 +195,11 @@ internal static class SolverAcceptanceAssertions
         return input.DemandMonth.Employees.Sum(employee => employee.Assignments.Count(pair => pair.Value.RequestedRest && !IsRest(candidates[employee.EmployeeId].Assignments[pair.Key])));
     }
 
-    private static long UnusedLeaveRest(ScheduleInput input, MonthlySchedule schedule)
+    private static long LeaveRestOutsideRequestedRest(ScheduleInput input, MonthlySchedule schedule)
     {
-        var candidates = schedule.Employees.ToDictionary(employee => employee.EmployeeId);
-        return input.DemandMonth.Employees.Sum(employee =>
-            (employee.RequestedLeaveRestCount ?? 0) - candidates[employee.EmployeeId].Assignments.Values.Count(cell => cell.Kind == AssignmentKind.LeaveRest));
+        var demand = input.DemandMonth.Employees.ToDictionary(employee => employee.EmployeeId);
+        return schedule.Employees.Sum(employee => employee.Assignments.Count(pair =>
+            pair.Value.Kind == AssignmentKind.LeaveRest && demand[employee.EmployeeId].Assignments.GetValueOrDefault(pair.Key)?.RequestedRest != true));
     }
 
     private static long MonthlyRestPenalty(ScheduleInput input, MonthlySchedule schedule, AssignmentKind kind)
@@ -504,7 +504,9 @@ internal static class SolverAcceptanceAssertions
         objectives.SelectMany(objective => objective.Components).Single(component => component.Name == name);
 
     private static IEnumerable<DateOnly> TargetDates(ScheduleInput input) => Enumerable.Range(0, DateTime.DaysInMonth(input.DemandMonth.MonthStart.Year, input.DemandMonth.MonthStart.Month)).Select(input.DemandMonth.MonthStart.AddDays);
-    private static bool IsActive(EmployeeMonthlySchedule employee, DateOnly date) => employee.EmploymentStartDate is not { } start || date >= start;
+    private static bool IsActive(EmployeeMonthlySchedule employee, DateOnly date) =>
+        (employee.EmploymentStartDate is not { } start || date >= start) &&
+        (employee.EmploymentEndDate is not { } end || date <= end);
     private static bool IsRest(ScheduleCell? cell) => cell?.Kind is AssignmentKind.Rest or AssignmentKind.SpecialRest or AssignmentKind.LeaveRest;
     private static bool IsWork(ScheduleCell cell) => cell.Kind is AssignmentKind.Work or AssignmentKind.WorkEvent;
     private static bool IsNationalHoliday(ScheduleInput input, DateOnly date) => input.RestIntervals.Any(interval => interval.NationalHolidays.Contains(date));

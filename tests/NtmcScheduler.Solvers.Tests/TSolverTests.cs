@@ -53,9 +53,8 @@ public sealed class TSolverTests
         Assert.IsGreaterThanOrEqualTo(1, result.Candidates[0].Objectives
             .SelectMany(value => value.Components)
             .Single(value => value.Name == "NightToEarlyRest").Value);
-        Assert.AreEqual(1, result.Candidates[0].Objectives
-            .SelectMany(value => value.Components)
-            .Single(value => value.Name == "UnusedLeaveRest").Value);
+        Assert.IsNotNull(result.Candidates[0].Objectives.SelectMany(value => value.Components)
+            .SingleOrDefault(value => value.Name == "LeaveRestOutsideRequestedRest"));
         Assert.IsGreaterThan(0, result.Candidates[0].Objectives
             .SelectMany(value => value.Components)
             .Single(value => value.Name == "Ability").Value);
@@ -83,6 +82,7 @@ public sealed class TSolverTests
         var employee = input.DemandMonth.Employees[0] with
         {
             Assignments = Enumerable.Range(0, 5).ToDictionary(offset => input.DemandMonth.MonthStart.AddDays(offset), _ => new ScheduleCell { Kind = AssignmentKind.Rest }),
+            RequestedLeaveRestMinimum = null,
             RequestedLeaveRestCount = null
         };
         input = input with { DemandMonth = input.DemandMonth with { Employees = [employee] } };
@@ -289,6 +289,40 @@ public sealed class TSolverTests
     }
 
     [TestMethod]
+    public void Csv_WritesNewLeaveRestHeadersAndAcceptsOldNames()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            var input = ValidInput();
+            var employee = input.DemandMonth.Employees[0] with
+            {
+                RequestedLeaveRestMinimum = 1,
+                RequestedLeaveRestCount = 2
+            };
+            ScheduleCsv.WriteMonthly(path, input.DemandMonth with { Employees = [employee] });
+
+            var csv = File.ReadAllText(path);
+            StringAssert.Contains(csv, "R休下限,R休上限");
+            File.WriteAllText(path, csv
+                .Replace("R休下限", "當月指定R休下界", StringComparison.Ordinal)
+                .Replace("R休上限", "當月指定R休", StringComparison.Ordinal));
+
+            var parsed = ScheduleCsv.ReadMonthly(path, input.DemandMonth.MonthStart);
+            Assert.AreEqual(1, parsed.Employees[0].RequestedLeaveRestMinimum);
+            Assert.AreEqual(2, parsed.Employees[0].RequestedLeaveRestCount);
+
+            File.WriteAllText(path, File.ReadAllText(path)
+                .Replace("當月指定R休下界", "R休下界", StringComparison.Ordinal));
+            Assert.ThrowsExactly<ScheduleCsvException>(() => ScheduleCsv.ReadMonthly(path, input.DemandMonth.MonthStart));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
     public void Csv_HistoricalRestAliasesNormalizeToResolvedRequestedRest()
     {
         var root = Path.Combine(Path.GetTempPath(), $"ntmc-{Guid.NewGuid():N}");
@@ -374,8 +408,8 @@ public sealed class TSolverTests
         CollectionAssert.AreEquivalent(
             new[] { "萬年班表" },
             ScheduleCsv.MonthlyHeaders.Except(ScheduleCsv.MonthlyDownloadHeaders(WorkspaceCode.T)).ToArray());
-        Assert.HasCount(44, ScheduleCsv.MonthlyDownloadHeaders(WorkspaceCode.M));
-        Assert.HasCount(45, ScheduleCsv.MonthlyDownloadHeaders(WorkspaceCode.T));
+        Assert.HasCount(46, ScheduleCsv.MonthlyDownloadHeaders(WorkspaceCode.M));
+        Assert.HasCount(47, ScheduleCsv.MonthlyDownloadHeaders(WorkspaceCode.T));
         CollectionAssert.AreEqual(
             ScheduleCsv.MonthlyDownloadHeaders(WorkspaceCode.T).ToArray(),
             ScheduleCsv.MonthlyDownloadHeaders(WorkspaceCode.YT).ToArray());
@@ -388,10 +422,10 @@ public sealed class TSolverTests
 
         CollectionAssert.IsSubsetOf(calculated, ScheduleCsv.MonthlyHeaders.Except(ScheduleCsv.MonthlyTemplateHeaders(WorkspaceCode.T, false)).ToArray());
         Assert.IsTrue(ScheduleCsv.MonthlyTemplateHeaders(WorkspaceCode.T, false).Contains("能力"));
-        Assert.IsTrue(ScheduleCsv.MonthlyTemplateHeaders(WorkspaceCode.T, false).Contains("當月指定R休"));
+        Assert.IsTrue(ScheduleCsv.MonthlyTemplateHeaders(WorkspaceCode.T, false).Contains("R休上限"));
 
         var previous = ScheduleCsv.MonthlyTemplateHeaders(WorkspaceCode.T, true);
-        foreach (var header in calculated.Append("當月指定R休").Append("能力"))
+        foreach (var header in calculated.Append("R休上限").Append("能力"))
             Assert.IsFalse(previous.Contains(header), header);
         Assert.IsTrue(previous.Contains("T月班別"));
     }
@@ -401,7 +435,7 @@ public sealed class TSolverTests
     {
         var schedule = ValidInput().PreviousMonth;
         var headers = ScheduleCsv.MonthlyTemplateHeaders(WorkspaceCode.T, true).ToList();
-        headers.Insert(4, "能力");
+        headers.Insert(5, "能力");
         var fullRow = ScheduleCsv.MonthlyRow(schedule, schedule.Employees[0]);
         var values = headers.Select(header => fullRow[ScheduleCsv.MonthlyHeaders.ToList().IndexOf(header)]);
         var path = Path.GetTempFileName();
@@ -431,9 +465,9 @@ public sealed class TSolverTests
             ScheduleCsv.WriteMonthly(schedulePath, ValidInput().DemandMonth);
             var lines = File.ReadAllLines(schedulePath);
             var fields = lines[1].Split(',');
-            fields[8] = "日一";
-            fields[9] = "0837";
-            fields[10] = "2235";
+            fields[9] = "日一";
+            fields[10] = "0837";
+            fields[11] = "2235";
             lines[1] = string.Join(',', fields);
             File.WriteAllLines(schedulePath, lines);
 
@@ -443,15 +477,51 @@ public sealed class TSolverTests
             Assert.HasCount(2, shifts.Shifts);
             Assert.AreEqual(AssignmentKind.WorkEvent, assignments[new(2026, 9, 1)].Kind);
             Assert.AreEqual("日一", assignments[new(2026, 9, 1)].EventDescription);
-            Assert.AreEqual("日一", assignments[new(2026, 9, 2)].EventDescription);
-            Assert.AreEqual("夜一", assignments[new(2026, 9, 3)].EventDescription);
+            Assert.AreEqual("0837", assignments[new(2026, 9, 2)].EventDescription);
+            Assert.AreEqual("2235", assignments[new(2026, 9, 3)].EventDescription);
             Assert.AreEqual(new TimeOnly(8, 30), TimeOnly.FromDateTime(assignments[new(2026, 9, 2)].EventStart!.Value.DateTime));
             Assert.AreEqual(new DateOnly(2026, 9, 4), DateOnly.FromDateTime(assignments[new(2026, 9, 3)].EventEnd!.Value.Date));
 
             ScheduleCsv.WriteMonthly(schedulePath, parsed);
             var output = File.ReadAllText(schedulePath);
             StringAssert.Contains(output, "X[08:30-17:30|日一]");
-            StringAssert.Contains(output, "X[22:30-06:30|夜一]");
+            StringAssert.Contains(output, "X[22:30-06:30|2235]");
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public void Csv_CircularLineSupportsShiftAliasesSmSuffixAndSchedulingEndDate()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"ntmc-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var shiftsPath = Path.Combine(root, "non-standard-shifts.csv");
+            File.WriteAllText(shiftsPath, "班型,時間,代碼\n日一;白班,08:30~17:30,0837\n");
+            var shifts = ScheduleCsv.ReadNonStandardShifts(shiftsPath);
+            var schedule = ValidInput().DemandMonth with
+            {
+                Employees = [ValidInput().DemandMonth.Employees[0] with { EmploymentEndDate = new(2026, 9, 20) }]
+            };
+            var schedulePath = Path.Combine(root, "schedule.csv");
+            ScheduleCsv.WriteMonthly(schedulePath, schedule);
+            var lines = File.ReadAllLines(schedulePath);
+            var fields = lines[1].Split(',');
+            fields[9] = "白班";
+            fields[10] = "6小SM";
+            lines[1] = string.Join(',', fields);
+            File.WriteAllLines(schedulePath, lines);
+
+            var parsed = ScheduleCsv.ReadMonthly(schedulePath, schedule.MonthStart, shifts, workspace: WorkspaceCode.YM);
+            var employee = parsed.Employees.Single();
+            Assert.AreEqual(new DateOnly(2026, 9, 20), employee.EmploymentEndDate);
+            Assert.AreEqual("白班(0837)", employee.Assignments[new(2026, 9, 1)].EventDescription);
+            Assert.AreEqual("Y06", employee.Assignments[new(2026, 9, 2)].Station);
+            Assert.AreEqual(Shift.Afternoon, employee.Assignments[new(2026, 9, 2)].Shift);
         }
         finally
         {
@@ -470,8 +540,8 @@ public sealed class TSolverTests
             ScheduleCsv.WriteMonthly(schedulePath, ValidInput().DemandMonth);
             var lines = File.ReadAllLines(schedulePath);
             var fields = lines[1].Split(',');
-            fields[8] = "X[08:30-17:30|外訓A]";
-            fields[9] = "X[22:30-06:30|夜間支援]";
+            fields[9] = "X[08:30-17:30|外訓A]";
+            fields[10] = "X[22:30-06:30|夜間支援]";
             lines[1] = string.Join(',', fields);
             File.WriteAllLines(schedulePath, lines);
 
@@ -484,7 +554,7 @@ public sealed class TSolverTests
             StringAssert.Contains(output, "X[08:30-17:30|外訓A]");
             StringAssert.Contains(output, "X[22:30-06:30|夜間支援]");
 
-            fields[8] = "X[08:30-17:30|   ]";
+            fields[9] = "X[08:30-17:30|   ]";
             lines[1] = string.Join(',', fields);
             File.WriteAllLines(schedulePath, lines);
             Assert.ThrowsExactly<ScheduleCsvException>(() => ScheduleCsv.ReadMonthly(schedulePath, new(2026, 9, 1)));
@@ -512,15 +582,15 @@ public sealed class TSolverTests
 
             var lines = File.ReadAllLines(path);
             var fields = lines[1].Split(',');
-            Assert.AreEqual("4", fields[39]);
-            Assert.AreEqual("1", fields[41]);
-            fields[41] = "999";
+            Assert.AreEqual("4", fields[40]);
+            Assert.AreEqual("1", fields[43]);
+            fields[43] = "999";
             lines[1] = string.Join(',', fields);
             File.WriteAllLines(path, lines);
 
             Assert.ThrowsExactly<ScheduleCsvException>(() => ScheduleCsv.ReadMonthly(path, schedule.MonthStart));
-            fields[41] = "1";
-            fields[39] = "999";
+            fields[42] = "1";
+            fields[40] = "999";
             lines[1] = string.Join(',', fields);
             File.WriteAllLines(path, lines);
             Assert.ThrowsExactly<ScheduleCsvException>(() => ScheduleCsv.ReadMonthly(path, schedule.MonthStart));
@@ -660,7 +730,10 @@ public sealed class TSolverTests
             }
             if (id == "T-E2") assignments[month.AddDays(4)] = new() { RequestedRest = true };
             if (id == "T-A1") assignments[month.AddDays(7)] = Event(month.AddDays(7), new(8, 30), new(17, 30));
-            demand.Add(Row(id, group, ability, currentShift, null, assignments, closing, null, null, id == "T-E2" ? 2 : null));
+            demand.Add(Row(id, group, ability, currentShift, null, assignments, closing, null, null, id == "T-E2" ? 2 : null) with
+            {
+                RequestedLeaveRestMinimum = id == "T-E2" ? 1 : null
+            });
         }
 
         demand.Add(Row("T-NEW", "Signal", 4, Shift.Early, new(2026, 9, 21), new Dictionary<DateOnly, ScheduleCell>(), new(12, 1), null, null));

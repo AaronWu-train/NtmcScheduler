@@ -112,6 +112,9 @@ public static partial class TSolver
             if (employee.MonthlyShift is null) errors.Add(new($"{prefix}.Employees", $"Employee '{employee.EmployeeId}' needs a T monthly shift."));
             if (employee.PerpetualScheduleId is not null) errors.Add(new($"{prefix}.PerpetualScheduleId", $"T employee '{employee.EmployeeId}' cannot use an M perpetual schedule."));
             if (employee.EmploymentStartDate is { } start && start > monthEnd) errors.Add(new($"{prefix}.Employees", $"Employee '{employee.EmployeeId}' starts after this schedule month."));
+            if (employee.EmploymentEndDate is { } end && end < schedule.MonthStart) errors.Add(new($"{prefix}.Employees", $"Employee '{employee.EmployeeId}' ends before this schedule month."));
+            if (employee.EmploymentStartDate is { } employed && employee.EmploymentEndDate is { } ended && employed > ended)
+                errors.Add(new($"{prefix}.Employees", $"Employee '{employee.EmployeeId}' employment start is after scheduling end."));
 
             foreach (var pair in employee.Assignments)
             {
@@ -119,6 +122,8 @@ public static partial class TSolver
                     errors.Add(new($"{prefix}.Assignments", $"Assignment {employee.EmployeeId}/{pair.Key:yyyy-MM-dd} is outside the schedule month."));
                 if (employee.EmploymentStartDate is { } employmentStart && pair.Key < employmentStart)
                     errors.Add(new($"{prefix}.Assignments", $"Assignment {employee.EmployeeId}/{pair.Key:yyyy-MM-dd} is before employment starts."));
+                if (employee.EmploymentEndDate is { } employmentEnd && pair.Key > employmentEnd)
+                    errors.Add(new($"{prefix}.Assignments", $"Assignment {employee.EmployeeId}/{pair.Key:yyyy-MM-dd} is after scheduling ends."));
                 ValidateCell(employee, pair.Key, pair.Value, history, errors, prefix);
             }
 
@@ -130,7 +135,7 @@ public static partial class TSolver
                         errors.Add(new("PreviousMonth.Assignments", $"Missing resolved history for {employee.EmployeeId}/{date:yyyy-MM-dd}."));
                 }
                 if (employee.ClosingUsage is null) errors.Add(new("PreviousMonth.ClosingUsage", $"Employee '{employee.EmployeeId}' needs closing R/R1 usage."));
-                if (employee.RequestedLeaveRestCount is not null) errors.Add(new("PreviousMonth.RequestedLeaveRestCount", $"Employee '{employee.EmployeeId}' history cannot contain a requested R休 count."));
+                if (employee.RequestedLeaveRestMinimum is not null || employee.RequestedLeaveRestCount is not null) errors.Add(new("PreviousMonth.RequestedLeaveRestCount", $"Employee '{employee.EmployeeId}' history cannot contain requested R休 bounds."));
                 if (employee.NormalWorkCount is null) errors.Add(new("PreviousMonth.NormalWorkCount", $"Employee '{employee.EmployeeId}' needs a normal-work count."));
                 else if (employee.NormalWorkCount < 0) errors.Add(new("PreviousMonth.NormalWorkCount", $"Employee '{employee.EmployeeId}' normal-work count cannot be negative."));
             }
@@ -174,19 +179,19 @@ public static partial class TSolver
             return;
         }
 
-        if (!history && cell.Kind == AssignmentKind.LeaveRest && !cell.RequestedRest)
-            errors.Add(new($"{prefix}.Assignments", $"R休 {employee.EmployeeId}/{date:yyyy-MM-dd} must be marked R*."));
-
         if (cell.Station is not null || cell.Shift is not null || cell.EventStart is not null || cell.EventEnd is not null)
             errors.Add(new($"{prefix}.Assignments", $"Rest {employee.EmployeeId}/{date:yyyy-MM-dd} contains work-only fields."));
     }
 
     private static void ValidateRequestedLeaveRestCount(EmployeeMonthlySchedule employee, List<InputError> errors, string prefix)
     {
-        var requested = employee.RequestedLeaveRestCount ?? 0;
-        var fixedCount = employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.LeaveRest && cell.RequestedRest);
-        if (requested < fixedCount)
-            errors.Add(new($"{prefix}.RequestedLeaveRestCount", $"Employee '{employee.EmployeeId}' requested R休 limit must be at least {fixedCount}."));
+        var minimum = employee.RequestedLeaveRestMinimum ?? 0;
+        var maximum = employee.RequestedLeaveRestCount ?? 0;
+        var fixedCount = employee.Assignments.Values.Count(cell => cell.Kind == AssignmentKind.LeaveRest);
+        if (minimum < 0 || maximum < 0 || minimum > maximum)
+            errors.Add(new($"{prefix}.RequestedLeaveRestCount", $"Employee '{employee.EmployeeId}' R休 bounds must satisfy 0 <= minimum <= maximum."));
+        else if (maximum < fixedCount)
+            errors.Add(new($"{prefix}.RequestedLeaveRestCount", $"Employee '{employee.EmployeeId}' R休 maximum must be at least {fixedCount}."));
     }
 
     private static bool HasValidWorkEventInterval(DateOnly date, ScheduleCell cell) =>
@@ -252,7 +257,8 @@ public static partial class TSolver
     // History and R/R1 usage
 
     private static bool IsEmployedOn(EmployeeMonthlySchedule employee, DateOnly date) =>
-        employee.EmploymentStartDate is not { } start || date >= start;
+        (employee.EmploymentStartDate is not { } start || date >= start) &&
+        (employee.EmploymentEndDate is not { } end || date <= end);
     private static IEnumerable<(DateOnly Date, ScheduleCell Cell)> ResolvedHistoryFor(ScheduleInput input, string employeeId)
     {
         var employee = input.PreviousMonth.Employees.FirstOrDefault(value => value.EmployeeId == employeeId);
@@ -293,6 +299,14 @@ public static partial class TSolver
         return new(
             dates.Count(date => date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday),
             dates.Count(interval.NationalHolidays.Contains));
+    }
+
+    private static RestUsage RestUsageAfterModeledDates(EmployeeMonthlySchedule employee, RestInterval interval)
+    {
+        if (employee.EmploymentEndDate is not { } end) return new(0, 0);
+        var creditStart = end.AddDays(1);
+        if (creditStart > interval.End) return new(0, 0);
+        return StandardRestCredit(interval, creditStart < interval.Start ? interval.Start : creditStart, interval.End);
     }
 
     private static int ExpectedMonthlyGeneralRestCount(ScheduleInput input, EmployeeMonthlySchedule employee)

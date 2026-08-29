@@ -25,7 +25,9 @@ public static partial class TSolver
         }
         return
         [
-            Objective(1, "RequestedRest", ("RequestedRest", () => CountUnfulfilledRequestedRests(input, targetDates, variables)), ("UnusedLeaveRest", () => MeasureUnusedLeaveRests(model, input, targetDates, variables))),
+            Objective(1, "RequestedRest",
+                ("RequestedRest", () => CountUnfulfilledRequestedRests(input, targetDates, variables)),
+                ("LeaveRestOutsideRequestedRest", () => CountLeaveRestsOutsideRequestedDates(input, targetDates, variables))),
             Objective(2, "StaffingQuality", ("NonMonthlyShift", () => CountNonMonthlyShiftAssignments(input, modelDates, variables)), ("Attendance", () => MeasureAttendanceShortfall(model, input, targetDates, variables)), ("Specialty", () => CountMissingSpecialties(model, input, targetDates, variables)), ("Ability", () => MeasureAbilityShortfall(model, input, targetDates, variables))),
             Objective(3, "RestDistribution", ("MonthlyRest", () => MeasureMonthlyRestDeviation(model, input, targetDates, variables.Rest)), ("SpecialRestBalance", () => MeasureSpecialRestBalance(model, input, targetDates, variables.SpecialRest))),
             Objective(4, "WorkPatternQuality", ("WorkStreak", () => MeasureWorkStreakPenalties(model, input, targetDates, modelDates, variables)), ("NightToEarlyRest", () => MeasureNightToEarlyRestShortfall(model, input, targetDates, variables)), ("MonthBoundaryRestBalance", () => MeasureMonthBoundaryRestDifference(model, input, targetDates, variables))),
@@ -40,19 +42,12 @@ public static partial class TSolver
                        where employee.Assignments.GetValueOrDefault(date)?.RequestedRest == true
                        select 1 - variables.AnyRest[(employee.EmployeeId, date)]);
 
-    // 未使用 R休 額度——計算每人上限與目標月實際使用數的差額。
-    private static LinearExpr MeasureUnusedLeaveRests(CpModel model, ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables)
-    {
-        var unused = new List<IntVar>();
-        foreach (var employee in input.DemandMonth.Employees)
-        {
-            var limit = employee.RequestedLeaveRestCount ?? 0;
-            var value = model.NewIntVar(0, limit, $"unused_leave_rest_{employee.EmployeeId}");
-            model.Add(LinearExpr.Sum(targetDates.Select(date => variables.LeaveRest[(employee.EmployeeId, date)])) + value == limit);
-            unused.Add(value);
-        }
-        return LinearExpr.Sum(unused);
-    }
+    // 非 R* 日期的 R休——與未滿足 R* 依 1:10 權重合併，偏好將 R休 安排在 R*。
+    private static LinearExpr CountLeaveRestsOutsideRequestedDates(ScheduleInput input, IReadOnlyList<DateOnly> targetDates, ModelVariables variables) =>
+        LinearExpr.Sum(from employee in input.DemandMonth.Employees
+                       from date in targetDates
+                       where employee.Assignments.GetValueOrDefault(date)?.RequestedRest != true
+                       select variables.LeaveRest[(employee.EmployeeId, date)]);
 
     // 月班別一致性——計算不符合目標月班別或延伸日輪轉班別的正常工作格。
     private static LinearExpr CountNonMonthlyShiftAssignments(ScheduleInput input, IReadOnlyList<DateOnly> modelDates, ModelVariables variables) =>
@@ -183,6 +178,7 @@ public static partial class TSolver
         var monthStart = input.DemandMonth.MonthStart;
         var priorTarget = interval.NationalHolidays.Count(date => date < monthStart);
         var start = employee.EmploymentStartDate is { } hired && hired > monthStart ? hired : monthStart;
+        monthEnd = employee.EmploymentEndDate is { } ended && ended < monthEnd ? ended : monthEnd;
         priorTarget += interval.NationalHolidays.Count(date => date >= monthStart && date < start);
         var employeeTarget = Math.Max(0, input.MonthlySettings!.SpecialRestTarget -
             input.RestIntervals.SelectMany(x => x.NationalHolidays).Count(date => date >= monthStart && date < start));

@@ -11,7 +11,7 @@
 <div class="page-title">
     <div>
         <h1>@workspaceCode.DisplayName() 需求填寫</h1>
-        <p>選擇員工後填寫 R*、R休 上限、固定班別或 X。目前登入帳號：<strong>@actorName</strong></p>
+        <p>選擇員工後填寫 R*、R休 上下界、固定班別或 X。目前登入帳號：<strong>@actorName</strong></p>
     </div>
     <PageHelp Title="填報說明">
         <p>任何已登入者都可代填任一員工；系統會記錄操作者與被填員工。選取已有填報的員工時會載入並可覆蓋。填報與正式 Demand 分離，需由排班人員在 Demand 寬表一次性匯入。</p>
@@ -53,8 +53,12 @@
         </div>
         <div class="toolbar">
             <label>
-                當月指定 R休 上限
-                <input class="inline-field number-field" type="number" min="0" disabled="@isBusy" value="@leaveRest" @onchange="ChangeLeaveRestAsync"/>
+                當月 R休 下界
+                <input class="inline-field number-field" type="number" min="0" disabled="@isBusy" value="@leaveRestMinimum" @onchange="ChangeLeaveRestMinimumAsync"/>
+            </label>
+            <label>
+                當月 R休 上界
+                <input class="inline-field number-field" type="number" min="0" disabled="@isBusy" value="@leaveRest" @onchange="ChangeLeaveRestMaximumAsync"/>
             </label>
         </div>
         <div class="submission-calendar-wrap">
@@ -107,7 +111,10 @@
                                             <option value="Other">自行輸入 X…</option>
                                             @foreach (var shift in configuration?.NonStandardShifts ?? [])
                                             {
-                                                <option value="ns:@shift.Code">@(shift.Name ?? shift.Code)</option>
+                                                @foreach (var name in ShiftNames(shift))
+                                                {
+                                                    <option value="ns:@shift.Code:@name">@name</option>
+                                                }
                                             }
                                         </optgroup>
                                     </select>
@@ -148,6 +155,7 @@
     private IReadOnlyList<EmployeeDto> employees = [];
     private ConfigurationRevisionDto? configuration;
     private int leaveRest;
+    private int leaveRestMinimum;
     private string? message;
     private string messageClass = "success";
     private bool isBusy;
@@ -210,27 +218,41 @@
         {
             submission = null;
             leaveRest = 0;
+            leaveRestMinimum = 0;
             return;
         }
         var actor = await CurrentActor.GetAsync();
         submission = await SubmissionService.GetAsync(workspaceCode, Month(), selectedEmployee.EmployeeCode, actor);
         leaveRest = submission?.RequestedLeaveRestCount ?? 0;
+        leaveRestMinimum = submission?.RequestedLeaveRestMinimum ?? 0;
     }
 
-    private async Task ChangeLeaveRestAsync(ChangeEventArgs args)
+    private async Task ChangeLeaveRestMinimumAsync(ChangeEventArgs args) => await ChangeLeaveRestAsync(args, true);
+    private async Task ChangeLeaveRestMaximumAsync(ChangeEventArgs args) => await ChangeLeaveRestAsync(args, false);
+
+    private async Task ChangeLeaveRestAsync(ChangeEventArgs args, bool minimum)
     {
         if (selectedEmployee is null) return;
         if (!int.TryParse(args.Value?.ToString(), NumberStyles.None, CultureInfo.InvariantCulture, out var count) || count < 0)
         {
             messageClass = "error";
-            message = "R休上限必須是非負整數。";
+            message = "R休上下界必須是非負整數。";
+            return;
+        }
+        var nextMinimum = minimum ? count : leaveRestMinimum;
+        var nextMaximum = minimum ? leaveRest : count;
+        if (nextMinimum > nextMaximum)
+        {
+            messageClass = "error";
+            message = "R休下界不得大於上界。";
             return;
         }
         await RunUiAsync(async () =>
         {
-            submission = await SubmissionService.UpdateLeaveRestAsync(workspaceCode, Month(), selectedEmployee!.EmployeeCode, count, submission?.RevisionToken, await CurrentActor.GetAsync());
+            submission = await SubmissionService.UpdateLeaveRestAsync(workspaceCode, Month(), selectedEmployee!.EmployeeCode, nextMinimum, nextMaximum, submission?.RevisionToken, await CurrentActor.GetAsync());
+            leaveRestMinimum = submission.RequestedLeaveRestMinimum;
             leaveRest = submission.RequestedLeaveRestCount;
-        }, "R休上限已儲存。");
+        }, "R休上下界已儲存。");
     }
 
     private async Task ChangeCellAsync(DateOnly date, EmployeeDemandSubmissionAssignmentDto? cell, string? value)
@@ -258,14 +280,15 @@
             string? description = null;
             if (value?.StartsWith("ns:", StringComparison.Ordinal) == true)
             {
-                var nonStandard = configuration!.NonStandardShifts.Single(x => x.Code == value[3..]);
+                var nsParts = value.Split(':', 3);
+                var nonStandard = configuration!.NonStandardShifts.Single(x => x.Code == nsParts[1]);
                 start = Offset(date.ToDateTime(nonStandard.StartTime));
                 end = Offset((nonStandard.EndTime <= nonStandard.StartTime ? date.AddDays(1) : date).ToDateTime(nonStandard.EndTime));
-                description = nonStandard.Name ?? nonStandard.Code;
+                description = workspaceCode is WorkspaceCode.YM or WorkspaceCode.YT ? $"{nsParts[2]}({nonStandard.Code})" : nsParts[2];
             }
             if (submission is null)
             {
-                submission = await SubmissionService.UpdateLeaveRestAsync(workspaceCode, Month(), selectedEmployee!.EmployeeCode, leaveRest, null, await CurrentActor.GetAsync());
+                submission = await SubmissionService.UpdateLeaveRestAsync(workspaceCode, Month(), selectedEmployee!.EmployeeCode, leaveRestMinimum, leaveRest, null, await CurrentActor.GetAsync());
             }
             submission = await SubmissionService.UpdateAssignmentAsync(workspaceCode, Month(), selectedEmployee!.EmployeeCode, date, kind, requested,
                 kind == "Work" && workspaceCode.IsStation() ? parts?[1] : null, shift,
@@ -306,8 +329,14 @@
         var end = cell.EventEnd?.ToOffset(TimeSpan.FromHours(8)).DateTime;
         var match = configuration?.NonStandardShifts.FirstOrDefault(x => start is not null && end is not null &&
                                                                            TimeOnly.FromDateTime(start.Value) == x.StartTime && TimeOnly.FromDateTime(end.Value) == x.EndTime);
-        return match is null ? "Other" : $"ns:{match.Code}";
+        if (match is null) return "Other";
+        var name = ShiftNames(match).FirstOrDefault(x => cell.EventDescription == x || cell.EventDescription == $"{x}({match.Code})");
+        return name is null ? "Other" : $"ns:{match.Code}:{name}";
     }
+
+    private static IReadOnlyList<string> ShiftNames(NonStandardShiftDto shift) => string.IsNullOrWhiteSpace(shift.Name)
+        ? [shift.Code]
+        : shift.Name.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
     private static string CellClass(EmployeeDemandSubmissionAssignmentDto? cell) => cell?.Kind switch
     {

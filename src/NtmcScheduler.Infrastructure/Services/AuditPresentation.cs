@@ -101,6 +101,8 @@ public static class AuditPresentation
         ["openingRest"] = "月初 R",
         ["openingSpecialRest"] = "月初 R1",
         ["requestedLeaveRestCount"] = "R休上限",
+        ["requestedLeaveRestMinimum"] = "R休下界",
+        ["requestedRestLimit"] = "每人 R* 上限",
         ["generalRestTarget"] = "R 基準",
         ["specialRestTarget"] = "R1 基準",
         ["stations"] = "車站設定數",

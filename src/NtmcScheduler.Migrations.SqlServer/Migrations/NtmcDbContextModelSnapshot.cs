@@ -455,6 +455,9 @@ namespace NtmcScheduler.Migrations.SqlServer.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<int>("RequestedRestLimit")
+                        .HasColumnType("int");
+
                     b.Property<Guid>("RevisionToken")
                         .IsConcurrencyToken()
                         .HasColumnType("uniqueidentifier");
@@ -510,6 +513,9 @@ namespace NtmcScheduler.Migrations.SqlServer.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<DateOnly?>("EmploymentEndDate")
+                        .HasColumnType("date");
+
                     b.Property<DateOnly?>("EmploymentStartDate")
                         .HasColumnType("date");
 
@@ -531,6 +537,9 @@ namespace NtmcScheduler.Migrations.SqlServer.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("RequestedLeaveRestCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RequestedLeaveRestMinimum")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
@@ -647,6 +656,9 @@ namespace NtmcScheduler.Migrations.SqlServer.Migrations
                         .HasColumnType("nvarchar(100)");
 
                     b.Property<int>("RequestedLeaveRestCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RequestedLeaveRestMinimum")
                         .HasColumnType("int");
 
                     b.Property<Guid>("RevisionToken")
@@ -927,6 +939,9 @@ namespace NtmcScheduler.Migrations.SqlServer.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<DateOnly?>("EmploymentEndDate")
+                        .HasColumnType("date");
+
                     b.Property<DateOnly?>("EmploymentStartDate")
                         .HasColumnType("date");
 
@@ -950,6 +965,9 @@ namespace NtmcScheduler.Migrations.SqlServer.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("RequestedLeaveRestCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RequestedLeaveRestMinimum")
                         .HasColumnType("int");
 
                     b.Property<Guid>("ScheduleVersionId")

@@ -47,7 +47,7 @@ internal static class SolverScheduleMapper
         var settings = ToMonthlySettings(demand);
         var (rMin, rMax) = TargetBounds(demand, false);
         var (r1Min, r1Max) = TargetBounds(demand, true);
-        return new(settings.GeneralRestTarget, settings.SpecialRestTarget, rMin, rMax, r1Min, r1Max,
+        return new(settings.GeneralRestTarget, settings.SpecialRestTarget, demand.RequestedRestLimit, rMin, rMax, r1Min, r1Max,
             settings.MStations.Select(x => new MStationSettingDto(x.Code, x.Group, (ExternalSupportPolicy)x.ExternalSupport,
                 new(x.Early.Minimum, x.Early.Maximum), new(x.Afternoon.Minimum, x.Afternoon.Maximum), new(x.Night.Minimum, x.Night.Maximum))).ToArray());
     }
@@ -71,7 +71,8 @@ internal static class SolverScheduleMapper
                 foreach (var interval in intervals)
                 {
                     var activeStart = start > interval.Start ? start : interval.Start;
-                    var segmentEnd = monthEnd < interval.End ? monthEnd : interval.End;
+                    var employeeEnd = employee.EmploymentEndDate is { } ended && ended < monthEnd ? ended : monthEnd;
+                    var segmentEnd = employeeEnd < interval.End ? employeeEnd : interval.End;
                     if (activeStart > segmentEnd) continue;
                     var segmentDays = segmentEnd.DayNumber - activeStart.DayNumber + 1;
                     var prior = interval.Start < demand.Month
@@ -96,9 +97,11 @@ internal static class SolverScheduleMapper
             Name = employee.Name,
             Affiliation = employee.Affiliation,
             EmploymentStartDate = employee.EmploymentStartDate,
+            EmploymentEndDate = employee.EmploymentEndDate,
             Ability = employee.Ability,
             MonthlyShift = ParseShift(employee.MonthlyShift),
             PerpetualScheduleId = employee.PerpetualScheduleId,
+            RequestedLeaveRestMinimum = employee.RequestedLeaveRestMinimum,
             RequestedLeaveRestCount = employee.RequestedLeaveRestCount,
             OpeningUsage = employee.OpeningRest is null || employee.OpeningSpecialRest is null
                 ? null
@@ -116,9 +119,11 @@ internal static class SolverScheduleMapper
             Name = employee.Name,
             Affiliation = employee.Affiliation,
             EmploymentStartDate = employee.EmploymentStartDate,
+            EmploymentEndDate = employee.EmploymentEndDate,
             Ability = employee.Ability,
             MonthlyShift = ParseShift(employee.MonthlyShift),
             PerpetualScheduleId = employee.PerpetualScheduleId,
+            RequestedLeaveRestMinimum = null,
             RequestedLeaveRestCount = null,
             OpeningUsage = employee.OpeningRest is null || employee.OpeningSpecialRest is null
                 ? null
@@ -165,6 +170,7 @@ internal static class SolverScheduleMapper
                 return employee with
                 {
                     Ability = workspace.IsMaintenance() ? employeeAbilities.GetValueOrDefault(employee.EmployeeId) ?? 1 : null,
+                    RequestedLeaveRestMinimum = null,
                     RequestedLeaveRestCount = null,
                     ClosingUsage = new RestUsage(
                         opening.Rest + cells.Count(x => x.Kind == SolverAssignmentKind.Rest),
@@ -227,10 +233,12 @@ internal static class SolverScheduleMapper
                 Name = employee.Name,
                 Affiliation = employee.Affiliation,
                 EmploymentStartDate = employee.EmploymentStartDate,
+                EmploymentEndDate = employee.EmploymentEndDate,
                 Ability = employee.Ability,
                 MonthlyShift = ShiftText(employee.MonthlyShift),
                 OpeningRest = employee.OpeningUsage?.Rest,
                 OpeningSpecialRest = employee.OpeningUsage?.SpecialRest,
+                RequestedLeaveRestMinimum = demandEmployee.RequestedLeaveRestMinimum ?? 0,
                 RequestedLeaveRestCount = demandEmployee.RequestedLeaveRestCount ?? 0,
                 ClosingRest = employee.ClosingUsage?.Rest,
                 ClosingSpecialRest = employee.ClosingUsage?.SpecialRest,
@@ -288,10 +296,12 @@ internal static class SolverScheduleMapper
                 Name = employee.Name,
                 Affiliation = employee.Affiliation,
                 EmploymentStartDate = employee.EmploymentStartDate,
+                EmploymentEndDate = employee.EmploymentEndDate,
                 Ability = employee.Ability,
                 MonthlyShift = ShiftText(employee.MonthlyShift),
                 OpeningRest = employee.OpeningUsage?.Rest,
                 OpeningSpecialRest = employee.OpeningUsage?.SpecialRest,
+                RequestedLeaveRestMinimum = 0,
                 RequestedLeaveRestCount = employee.Assignments.Values.Count(x => x.Kind == SolverAssignmentKind.LeaveRest),
                 ClosingRest = employee.ClosingUsage?.Rest,
                 ClosingSpecialRest = employee.ClosingUsage?.SpecialRest,
@@ -322,10 +332,12 @@ internal static class SolverScheduleMapper
             Name = employee.Name,
             Affiliation = employee.Affiliation,
             EmploymentStartDate = employee.EmploymentStartDate,
+            EmploymentEndDate = employee.EmploymentEndDate,
             Ability = employee.Ability,
             MonthlyShift = ShiftText(employee.MonthlyShift),
             OpeningRest = employee.OpeningUsage?.Rest,
             OpeningSpecialRest = employee.OpeningUsage?.SpecialRest,
+            RequestedLeaveRestMinimum = employee.RequestedLeaveRestMinimum ?? 0,
             RequestedLeaveRestCount = employee.RequestedLeaveRestCount ?? 0,
             PerpetualScheduleId = employee.PerpetualScheduleId
         };

@@ -35,8 +35,8 @@ public interface IDemandService
     Task<DemandDraftDto?> GetAsync(WorkspaceCode workspace, DateOnly month, ActorContext actor, CancellationToken cancellationToken = default);
     Task<DemandDraftDto> CreateAsync(WorkspaceCode workspace, DateOnly month, ActorContext actor, CancellationToken cancellationToken = default);
     Task DeleteAsync(Guid demandId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
-    Task<DemandDraftDto> UpdateEmployeeAsync(Guid demandId, string employeeCode, DateOnly? employmentStartDate, string? monthlyShift, int? openingRest, int? openingSpecialRest, int requestedLeaveRestCount, string? perpetualScheduleId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
-    Task<DemandDraftDto> UpdateMonthlySettingsAsync(Guid demandId, int generalRestTarget, int specialRestTarget, IReadOnlyList<MStationSettingDto> stations, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<DemandDraftDto> UpdateEmployeeAsync(Guid demandId, string employeeCode, DateOnly? employmentStartDate, DateOnly? employmentEndDate, string? monthlyShift, int? openingRest, int? openingSpecialRest, int requestedLeaveRestMinimum, int requestedLeaveRestCount, string? perpetualScheduleId, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<DemandDraftDto> UpdateMonthlySettingsAsync(Guid demandId, int generalRestTarget, int specialRestTarget, int requestedRestLimit, IReadOnlyList<MStationSettingDto> stations, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task<DemandDraftDto> UpdateAssignmentAsync(Guid demandId, string employeeCode, DateOnly date, string? kind, bool requestedRest, string? station, string? shift, DateTimeOffset? eventStart, DateTimeOffset? eventEnd, string? eventDescription, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task<ImportPreviewDto> PreviewDemandImportAsync(Guid demandId, Stream csv, ActorContext actor, CancellationToken cancellationToken = default);
     Task ImportDemandAsync(Guid demandId, Stream csv, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
@@ -56,7 +56,7 @@ public interface IDemandService
 public interface IEmployeeDemandSubmissionService
 {
     Task<EmployeeDemandSubmissionDto?> GetAsync(WorkspaceCode workspace, DateOnly month, string employeeCode, ActorContext actor, CancellationToken cancellationToken = default);
-    Task<EmployeeDemandSubmissionDto> UpdateLeaveRestAsync(WorkspaceCode workspace, DateOnly month, string employeeCode, int requestedLeaveRestCount, Guid? revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<EmployeeDemandSubmissionDto> UpdateLeaveRestAsync(WorkspaceCode workspace, DateOnly month, string employeeCode, int requestedLeaveRestMinimum, int requestedLeaveRestCount, Guid? revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task<EmployeeDemandSubmissionDto> UpdateAssignmentAsync(WorkspaceCode workspace, DateOnly month, string employeeCode, DateOnly date, string? kind, bool requestedRest, string? station, string? shift, DateTimeOffset? eventStart, DateTimeOffset? eventEnd, string? eventDescription, Guid revisionToken, ActorContext actor, CancellationToken cancellationToken = default);
     Task<DemandSubmissionImportDto?> GetImportStatusAsync(Guid demandDraftId, ActorContext actor, CancellationToken cancellationToken = default);
     Task<SubmissionImportPreviewDto> PreviewImportAsync(Guid demandDraftId, ActorContext actor, CancellationToken cancellationToken = default);

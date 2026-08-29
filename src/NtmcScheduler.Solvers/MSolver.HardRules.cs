@@ -57,7 +57,7 @@ public static partial class MSolver
 
                 // AnyRest means R, R1, or R休. ActualWork means a normal shift or a fixed X event.
                 model.Add(anyRest[(employee.EmployeeId, date)] == rest[(employee.EmployeeId, date)] + specialRest[(employee.EmployeeId, date)] + leaveRest[(employee.EmployeeId, date)]);
-                if (employee.Assignments.GetValueOrDefault(date)?.RequestedRest != true)
+                if (date.Year != input.DemandMonth.MonthStart.Year || date.Month != input.DemandMonth.MonthStart.Month)
                     model.Add(leaveRest[(employee.EmployeeId, date)] == 0);
                 model.Add(actualWork[(employee.EmployeeId, date)] == LinearExpr.Sum(dayWork) + (eventDays.Contains((employee.EmployeeId, date)) ? 1 : 0));
                 model.Add(supportsOtherStation[(employee.EmployeeId, date)] == LinearExpr.Sum(
@@ -125,12 +125,16 @@ public static partial class MSolver
         }
     }
 
-    // 每月 R休 上限——不得超過每位員工的目標月上限；null 視為零。
+    // 每月 R休 上下界——每位員工的目標月總數必須落在閉區間；null 視為零。
     private static void LimitRequestedLeaveRestCount(CpModel model, ScheduleInput input, ModelVariables variables)
     {
         var targetDates = TargetMonthDates(input).ToArray();
         foreach (var employee in input.DemandMonth.Employees)
-            model.Add(LinearExpr.Sum(targetDates.Select(date => variables.LeaveRest[(employee.EmployeeId, date)])) <= (employee.RequestedLeaveRestCount ?? 0));
+        {
+            var total = LinearExpr.Sum(targetDates.Select(date => variables.LeaveRest[(employee.EmployeeId, date)]));
+            model.Add(total >= (employee.RequestedLeaveRestMinimum ?? 0));
+            model.Add(total <= (employee.RequestedLeaveRestCount ?? 0));
+        }
     }
 
     // 固定指派——輸入的正常工作、R、R1 或 R休 必須維持指定值。
@@ -261,6 +265,7 @@ public static partial class MSolver
             {
                 var cycleDates = dates.Where(date => date >= cycle.Start && date <= cycle.End && IsEmployedOn(employee, date)).ToArray();
                 var prior = RestUsageBeforeModeledDates(input, employee, cycle);
+                var after = RestUsageAfterModeledDates(employee, cycle);
                 var rest = LinearExpr.Sum(cycleDates.Select(date => variables.Rest[(employee.EmployeeId, date)]));
                 var specialRest = LinearExpr.Sum(cycleDates.Select(date => variables.SpecialRest[(employee.EmployeeId, date)]));
                 const int requiredRest = 16;
@@ -269,17 +274,18 @@ public static partial class MSolver
                 // Close a cycle exactly when it ends in the horizon; otherwise keep its future quota reachable.
                 if (cycle.End <= lastModeledDate)
                 {
-                    model.Add(prior.Rest + rest == requiredRest);
-                    model.Add(prior.SpecialRest + specialRest == requiredSpecialRest);
+                    model.Add(prior.Rest + after.Rest + rest == requiredRest);
+                    model.Add(prior.SpecialRest + after.SpecialRest + specialRest == requiredSpecialRest);
                     continue;
                 }
 
-                var futureDays = cycle.End.DayNumber - lastModeledDate.DayNumber;
-                model.Add(prior.Rest + rest <= requiredRest);
-                model.Add(prior.SpecialRest + specialRest <= requiredSpecialRest);
-                model.Add(prior.Rest + rest + futureDays >= requiredRest);
-                model.Add(prior.SpecialRest + specialRest + futureDays >= requiredSpecialRest);
-                model.Add(prior.Rest + prior.SpecialRest + rest + specialRest + futureDays >= requiredRest + requiredSpecialRest);
+                var futureEnd = employee.EmploymentEndDate is { } end && end < cycle.End ? end : cycle.End;
+                var futureDays = Math.Max(0, futureEnd.DayNumber - lastModeledDate.DayNumber);
+                model.Add(prior.Rest + after.Rest + rest <= requiredRest);
+                model.Add(prior.SpecialRest + after.SpecialRest + specialRest <= requiredSpecialRest);
+                model.Add(prior.Rest + after.Rest + rest + futureDays >= requiredRest);
+                model.Add(prior.SpecialRest + after.SpecialRest + specialRest + futureDays >= requiredSpecialRest);
+                model.Add(prior.Rest + prior.SpecialRest + after.Rest + after.SpecialRest + rest + specialRest + futureDays >= requiredRest + requiredSpecialRest);
             }
         }
     }

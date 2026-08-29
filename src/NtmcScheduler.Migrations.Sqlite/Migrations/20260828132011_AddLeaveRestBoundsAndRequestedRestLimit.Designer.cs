@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NtmcScheduler.Infrastructure.Data;
 
@@ -10,9 +11,11 @@ using NtmcScheduler.Infrastructure.Data;
 namespace NtmcScheduler.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(NtmcDbContext))]
-    partial class NtmcDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260828132011_AddLeaveRestBoundsAndRequestedRestLimit")]
+    partial class AddLeaveRestBoundsAndRequestedRestLimit
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
@@ -502,9 +505,6 @@ namespace NtmcScheduler.Infrastructure.Data.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
 
-                    b.Property<DateOnly?>("EmploymentEndDate")
-                        .HasColumnType("TEXT");
-
                     b.Property<DateOnly?>("EmploymentStartDate")
                         .HasColumnType("TEXT");
 
@@ -926,9 +926,6 @@ namespace NtmcScheduler.Infrastructure.Data.Migrations
                     b.Property<string>("EmployeeCode")
                         .IsRequired()
                         .HasMaxLength(32)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateOnly?>("EmploymentEndDate")
                         .HasColumnType("TEXT");
 
                     b.Property<DateOnly?>("EmploymentStartDate")

@@ -486,6 +486,40 @@ public sealed class MSolverTests
     }
 
     [TestMethod]
+    public void Solve_LeaveRestMinimumAboveMaximum_ReturnsInvalidInput()
+    {
+        var input = ValidInput();
+        var employee = input.DemandMonth.Employees[0] with { RequestedLeaveRestMinimum = 2, RequestedLeaveRestCount = 1 };
+        input = input with { DemandMonth = input.DemandMonth with { Employees = [employee, .. input.DemandMonth.Employees.Skip(1)] } };
+
+        Assert.AreEqual(SolveStatus.InvalidInput, MSolver.Solve(input, ShortSolve).Status);
+    }
+
+    [TestMethod]
+    public void Solve_FixedUnrequestedLeaveRestWithinBounds_IsAccepted()
+    {
+        var input = ValidInput();
+        var employee = input.DemandMonth.Employees[0];
+        var date = employee.Assignments.Single(pair => pair.Value.RequestedRest).Key;
+        employee = employee with
+        {
+            RequestedLeaveRestMinimum = 1,
+            RequestedLeaveRestCount = 1,
+            Assignments = new Dictionary<DateOnly, ScheduleCell>(employee.Assignments)
+            {
+                [date] = new() { Kind = AssignmentKind.LeaveRest, RequestedRest = false }
+            }
+        };
+        input = input with { DemandMonth = input.DemandMonth with { Employees = [employee, .. input.DemandMonth.Employees.Skip(1)] } };
+
+        var result = MSolver.Solve(input, ShortSolve);
+
+        Assert.IsTrue(result.Status is SolveStatus.Optimal or SolveStatus.TimeLimit);
+        Assert.IsNotEmpty(result.Candidates);
+        Assert.IsFalse(result.Candidates[0].Schedule.Employees[0].Assignments[date].RequestedRest);
+    }
+
+    [TestMethod]
     public void Solve_TwoEmployeesInSameRequiredPosition_IsFeasible()
     {
         var input = ValidInput();

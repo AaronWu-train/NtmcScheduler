@@ -27,12 +27,14 @@ public sealed class EmployeeDemandSubmissionService(IDbContextFactory<NtmcDbCont
         WorkspaceCode workspace,
         DateOnly month,
         string employeeCode,
+        int requestedLeaveRestMinimum,
         int requestedLeaveRestCount,
         Guid? revisionToken,
         ActorContext actor,
         CancellationToken cancellationToken = default)
     {
-        if (requestedLeaveRestCount < 0) throw new DomainValidationException("R休上限不可為負數。");
+        if (requestedLeaveRestMinimum < 0 || requestedLeaveRestCount < 0 || requestedLeaveRestMinimum > requestedLeaveRestCount)
+            throw new DomainValidationException("R休上下界必須符合 0 ≤ 下界 ≤ 上界。");
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         ServiceSupport.RequireViewer(actor);
         month = MonthStart(month);
@@ -54,6 +56,7 @@ public sealed class EmployeeDemandSubmissionService(IDbContextFactory<NtmcDbCont
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var before = Snapshot(submission);
+        submission.RequestedLeaveRestMinimum = requestedLeaveRestMinimum;
         submission.RequestedLeaveRestCount = requestedLeaveRestCount;
         TouchSubmission(submission, employee, actor);
         ServiceSupport.AddAudit(db, actor, "EmployeeDemandSubmissionUpdated", workspace, "EmployeeDemandSubmission", submission.Id,
@@ -166,8 +169,11 @@ public sealed class EmployeeDemandSubmissionService(IDbContextFactory<NtmcDbCont
                 differences.Add($"填報員工 {submission.EmployeeCode} 不在本月 Demand，將略過。");
                 continue;
             }
+            var requestedRestCount = submission.Assignments.Count(x => x.RequestedRest);
             employees.Add(new(submission.EmployeeCode,
-                $"{submission.EmployeeCode} {submission.Name}：R休上限 {submission.RequestedLeaveRestCount}、{submission.Assignments.Count} 個日格（最後更新 {FormatTaipei(submission.UpdatedAtUtc)}，{submission.UpdatedByName}）"));
+                $"{submission.EmployeeCode} {submission.Name}：R休 {submission.RequestedLeaveRestMinimum}–{submission.RequestedLeaveRestCount}、R* {requestedRestCount} 個（最後更新 {FormatTaipei(submission.UpdatedAtUtc)}，{submission.UpdatedByName}）",
+                submission.RequestedLeaveRestMinimum, submission.RequestedLeaveRestCount, requestedRestCount,
+                requestedRestCount > demand.RequestedRestLimit));
         }
 
         var unmatchedDemand = demand.Employees.Count(x => submissions.All(s => s.EmployeeCode != x.EmployeeCode));
@@ -230,6 +236,7 @@ public sealed class EmployeeDemandSubmissionService(IDbContextFactory<NtmcDbCont
         submission.Month,
         submission.EmployeeCode,
         submission.Name,
+        submission.RequestedLeaveRestMinimum,
         submission.RequestedLeaveRestCount,
         Assignments = submission.Assignments.Count
     };
@@ -257,6 +264,7 @@ public sealed class EmployeeDemandSubmissionService(IDbContextFactory<NtmcDbCont
         submission.Name,
         submission.Affiliation,
         submission.EmploymentStartDate,
+        submission.RequestedLeaveRestMinimum,
         submission.RequestedLeaveRestCount,
         submission.RevisionToken,
         submission.UpdatedAtUtc,

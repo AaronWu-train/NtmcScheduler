@@ -47,6 +47,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
             PreviousSource = adopted is null ? PreviousScheduleSource.Upload : PreviousScheduleSource.AdoptedSchedule,
             PreviousAdoptedScheduleVersionId = adopted?.ScheduleVersionId,
             ConfigurationRevisionId = current.ConfigurationRevisionId,
+            RequestedRestLimit = 4,
             CreatedByUserId = actor.UserId,
             UpdatedByUserId = actor.UserId
         };
@@ -86,6 +87,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         Guid demandId,
         int generalRestTarget,
         int specialRestTarget,
+        int requestedRestLimit,
         IReadOnlyList<MStationSettingDto> stations,
         Guid revisionToken,
         ActorContext actor,
@@ -96,6 +98,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
             ?? throw new DomainValidationException("找不到本月需求。");
         ServiceSupport.RequireEditor(actor, demand.Workspace);
         if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
+        if (requestedRestLimit < 0) throw new DomainValidationException("每人 R* 上限必須是非負整數。");
         var bounds = SolverScheduleMapper.ToDto(demand);
         if (generalRestTarget < bounds.GeneralRestMinimum || generalRestTarget > bounds.GeneralRestMaximum ||
             specialRestTarget < bounds.SpecialRestMinimum || specialRestTarget > bounds.SpecialRestMaximum)
@@ -124,13 +127,14 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
             }).ToArray();
         }
 
-        var before = new { demand.GeneralRestTarget, demand.SpecialRestTarget, demand.MStationSettingsJson };
+        var before = new { demand.GeneralRestTarget, demand.SpecialRestTarget, demand.RequestedRestLimit, demand.MStationSettingsJson };
         demand.GeneralRestTarget = generalRestTarget;
         demand.SpecialRestTarget = specialRestTarget;
+        demand.RequestedRestLimit = requestedRestLimit;
         demand.MStationSettingsJson = demand.Workspace.IsStation() ? JsonSerializer.Serialize(mapped, ServiceSupport.JsonOptions) : null;
         Touch(demand, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "DemandMonthlySettingsUpdated", demand.Workspace, "DemandDraft", demand.Id, before,
-            new { demand.Month, demand.GeneralRestTarget, demand.SpecialRestTarget, Stations = mapped.Length });
+            new { demand.Month, demand.GeneralRestTarget, demand.SpecialRestTarget, demand.RequestedRestLimit, Stations = mapped.Length });
         await SaveDemandChangesAsync(db, cancellationToken);
         return await DemandDtoAsync(demand.Id, cancellationToken);
     }
@@ -156,9 +160,11 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         Guid demandId,
         string employeeCode,
         DateOnly? employmentStartDate,
+        DateOnly? employmentEndDate,
         string? monthlyShift,
         int? openingRest,
         int? openingSpecialRest,
+        int requestedLeaveRestMinimum,
         int requestedLeaveRestCount,
         string? perpetualScheduleId,
         Guid revisionToken,
@@ -172,23 +178,31 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         var demand = employee.DemandDraft;
         ServiceSupport.RequireEditor(actor, demand.Workspace);
         if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
-        if ((openingRest is null) != (openingSpecialRest is null) || openingRest < 0 || openingSpecialRest < 0 || requestedLeaveRestCount < 0)
-            throw new DomainValidationException("月初 R/R1 必須同時填寫且不可為負數；R休上限不可為負數。");
+        if ((openingRest is null) != (openingSpecialRest is null) || openingRest < 0 || openingSpecialRest < 0 ||
+            requestedLeaveRestMinimum < 0 || requestedLeaveRestCount < 0 || requestedLeaveRestMinimum > requestedLeaveRestCount)
+            throw new DomainValidationException("月初 R/R1 必須同時填寫且不可為負數；R休上下界必須符合 0 ≤ 下界 ≤ 上界。");
+        if (employmentStartDate is { } start && employmentEndDate is { } end && start > end)
+            throw new DomainValidationException("月間排班終止日不得早於月中開始排班日。");
         if (demand.Workspace.IsMaintenance() && SolverScheduleMapper.ParseShift(monthlyShift) is null)
             throw new DomainValidationException("T 月班別必須為早、午或夜。");
         if (demand.Workspace.IsStation() && !string.IsNullOrWhiteSpace(monthlyShift))
             throw new DomainValidationException("站務工作區不可設定 T 月班別。");
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        var before = new { demand.Month, employee.EmployeeCode, employee.Name, employee.EmploymentStartDate, employee.MonthlyShift, employee.OpeningRest, employee.OpeningSpecialRest, employee.RequestedLeaveRestCount, employee.PerpetualScheduleId };
+        var before = new { demand.Month, employee.EmployeeCode, employee.Name, employee.EmploymentStartDate, employee.EmploymentEndDate, employee.MonthlyShift, employee.OpeningRest, employee.OpeningSpecialRest, employee.RequestedLeaveRestMinimum, employee.RequestedLeaveRestCount, employee.PerpetualScheduleId };
         employee.EmploymentStartDate = employmentStartDate;
+        employee.EmploymentEndDate = employmentEndDate;
         employee.MonthlyShift = string.IsNullOrWhiteSpace(monthlyShift) ? null : SolverScheduleMapper.ParseShift(monthlyShift).ToString();
         employee.OpeningRest = openingRest;
         employee.OpeningSpecialRest = openingSpecialRest;
+        employee.RequestedLeaveRestMinimum = requestedLeaveRestMinimum;
         employee.RequestedLeaveRestCount = requestedLeaveRestCount;
         employee.PerpetualScheduleId = string.IsNullOrWhiteSpace(perpetualScheduleId) ? null : perpetualScheduleId.Trim();
+        await db.DemandAssignments.Where(x => x.DemandEmployeeId == employee.Id &&
+            (employmentStartDate != null && x.Date < employmentStartDate || employmentEndDate != null && x.Date > employmentEndDate))
+            .ExecuteDeleteAsync(cancellationToken);
         Touch(demand, actor.UserId);
         ServiceSupport.AddAudit(db, actor, "DemandEmployeeUpdated", demand.Workspace, "DemandEmployee", employee.Id, before,
-            new { demand.Month, employee.EmployeeCode, employee.Name, employee.EmploymentStartDate, employee.MonthlyShift, employee.OpeningRest, employee.OpeningSpecialRest, employee.RequestedLeaveRestCount, employee.PerpetualScheduleId });
+            new { demand.Month, employee.EmployeeCode, employee.Name, employee.EmploymentStartDate, employee.EmploymentEndDate, employee.MonthlyShift, employee.OpeningRest, employee.OpeningSpecialRest, employee.RequestedLeaveRestMinimum, employee.RequestedLeaveRestCount, employee.PerpetualScheduleId });
         await SaveDemandChangesAsync(db, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return await DemandDtoAsync(demand.Id, cancellationToken);
@@ -241,6 +255,8 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         ServiceSupport.RequireEditor(actor, demand.Workspace);
         if (demand.RevisionToken != revisionToken) throw new ConcurrencyConflictException("本月需求已被其他人修改，請重新整理。");
         if (date < demand.Month || date >= demand.Month.AddMonths(1)) throw new DomainValidationException("日格日期不在目前月份內。");
+        if (employee.EmploymentStartDate is { } employmentStart && date < employmentStart || employee.EmploymentEndDate is { } employmentEnd && date > employmentEnd)
+            throw new DomainValidationException("日格日期不在此員工的月間排班範圍內。");
         var mStations = demand.Workspace.IsStation()
             ? (string.IsNullOrWhiteSpace(demand.MStationSettingsJson)
                 ? demand.Workspace.Stations().ToHashSet(StringComparer.Ordinal)
@@ -543,6 +559,9 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
         foreach (var submission in submissions)
         {
             if (!demandByCode.TryGetValue(submission.EmployeeCode, out var demandEmployee)) continue;
+            if (submission.RequestedLeaveRestMinimum < 0 || submission.RequestedLeaveRestCount < 0 || submission.RequestedLeaveRestMinimum > submission.RequestedLeaveRestCount)
+                throw new DomainValidationException($"{submission.EmployeeCode} 的 R休上下界不合法。");
+            demandEmployee.RequestedLeaveRestMinimum = submission.RequestedLeaveRestMinimum;
             demandEmployee.RequestedLeaveRestCount = submission.RequestedLeaveRestCount;
             await db.DemandAssignments.Where(x => x.DemandEmployeeId == demandEmployee.Id).ExecuteDeleteAsync(cancellationToken);
             foreach (var source in submission.Assignments)

@@ -19,7 +19,8 @@ public sealed class ScheduleRunService(IDbContextFactory<NtmcDbContext> dbFactor
             new SolverRuleDefinitionDto("DailyAssignment", "每日單一狀態", "每位在職人員每日必須恰好一個工作或休假狀態。", 0, true, null),
             new SolverRuleDefinitionDto("FixedAssignments", "固定格", "已填正常班、R、R1 與 X 必須保留。", 0, true, null),
             new SolverRuleDefinitionDto("EmploymentStart", "月中開始排班日", "月中開始排班日前不建立班位，也不可存在固定日格。", 0, true, null),
-            new SolverRuleDefinitionDto("LeaveRestLimit", "R休上限", "R休只可用於 R*，且不可超過每人本月上限。", 0, true, null),
+            new SolverRuleDefinitionDto("EmploymentEnd", "月間排班終止日", "月間排班終止日後不建立班位，也不可存在固定日格。", 0, true, null),
+            new SolverRuleDefinitionDto("LeaveRestBounds", "R休上下界", "每人本月 R休數必須落在設定的下界與上界內。", 0, true, null),
             new SolverRuleDefinitionDto("MinimumRest", "工作間隔", "任兩次工作至少間隔 11 小時。", 0, true, null),
             new SolverRuleDefinitionDto("SevenDayRest", "七日一般 R", "每個連續七日視窗至少一天一般 R。", 0, true, null),
             new SolverRuleDefinitionDto("EightWeekQuota", "56 日 R/R1 額度", "每區間必須剛好 16R，R1 等於國定假日數。", 0, true, null)
@@ -182,7 +183,7 @@ public sealed class ScheduleRunService(IDbContextFactory<NtmcDbContext> dbFactor
 
     private static int RulePriority(WorkspaceCode workspace, string key) => key switch
     {
-        "RequestedRest" or "UnusedLeaveRest" => 1,
+        "RequestedRest" or "LeaveRestOutsideRequestedRest" => 1,
         "NonMonthlyShift" or "Attendance" or "Specialty" or "Ability" => 2,
         "MonthlyRest" or "SpecialRestBalance" when workspace.IsMaintenance() => 3,
         "WeekdayRestFairness" or "HolidayRestFairness" when workspace.IsMaintenance() => 5,
@@ -192,7 +193,7 @@ public sealed class ScheduleRunService(IDbContextFactory<NtmcDbContext> dbFactor
 
     private static string RuleName(string key) => key switch
     {
-        "RequestedRest" => "指定休假", "UnusedLeaveRest" => "未使用 R休", "ExternalStaffing" => "外援人力",
+        "RequestedRest" => "指定休假", "LeaveRestOutsideRequestedRest" => "R休優先使用 R*", "ExternalStaffing" => "外援人力",
         "MonthlyRest" => "每月一般 R", "SpecialRestBalance" => "八週累積 R1 餘額", "WorkStreak" => "連續工作區段",
         "MixedShiftWorkStreak" => "工作區段混合班型", "NightRestEarly" => "夜休早", "NightRestAfternoon" => "夜休午",
         "ShiftChangeWithoutRest" => "未休假直接換班", "NonHomeStation" => "非所屬站指派", "HolidayRestFairness" => "假日休假公平",
@@ -204,8 +205,8 @@ public sealed class ScheduleRunService(IDbContextFactory<NtmcDbContext> dbFactor
 
     private static string RuleDescription(WorkspaceCode workspace, string key) => key switch
     {
-        "RequestedRest" => "每個未排成 R、R1 或 R休的 R* 格計 1。",
-        "UnusedLeaveRest" => "每人上限減實際 R休數後加總。",
+        "RequestedRest" => "每個未排成 R、R1 或 R休的 R* 格計 1，預設權重 10。",
+        "LeaveRestOutsideRequestedRest" => "每個排在非 R* 日期的 R休計 1，與未滿足 R* 合併為同一加權目標。",
         "ExternalStaffing" => "允許站外援超過 70 的人次，加上盡量不要站的全部人次。",
         "MonthlyRest" => "每人實際 R 與基準的差額平方後加總（差 1／2／3 日＝1／4／9）。",
         "SpecialRestBalance" => "累積 R1 多休按超額平方；欠 1 日免罰，再欠按超出日數平方。",

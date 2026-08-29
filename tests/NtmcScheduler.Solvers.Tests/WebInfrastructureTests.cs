@@ -339,12 +339,16 @@ public sealed class WebInfrastructureTests
         var intervals = await service.ParseRestIntervalsCsvAsync(
             new MemoryStream("區間開始日期,區間結束日期,國定假日日期\n2026-08-03,2026-09-27,2026-08-14\n"u8.ToArray()), actor);
         var shifts = await service.ParseNonStandardShiftsCsvAsync(
-            new MemoryStream("班型,時間,代碼\n日班,08:00~17:00,DAY\n"u8.ToArray()), actor);
+            new MemoryStream("班型,時間,代碼\n日班;白班,08:00~17:00,DAY\n"u8.ToArray()), actor);
 
         Assert.AreEqual(new DateOnly(2026, 8, 3), intervals.Single().Start);
         Assert.AreEqual(new DateOnly(2026, 8, 14), intervals.Single().NationalHolidays.Single());
         Assert.AreEqual("DAY", shifts.Single().Code);
+        Assert.AreEqual("日班;白班", shifts.Single().Name);
         Assert.AreEqual(new TimeOnly(17, 0), shifts.Single().EndTime);
+
+        await Assert.ThrowsExactlyAsync<ScheduleCsvException>(() => service.ParseNonStandardShiftsCsvAsync(
+            new MemoryStream("班型,時間,代碼\n早,08:00~17:00,DAY\n"u8.ToArray()), actor));
     }
 
     [TestMethod]
@@ -502,19 +506,19 @@ public sealed class WebInfrastructureTests
         var staleToken = august.RevisionToken;
         august = await service.UpdateMonthlySettingsAsync(august.Id,
             august.MonthlySettings.GeneralRestTarget, august.MonthlySettings.SpecialRestTarget,
-            changedStations, august.RevisionToken, actor);
+            august.MonthlySettings.RequestedRestLimit, changedStations, august.RevisionToken, actor);
         Assert.AreEqual("自訂群組", august.MonthlySettings.MStations[0].Group);
         Assert.AreEqual(new StaffingRangeDto(0, 2), august.MonthlySettings.MStations[0].Early);
         Assert.AreEqual(1, await database.Context.AuditLogs.CountAsync(x => x.Action == "DemandMonthlySettingsUpdated"));
         await Assert.ThrowsExactlyAsync<ConcurrencyConflictException>(() => service.UpdateMonthlySettingsAsync(
             august.Id, august.MonthlySettings.GeneralRestTarget, august.MonthlySettings.SpecialRestTarget,
-            changedStations, staleToken, actor));
+            august.MonthlySettings.RequestedRestLimit, changedStations, staleToken, actor));
 
         var renamed = changedStations.ToArray();
         renamed[0] = renamed[0] with { Code = "OTHER" };
         await Assert.ThrowsExactlyAsync<DomainValidationException>(() => service.UpdateMonthlySettingsAsync(
             august.Id, august.MonthlySettings.GeneralRestTarget, august.MonthlySettings.SpecialRestTarget,
-            renamed, august.RevisionToken, actor));
+            august.MonthlySettings.RequestedRestLimit, renamed, august.RevisionToken, actor));
 
         var september = await service.CreateAsync(WorkspaceCode.M, new(2026, 9, 1), actor);
         Assert.AreEqual("自訂群組", september.MonthlySettings.MStations[0].Group);
@@ -528,6 +532,12 @@ public sealed class WebInfrastructureTests
         var weights = SolverRuleWeights.M.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal);
         weights["ExternalStaffing"] = 0;
         Assert.AreEqual(0, SolverRuleWeights.Resolve(true, weights)["ExternalStaffing"]);
+        Assert.AreEqual(10, SolverRuleWeights.M["RequestedRest"]);
+        Assert.AreEqual(10, SolverRuleWeights.T["RequestedRest"]);
+        var legacy = new Dictionary<string, int>(weights, StringComparer.Ordinal);
+        legacy["UnusedLeaveRest"] = legacy["LeaveRestOutsideRequestedRest"];
+        legacy.Remove("LeaveRestOutsideRequestedRest");
+        Assert.AreEqual(1, SolverRuleWeights.Resolve(true, legacy)["LeaveRestOutsideRequestedRest"]);
 
         var missing = new Dictionary<string, int>(weights, StringComparer.Ordinal);
         missing.Remove("ExternalStaffing");
@@ -544,8 +554,8 @@ public sealed class WebInfrastructureTests
         var rules = new ScheduleRunService(null!, null!).GetRules(WorkspaceCode.M).Where(x => !x.IsHard).ToArray();
 
         CollectionAssert.AreEqual(new[] { 1, 2 }, rules.Select(x => x.Priority).Distinct().Order().ToArray());
-        Assert.IsTrue(rules.Where(x => x.Key is "RequestedRest" or "UnusedLeaveRest").All(x => x.Priority == 1));
-        Assert.IsTrue(rules.Where(x => x.Key is not ("RequestedRest" or "UnusedLeaveRest")).All(x => x.Priority == 2));
+        Assert.IsTrue(rules.Where(x => x.Key is "RequestedRest" or "LeaveRestOutsideRequestedRest").All(x => x.Priority == 1));
+        Assert.IsTrue(rules.Where(x => x.Key is not ("RequestedRest" or "LeaveRestOutsideRequestedRest")).All(x => x.Priority == 2));
     }
 
     [TestMethod]
@@ -573,9 +583,15 @@ public sealed class WebInfrastructureTests
         await employees.SaveAsync(new SaveEmployeeCommand(null, WorkspaceCode.M, "M001", "王小明", "LB01", null, null, null), editor);
         await employees.SaveAsync(new SaveEmployeeCommand(null, WorkspaceCode.M, "M002", "陳小華", "LB01", null, null, null), editor);
         var demand = await demands.CreateAsync(WorkspaceCode.M, month, editor);
+        Assert.AreEqual(4, demand.MonthlySettings.RequestedRestLimit);
+        (await database.Context.DemandDrafts.SingleAsync(x => x.Id == demand.Id)).RequestedRestLimit = 0;
+        await database.Context.SaveChangesAsync();
+        demand = (await demands.GetAsync(WorkspaceCode.M, month, editor))!;
 
-        await submissions.UpdateLeaveRestAsync(WorkspaceCode.M, month, "M001", 2, null, viewer);
-        var saved = await submissions.UpdateAssignmentAsync(WorkspaceCode.M, month, "M001", month.AddDays(4), "Work", false, "LB01", "Early", null, null, null, (await submissions.GetAsync(WorkspaceCode.M, month, "M001", viewer))!.RevisionToken, viewer);
+        await submissions.UpdateLeaveRestAsync(WorkspaceCode.M, month, "M001", 1, 2, null, viewer);
+        await Assert.ThrowsExactlyAsync<DomainValidationException>(() =>
+            submissions.UpdateLeaveRestAsync(WorkspaceCode.M, month, "M001", 3, 2, null, viewer));
+        var saved = await submissions.UpdateAssignmentAsync(WorkspaceCode.M, month, "M001", month.AddDays(4), null, true, null, null, null, null, null, (await submissions.GetAsync(WorkspaceCode.M, month, "M001", viewer))!.RevisionToken, viewer);
         Assert.AreEqual(2, saved.RequestedLeaveRestCount);
         Assert.HasCount(1, saved.Assignments);
 
@@ -583,12 +599,14 @@ public sealed class WebInfrastructureTests
         Assert.IsTrue(preview.IsValid);
         Assert.AreEqual(1, preview.MatchedEmployeeCount);
         Assert.AreEqual("M001", preview.Employees.Single().EmployeeCode);
+        Assert.IsTrue(preview.Employees.Single().ExceedsRequestedRestLimit);
         await Assert.ThrowsExactlyAsync<DomainValidationException>(() =>
             submissions.ImportToDemandAsync(demand.Id, [], demand.RevisionToken, editor));
 
         demand = (await demands.GetAsync(WorkspaceCode.M, month, editor))!;
         demand = await submissions.ImportToDemandAsync(demand.Id, ["M001"], demand.RevisionToken, editor);
         var importedEmployee = demand.Employees.Single(x => x.EmployeeCode == "M001");
+        Assert.AreEqual(1, importedEmployee.RequestedLeaveRestMinimum);
         Assert.AreEqual(2, importedEmployee.RequestedLeaveRestCount);
         Assert.HasCount(1, importedEmployee.Assignments);
         var firstImport = await submissions.GetImportStatusAsync(demand.Id, editor);
@@ -598,8 +616,8 @@ public sealed class WebInfrastructureTests
         demand = await demands.UpdateAssignmentAsync(demand.Id, "M001", month.AddDays(4), "Rest", false,
             null, null, null, null, null, demand.RevisionToken, editor);
 
-        await submissions.UpdateLeaveRestAsync(WorkspaceCode.M, month, "M001", 3, saved.RevisionToken, viewer);
-        await submissions.UpdateLeaveRestAsync(WorkspaceCode.M, month, "M002", 4, null, viewer);
+        await submissions.UpdateLeaveRestAsync(WorkspaceCode.M, month, "M001", 0, 3, saved.RevisionToken, viewer);
+        await submissions.UpdateLeaveRestAsync(WorkspaceCode.M, month, "M002", 0, 4, null, viewer);
         preview = await submissions.PreviewImportAsync(demand.Id, editor);
         Assert.HasCount(2, preview.Employees);
 
@@ -780,9 +798,9 @@ public sealed class WebInfrastructureTests
         var imported = await service.GetAsync(WorkspaceCode.M, demand.Month, actor);
         Assert.HasCount(40, imported!.Employees);
         var expected = input.DemandMonth.Employees.OrderBy(x => x.EmployeeId).First();
-        CollectionAssert.AreEqual(
-            ScheduleCsv.MonthlyRow(input.DemandMonth, expected).ToArray(),
-            imported.Employees[0].MonthlyCsvValues.ToArray());
+        var expectedValues = ScheduleCsv.MonthlyRow(input.DemandMonth, expected).ToArray();
+        expectedValues[42] = "0";
+        CollectionAssert.AreEqual(expectedValues, imported.Employees[0].MonthlyCsvValues.ToArray());
         var edited = await service.UpdateAssignmentAsync(imported.Id, imported.Employees[0].EmployeeCode, imported.Month, "Rest", false,
             null, null, null, null, null, imported.RevisionToken, actor);
         Assert.AreEqual("Rest", edited.Employees[0].Assignments.Single(x => x.Date == imported.Month).Kind);
@@ -1045,8 +1063,8 @@ public sealed class WebInfrastructureTests
         var service = DemandService(database);
         var demand = await service.CreateAsync(WorkspaceCode.M, input.DemandMonth.MonthStart, actor);
         var employee = demand.Employees.Single();
-        demand = await service.UpdateEmployeeAsync(demand.Id, employee.EmployeeCode, employee.EmploymentStartDate, null,
-            0, 0, employee.RequestedLeaveRestCount, "CHANGED", demand.RevisionToken, actor);
+        demand = await service.UpdateEmployeeAsync(demand.Id, employee.EmployeeCode, employee.EmploymentStartDate, null, null,
+            0, 0, employee.RequestedLeaveRestMinimum, employee.RequestedLeaveRestCount, "CHANGED", demand.RevisionToken, actor);
         employee = demand.Employees.Single();
         Assert.AreEqual(0, employee.OpeningRest);
         Assert.AreEqual(0, employee.OpeningSpecialRest);
@@ -1086,13 +1104,16 @@ public sealed class WebInfrastructureTests
         database.Context.Add(demand);
         await database.Context.SaveChangesAsync();
 
-        var result = await DemandService(database).UpdateEmployeeAsync(demand.Id, "T001", null, "Early",
-            null, null, 0, null, demand.RevisionToken, actor);
+        var schedulingEnd = new DateOnly(2026, 8, 20);
+        var result = await DemandService(database).UpdateEmployeeAsync(demand.Id, "T001", null, schedulingEnd, "Early",
+            null, null, 0, 0, null, demand.RevisionToken, actor);
 
         Assert.AreEqual("Early", result.Employees.Single().MonthlyShift);
+        Assert.AreEqual(schedulingEnd, result.Employees.Single().EmploymentEndDate);
         await using var persisted = database.NewContext();
-        Assert.AreEqual("Early", await persisted.DemandEmployees.AsNoTracking()
-            .Where(x => x.DemandDraftId == demand.Id).Select(x => x.MonthlyShift).SingleAsync());
+        var persistedEmployee = await persisted.DemandEmployees.AsNoTracking().SingleAsync(x => x.DemandDraftId == demand.Id);
+        Assert.AreEqual("Early", persistedEmployee.MonthlyShift);
+        Assert.AreEqual(schedulingEnd, persistedEmployee.EmploymentEndDate);
     }
 
     [TestMethod]
@@ -1283,7 +1304,7 @@ public sealed class WebInfrastructureTests
             ScheduleCsv.WriteMonthly(schedulePath, input.DemandMonth);
             var lines = await File.ReadAllLinesAsync(schedulePath);
             var fields = lines[1].Split(',');
-            fields[8] = "X[08:30-17:30|日一]";
+            fields[9] = "X[08:30-17:30|日一]";
             lines[1] = string.Join(',', fields);
             await File.WriteAllLinesAsync(schedulePath, lines);
 
@@ -1292,7 +1313,7 @@ public sealed class WebInfrastructureTests
             var importedEmployee = importedDemand.Employees.Single(x => x.EmployeeCode == input.DemandMonth.Employees[0].EmployeeId);
             var assignment = importedEmployee.Assignments.Single(x => x.Date == demand.Month);
             Assert.AreEqual("日一", assignment.EventDescription);
-            Assert.AreEqual("X[08:30-17:30|日一]", importedEmployee.MonthlyCsvValues[8]);
+            Assert.AreEqual("X[08:30-17:30|日一]", importedEmployee.MonthlyCsvValues[9]);
 
             var scheduleService = new ScheduleService(database, new ScheduleValidationService(database));
             await using var stream = File.OpenRead(schedulePath);
@@ -1387,11 +1408,12 @@ public sealed class WebInfrastructureTests
         Assert.AreEqual("T001", preview.Employees.Single().EmployeeCode);
         Assert.AreEqual(4, preview.Employees.Single().ClosingRest);
         Assert.AreEqual(0, preview.Employees.Single().ClosingSpecialRest);
-        Assert.AreEqual("5", preview.Employees.Single().MonthlyCsvValues[4]);
-        Assert.AreEqual("4", preview.Employees.Single().MonthlyCsvValues[39]);
-        Assert.AreEqual("0", preview.Employees.Single().MonthlyCsvValues[41]);
-        Assert.AreEqual("4", preview.Employees.Single().MonthlyCsvValues[42]);
-        Assert.AreEqual("27", preview.Employees.Single().MonthlyCsvValues[44]);
+        Assert.AreEqual("5", preview.Employees.Single().MonthlyCsvValues[5]);
+        Assert.AreEqual("4", preview.Employees.Single().MonthlyCsvValues[40]);
+        Assert.AreEqual("", preview.Employees.Single().MonthlyCsvValues[42]);
+        Assert.AreEqual("0", preview.Employees.Single().MonthlyCsvValues[43]);
+        Assert.AreEqual("4", preview.Employees.Single().MonthlyCsvValues[44]);
+        Assert.AreEqual("27", preview.Employees.Single().MonthlyCsvValues[46]);
         var file = await demandService.ExportPreviousScheduleAsync(demand.Id, actor);
         Assert.AreEqual("previous.csv", file.FileName);
         Assert.AreEqual(0xEF, file.Content[0]);
@@ -1661,9 +1683,9 @@ public sealed class WebInfrastructureTests
 
         Assert.AreEqual(version.Id, detail.Version.Id);
         Assert.HasCount(1, detail.Employees);
-        Assert.HasCount(46, ScheduleCsv.MonthlyHeaders);
-        Assert.HasCount(46, detail.Employees[0].MonthlyCsvValues);
-        Assert.AreEqual("R", detail.Employees[0].MonthlyCsvValues[8]);
+        Assert.HasCount(48, ScheduleCsv.MonthlyHeaders);
+        Assert.HasCount(48, detail.Employees[0].MonthlyCsvValues);
+        Assert.AreEqual("R", detail.Employees[0].MonthlyCsvValues[9]);
         Assert.HasCount(1, detail.ExternalAssignments);
         Assert.AreEqual(8, detail.IntervalStats.Single().Rest);
         Assert.AreEqual(1, detail.IntervalStats.Single().RequiredSpecialRest);
@@ -1695,13 +1717,13 @@ public sealed class WebInfrastructureTests
 
         var viewerDetail = await service.GetAsync(version.Id, viewer);
         Assert.IsNull(viewerDetail.Employees.Single().Ability);
-        Assert.AreEqual("", viewerDetail.Employees.Single().MonthlyCsvValues[4]);
+        Assert.AreEqual("", viewerDetail.Employees.Single().MonthlyCsvValues[5]);
         Assert.AreEqual(5, (await service.GetAsync(version.Id, Editor(WorkspaceCode.T))).Employees.Single().Ability);
 
         var csv = System.Text.Encoding.UTF8.GetString(await service.ExportCsvAsync(version.Id, viewer));
         Assert.IsTrue(csv.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)[0].Split(',').Contains("能力"));
         Assert.IsFalse(csv.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)[0].Split(',').Contains("萬年班表"));
-        Assert.HasCount(45, csv.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)[0].Split(','));
+        Assert.HasCount(47, csv.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)[0].Split(','));
     }
 
     [TestMethod]

@@ -93,9 +93,9 @@
                                         <strong>候選 @candidate.Number</strong>
                                         @foreach (var objective in candidate.Objectives.OrderBy(x => x.Priority))
                                         {
-                                            <div>優先層級 @objective.Priority－@ObjectiveText(objective.Name)：總加權分 @objective.Value</div> @foreach (var component in objective.Components)
+                                            <div>優先層級 @objective.Priority－@CurrentObjectiveText(objective.Name)：總加權分 @objective.Value</div> @foreach (var component in objective.Components)
                                             {
-                                                <small>@ComponentText(component.Name)：違反量 @component.Value（@ComponentDescription(component.Name)），權重 @component.Weight，加權分 @(component.Value * component.Weight)</small>
+                                                <small>@CurrentComponentText(component.Name)：違反量 @component.Value（@CurrentComponentDescription(component.Name)），權重 @component.Weight，加權分 @(component.Value * component.Weight)</small>
                                             }
                                         }
                                     </div>
@@ -189,6 +189,9 @@
         "RequestedRest" => "R* 最後未排成 R、R1 或 R休的格數", "UnusedLeaveRest" => "指定 R休上限減去實際 R休數", "ExternalStaffing" => "超過門檻的外援人力", "MonthlyRest" => "實際 R 與目標差額平方", "SpecialRestBalance" => "八週累積 R1 的超額或欠額", "WorkStreak" => "連續工作區段依長度計分", "MixedShiftWorkStreak" => "混合正常班型的工作區段", "NightRestEarly" => "夜班、休假、早班組合", "NightRestAfternoon" => "夜班、休假、午班組合", "ShiftChangeWithoutRest" => "未休假直接換班", "NonHomeStation" => "每人超過 8 班的非所屬站工作", "WeekdayRestFairness" => "T 月班別內平日休假差", "HolidayRestFairness" => "群組內假日休假公平性", "EarlyAfternoonImbalance" => "早班與小班差超過 4", "NightShiftTarget" => "夜班 3 至 4 天目標", "NonMonthlyShift" => "不同於指定月班別", "Attendance" => "班組每日出勤缺額", "Specialty" => "應有專業組缺席", "Ability" => "能力 4 至 5 人員不足", "NightToEarlyRest" => "跨月夜轉早休假不足", "MonthBoundaryRestBalance" => "月交界休假人數差", _ => "此項規則的計算結果"
     };
 
+    private static string CurrentObjectiveText(string name) => name == "LeaveRestPreference" ? "R休日期偏好" : ObjectiveText(name);
+    private static string CurrentComponentText(string name) => name == "LeaveRestOutsideRequestedRest" ? "非 R* 日期的 R休" : ComponentText(name);
+    private static string CurrentComponentDescription(string name) => name == "LeaveRestOutsideRequestedRest" ? "排在非 R* 日期的 R休數" : ComponentDescription(name);
     private static string Taipei(DateTimeOffset value) => value.ToOffset(TimeSpan.FromHours(8)).ToString("yyyy-MM-dd HH:mm");
     public void Dispose() => Notifier.Changed -= OnRunChanged;
 }

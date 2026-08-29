@@ -92,8 +92,8 @@ internal static class ServiceSupport
                 JsonSerializer.Deserialize<MPerpetualSchedule>(demand.PerpetualScheduleJson, JsonOptions)?.Patterns.Count == 0),
             SolverScheduleMapper.ToDto(demand),
             demand.Employees.OrderBy(x => x.EmployeeCode).Select(x => new DemandEmployeeDto(
-                x.Id, x.EmployeeCode, x.Name, x.Affiliation, x.EmploymentStartDate, x.Ability,
-                x.MonthlyShift, x.OpeningRest, x.OpeningSpecialRest, x.RequestedLeaveRestCount,
+                x.Id, x.EmployeeCode, x.Name, x.Affiliation, x.EmploymentStartDate, x.EmploymentEndDate, x.Ability,
+                x.MonthlyShift, x.OpeningRest, x.OpeningSpecialRest, x.RequestedLeaveRestMinimum, x.RequestedLeaveRestCount,
                 x.PerpetualScheduleId, ScheduleCsv.MonthlyRow(schedule, scheduleEmployees[x.EmployeeCode]),
                 x.Assignments.OrderBy(a => a.Date).Select(a => new DemandAssignmentDto(
                     a.Id, a.DemandEmployeeId, a.Date, a.Kind, a.RequestedRest, a.Station, a.Shift,
