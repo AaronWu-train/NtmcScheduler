@@ -25,10 +25,10 @@
     <label>帳號<InputText @bind-Value="newUser.UserName"/></label>
     <label>一次性密碼<InputText type="password" @bind-Value="newUser.Password"/></label>
     <label><InputCheckbox @bind-Value="newUser.Administrator"/> Administrator</label>
-    <label><InputCheckbox @bind-Value="newUser.M"/> 三鶯線站務 M 編輯</label>
-    <label><InputCheckbox @bind-Value="newUser.T"/> 三鶯線檢修 T 編輯</label>
-    <label><InputCheckbox @bind-Value="newUser.YM"/> 環狀線站務 M 編輯</label>
-    <label><InputCheckbox @bind-Value="newUser.YT"/> 環狀線檢修 T 編輯</label>
+    <label><InputCheckbox @bind-Value="newUser.M"/> 三鶯線站務 M 排班</label>
+    <label><InputCheckbox @bind-Value="newUser.T"/> 三鶯線檢修 T 排班</label>
+    <label><InputCheckbox @bind-Value="newUser.YM"/> 環狀線站務 M 排班</label>
+    <label><InputCheckbox @bind-Value="newUser.YT"/> 環狀線檢修 T 排班</label>
     <button type="submit" class="primary" disabled="@isBusy">@(isBusy ? "處理中…" : "建立帳號")</button>
 </EditForm>
 <div class="card">
@@ -70,10 +70,10 @@
                     <input aria-label="@row.UserName YT 編輯" type="checkbox" disabled="@isBusy" @bind="row.YT"/>
                 </td>
                 <td>
-                    <input aria-label="@row.UserName 新的一次性密碼" type="password" disabled="@isBusy" @bind="row.ResetPassword" autocomplete="new-password"/>
+                    <input aria-label="@row.UserName 新的一次性密碼" type="password" disabled="@isBusy" @bind="row.ResetPassword" autocomplete="new-password"/> <button @onclick="() => ResetAsync(row)" disabled="@(isBusy || string.IsNullOrWhiteSpace(row.ResetPassword))">重設密碼</button>
                 </td>
                 <td>
-                    <button disabled="@isBusy" @onclick="() => SaveAsync(row)">儲存權限</button> <button @onclick="() => ResetAsync(row)" disabled="@(isBusy || string.IsNullOrWhiteSpace(row.ResetPassword))">重設密碼</button> <button class="danger" @onclick="() => DeleteAsync(row)" disabled="@isBusy">刪除帳號</button>
+                    <button disabled="@isBusy" @onclick="() => SaveAsync(row)">儲存權限</button> <button class="danger" @onclick="() => DeleteAsync(row)" disabled="@isBusy">刪除帳號</button>
                 </td>
             </tr>
         }
