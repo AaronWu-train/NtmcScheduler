@@ -270,7 +270,7 @@ else
                 非常態班型
                 <select @onchange="ApplyNonStandard">
                     <option value="">自行輸入</option>
-                    @foreach (var shift in configuration?.NonStandardShifts ?? [])
+                    @foreach (var shift in editConfiguration?.NonStandardShifts ?? [])
                     {
                         @foreach (var name in ShiftNames(shift))
                         {
@@ -294,6 +294,7 @@ else
     private IEnumerable<string> MStations => detail?.Coverage.Select(x => x.Station).Distinct(StringComparer.Ordinal) ?? [];
     private ScheduleDetailDto? detail;
     private ConfigurationRevisionDto? configuration;
+    private ConfigurationRevisionDto? editConfiguration;
     private bool canEdit;
     private bool isBusy;
     private bool isEditingName;
@@ -315,6 +316,7 @@ else
         var actor = await CurrentActor.GetAsync();
         detail = await Service.GetAsync(VersionId, actor);
         configuration = await ConfigurationService.GetRevisionAsync(detail.Version.ConfigurationRevisionId, actor);
+        editConfiguration = await ConfigurationService.GetCurrentAsync(actor);
         canEdit = actor.CanEdit(detail.Version.Workspace) && !actor.MustChangePassword;
     }
 
@@ -517,7 +519,7 @@ else
     private void ApplyNonStandard(ChangeEventArgs args)
     {
         var parts = args.Value?.ToString()?.Split(':', 2);
-        var shift = configuration?.NonStandardShifts.FirstOrDefault(x => parts is not null && x.Code == parts[0]);
+        var shift = editConfiguration?.NonStandardShifts.FirstOrDefault(x => parts is not null && x.Code == parts[0]);
         if (shift is null || editingCell is null) return;
         var endDate = shift.EndTime <= shift.StartTime ? editingCell.Date.AddDays(1) : editingCell.Date;
         cellEdit.Start = editingCell.Date.ToDateTime(shift.StartTime);
