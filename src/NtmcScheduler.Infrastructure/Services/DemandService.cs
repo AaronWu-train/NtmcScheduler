@@ -182,7 +182,7 @@ public sealed class DemandService(IDbContextFactory<NtmcDbContext> dbFactory) : 
             requestedLeaveRestMinimum < 0 || requestedLeaveRestCount < 0 || requestedLeaveRestMinimum > requestedLeaveRestCount)
             throw new DomainValidationException("月初 R/R1 必須同時填寫且不可為負數；R休上下界必須符合 0 ≤ 下界 ≤ 上界。");
         if (employmentStartDate is { } start && employmentEndDate is { } end && start > end)
-            throw new DomainValidationException("月間排班終止日不得早於月中開始排班日。");
+            throw new DomainValidationException("月中排班終止日不得早於月中開始排班日。");
         if (demand.Workspace.IsMaintenance() && SolverScheduleMapper.ParseShift(monthlyShift) is null)
             throw new DomainValidationException("T 月班別必須為早、午或夜。");
         if (demand.Workspace.IsStation() && !string.IsNullOrWhiteSpace(monthlyShift))

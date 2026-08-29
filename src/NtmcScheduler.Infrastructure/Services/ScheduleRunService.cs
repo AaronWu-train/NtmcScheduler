@@ -19,7 +19,7 @@ public sealed class ScheduleRunService(IDbContextFactory<NtmcDbContext> dbFactor
             new SolverRuleDefinitionDto("DailyAssignment", "每日單一狀態", "每位在職人員每日必須恰好一個工作或休假狀態。", 0, true, null),
             new SolverRuleDefinitionDto("FixedAssignments", "固定格", "已填正常班、R、R1 與 X 必須保留。", 0, true, null),
             new SolverRuleDefinitionDto("EmploymentStart", "月中開始排班日", "月中開始排班日前不建立班位，也不可存在固定日格。", 0, true, null),
-            new SolverRuleDefinitionDto("EmploymentEnd", "月間排班終止日", "月間排班終止日後不建立班位，也不可存在固定日格。", 0, true, null),
+            new SolverRuleDefinitionDto("EmploymentEnd", "月中排班終止日", "月中排班終止日後不建立班位，也不可存在固定日格。", 0, true, null),
             new SolverRuleDefinitionDto("LeaveRestBounds", "R休上下界", "每人本月 R休數必須落在設定的下界與上界內。", 0, true, null),
             new SolverRuleDefinitionDto("MinimumRest", "工作間隔", "任兩次工作至少間隔 11 小時。", 0, true, null),
             new SolverRuleDefinitionDto("SevenDayRest", "七日一般 R", "每個連續七日視窗至少一天一般 R。", 0, true, null),

@@ -363,7 +363,7 @@
                                         <input class="inline-field date-field" type="date" disabled="@(!canEdit || isBusy)" value="@DateText(edit.EmploymentStartDate)" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "employmentStart", args.Value?.ToString())'/>
                                     </td>
                                 }
-                                else if (header == "月間排班終止日")
+                                else if (header == "月中排班終止日")
                                 {
                                     <td>
                                         <input class="inline-field date-field" type="date" disabled="@(!canEdit || isBusy)" value="@DateText(edit.EmploymentEndDate)" @onchange='args => ChangeEmployeeFieldAsync(employee, edit, "employmentEnd", args.Value?.ToString())'/>

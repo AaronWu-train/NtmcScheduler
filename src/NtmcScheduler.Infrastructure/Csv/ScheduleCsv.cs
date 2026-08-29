@@ -17,15 +17,17 @@ public static partial class ScheduleCsv
 {
     private static readonly string[] LegacyHeaders =
     [
-        "ID", "姓名", "所屬", "月中開始排班日", "月間排班終止日", "能力", "T月班別",
+        "ID", "姓名", "所屬", "月中開始排班日", "月中排班終止日", "能力", "T月班別",
         "月初區間累計R", "月初區間累計R1",
         .. Enumerable.Range(1, 31).Select(day => day.ToString(CultureInfo.InvariantCulture)),
         "當月R", "當月R1", "R休下限", "R休上限", "月底區間累計R", "月底區間累計R1", "本月班數"
     ];
     private static readonly string[] Headers = [.. LegacyHeaders, "萬年班表"];
-    private static readonly string[] OldLegacyHeaders = LegacyHeaders.Where(x => x is not "R休下限" and not "月間排班終止日").ToArray();
+
+    private static readonly string[] OldLegacyHeaders =
+        LegacyHeaders.Where(x => x is not "R休下限" and not "月中排班終止日").ToArray();
     private static readonly string[] OldHeaders = [.. OldLegacyHeaders, "萬年班表"];
-    private static readonly string[] PreviousLegacyHeaders = LegacyHeaders.Where(x => x != "月間排班終止日").ToArray();
+    private static readonly string[] PreviousLegacyHeaders = LegacyHeaders.Where(x => x != "月中排班終止日").ToArray();
     private static readonly string[] PreviousHeaders = [.. PreviousLegacyHeaders, "萬年班表"];
 
     public static string MonthlyHeader => Join(Headers);
@@ -240,7 +242,7 @@ public static partial class ScheduleCsv
             Name = row[1].Trim(),
             Affiliation = row[2].Trim(),
             EmploymentStartDate = NullableDate(row[3], $"{field} 月中開始排班日"),
-            EmploymentEndDate = NullableDate(row[4], $"{field} 月間排班終止日"),
+            EmploymentEndDate = NullableDate(row[4], $"{field} 月中排班終止日"),
             Ability = ability,
             MonthlyShift = monthlyShift,
             PerpetualScheduleId = hasPerpetualSchedule && !string.IsNullOrWhiteSpace(row[47]) ? row[47].Trim() : null,
