@@ -494,6 +494,43 @@ public sealed class TSolverTests
     }
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void Csv_H4NormalizesToR1OnlyForCircularLineM(bool historical)
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            var month = new DateOnly(2026, 8, 1);
+            var employee = ValidInput().PreviousMonth.Employees[0] with
+            {
+                Assignments = new Dictionary<DateOnly, ScheduleCell>
+                {
+                    [month] = new() { Kind = AssignmentKind.SpecialRest }
+                },
+                ClosingUsage = historical ? new(0, 1) : null,
+                RequestedLeaveRestMinimum = historical ? null : 0,
+                NormalWorkCount = historical ? 0 : null
+            };
+            ScheduleCsv.WriteMonthly(path, new(month, [employee]));
+            var canonical = File.ReadAllText(path);
+            File.WriteAllText(path, canonical.Replace(",R1,", ",H4,", StringComparison.Ordinal));
+
+            var parsed = ScheduleCsv.ReadMonthly(path, month, historical: historical, workspace: WorkspaceCode.YM);
+            var cell = parsed.Employees.Single().Assignments[month];
+            Assert.AreEqual(AssignmentKind.SpecialRest, cell.Kind);
+            Assert.IsFalse(cell.RequestedRest);
+            Assert.AreEqual(canonical, System.Text.Encoding.UTF8.GetString(ScheduleCsv.WriteMonthly(parsed)).TrimStart('\uFEFF'));
+            foreach (var workspace in new[] { WorkspaceCode.M, WorkspaceCode.T, WorkspaceCode.YT })
+                Assert.Throws<ScheduleCsvException>(() => ScheduleCsv.ReadMonthly(path, month, historical: historical, workspace: workspace));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
     public void Csv_CircularLineSupportsShiftAliasesSmSuffixAndSchedulingEndDate()
     {
         var root = Path.Combine(Path.GetTempPath(), $"ntmc-{Guid.NewGuid():N}");

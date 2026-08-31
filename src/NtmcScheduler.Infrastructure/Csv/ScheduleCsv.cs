@@ -301,6 +301,7 @@ public static partial class ScheduleCsv
         {
             "R" => new() { Kind = AssignmentKind.Rest },
             "R1" => new() { Kind = AssignmentKind.SpecialRest },
+            "H4" when workspace == WorkspaceCode.YM => new() { Kind = AssignmentKind.SpecialRest },
             "R休" => new() { Kind = AssignmentKind.LeaveRest },
             "R休*" => new() { Kind = AssignmentKind.LeaveRest, RequestedRest = true },
             "R*" when historical => new() { Kind = AssignmentKind.Rest, RequestedRest = true },
