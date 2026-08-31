@@ -73,7 +73,14 @@
                             <span class="status @RunStatusClass(run)">@RunStatusText(run)</span>
                             @if (run.Status == ScheduleRunStatus.InvalidInput && !string.IsNullOrWhiteSpace(run.Error))
                             {
-                                <div class="error-text">原因：@run.Error</div>
+                                @if (run.Workspace is WorkspaceCode.T or WorkspaceCode.YT)
+                                {
+                                    <div class="error-text dashboard-input-error" tabindex="0" role="region" aria-label="輸入錯誤原因，可捲動">原因：@run.Error</div>
+                                }
+                                else
+                                {
+                                    <div class="error-text">原因：@run.Error</div>
+                                }
                             }
                             @if (run.CompletedAtUtc is not null)
                             {

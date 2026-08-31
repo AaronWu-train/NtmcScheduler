@@ -241,6 +241,7 @@ thead th { background: #e9eef5; }
 .issue-blocking { color: #8a4b00; }
 .issue-list { display: grid; gap: .45rem; }
 .dashboard-table td { text-align: left; vertical-align: top; }
+.dashboard-input-error { max-width: 28rem; max-height: 6rem; overflow: auto; white-space: normal; overflow-wrap: anywhere; }
 .dashboard-table small { display: block; margin-top: .2rem; color: #526175; }
 .objective-scores { min-width: 8rem; text-align: left; }
 .objective-scores span { display: block; }
